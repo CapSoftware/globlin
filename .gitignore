@@ -1,0 +1,30 @@
+# Rust build outputs
+/target
+
+# Node.js
+node_modules/
+*.node
+dist/
+
+# Benchmark fixtures (generated)
+benches/fixtures/
+tests/fixtures/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+*.log
+
+# Markdown files (except README)
+*.md
+!README.md

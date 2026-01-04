@@ -1,0 +1,77 @@
+{
+  "name": "globlin",
+  "version": "0.1.0",
+  "description": "A high-performance glob pattern matcher - 20-30x faster drop-in replacement for glob",
+  "main": "index.js",
+  "repository": "https://github.com/yourusername/globlin",
+  "license": "MIT",
+  "keywords": [
+    "glob",
+    "pattern",
+    "match",
+    "file",
+    "directory",
+    "fast",
+    "rust",
+    "napi"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "js"
+  ],
+  "napi": {
+    "name": "globlin",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "aarch64-pc-windows-msvc",
+        "x86_64-unknown-linux-musl"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">= 20"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "bash benches/benchmark.sh",
+    "bench:small": "bash benches/benchmark.sh small",
+    "bench:medium": "bash benches/benchmark.sh medium",
+    "bench:large": "bash benches/benchmark.sh large",
+    "bench:poc": "npx tsx benches/poc_bench.ts",
+    "bench:poc:medium": "npx tsx benches/poc_bench.ts --medium",
+    "bench:poc:all": "npx tsx benches/poc_bench.ts --all",
+    "bench:phase2": "npx tsx benches/phase2_bench.ts medium",
+    "bench:phase2:all": "npx tsx benches/phase2_bench.ts all",
+    "bench:node": "npx tsx benches/node_bench.ts",
+    "bench:node:small": "npx tsx benches/node_bench.ts --small",
+    "bench:node:all": "npx tsx benches/node_bench.ts --all",
+    "bench:rust": "cargo bench",
+    "bench:ci": "npx tsx benches/bench-ci.ts --output bench-results.json",
+    "bench:setup": "node benches/setup-fixtures.js",
+    "universal": "napi universal",
+    "version": "napi version"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "@types/node": "^20.0.0",
+    "fast-glob": "^3.3.3",
+    "glob": "^10.3.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "dependencies": {
+    "minimatch": "^10.1.1",
+    "minipass": "^7.1.2",
+    "path-scurry": "^2.0.0"
+  }
+}
