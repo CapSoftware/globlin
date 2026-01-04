@@ -400,6 +400,152 @@ impl Pattern {
         }
     }
 
+    /// Check if a directory path could possibly contain matches for this pattern.
+    ///
+    /// This is used for early pruning during directory traversal. If this method
+    /// returns `false`, we can skip traversing the entire directory subtree.
+    ///
+    /// # Arguments
+    /// * `dir_path` - The relative directory path to check (e.g., "src", "src/lib")
+    ///
+    /// # Returns
+    /// * `true` if this directory or its children could match the pattern
+    /// * `false` if we can safely skip this directory
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let pattern = Pattern::new("src/lib/**/*.ts");
+    /// assert!(pattern.could_match_in_dir("src"));      // Could contain src/lib/...
+    /// assert!(pattern.could_match_in_dir("src/lib"));  // Could contain matches
+    /// assert!(!pattern.could_match_in_dir("test"));    // Cannot match
+    /// assert!(!pattern.could_match_in_dir("docs"));    // Cannot match
+    ///
+    /// let pattern2 = Pattern::new("**/*.ts");
+    /// assert!(pattern2.could_match_in_dir("any/path")); // ** matches anything
+    /// ```
+    pub fn could_match_in_dir(&self, dir_path: &str) -> bool {
+        // Empty directory path (root) always could match
+        if dir_path.is_empty() || dir_path == "." {
+            return true;
+        }
+
+        // Split the directory path into segments
+        let dir_segments: Vec<&str> = dir_path.split('/').filter(|s| !s.is_empty()).collect();
+
+        // Get pattern parts (skip leading / for absolute paths)
+        let pattern_parts: Vec<&PatternPart> = self
+            .parts
+            .iter()
+            .filter(|p| match p {
+                PatternPart::Literal(s) => s != "/",
+                _ => true,
+            })
+            .collect();
+
+        // Walk through pattern parts and directory segments together
+        self.could_match_in_dir_recursive(&pattern_parts, &dir_segments, 0, 0)
+    }
+
+    /// Recursive helper for could_match_in_dir
+    fn could_match_in_dir_recursive(
+        &self,
+        pattern_parts: &[&PatternPart],
+        dir_segments: &[&str],
+        pattern_idx: usize,
+        dir_idx: usize,
+    ) -> bool {
+        // If we've exhausted the directory path, the pattern could match deeper
+        if dir_idx >= dir_segments.len() {
+            return true;
+        }
+
+        // If we've exhausted the pattern parts, we can't match this directory
+        // (the directory is deeper than what the pattern can match)
+        if pattern_idx >= pattern_parts.len() {
+            return false;
+        }
+
+        let pattern_part = pattern_parts[pattern_idx];
+        let dir_segment = dir_segments[dir_idx];
+
+        match pattern_part {
+            PatternPart::Globstar => {
+                // Globstar can match zero or more segments, so:
+                // 1. Try matching zero segments (skip globstar, same dir position)
+                // 2. Try matching current segment and continue with globstar
+                // 3. Try matching current segment and move past globstar
+
+                // Option 1: Globstar matches zero segments - skip to next pattern part
+                if self.could_match_in_dir_recursive(
+                    pattern_parts,
+                    dir_segments,
+                    pattern_idx + 1,
+                    dir_idx,
+                ) {
+                    return true;
+                }
+
+                // Option 2: Globstar consumes this segment and continues as globstar
+                if self.could_match_in_dir_recursive(
+                    pattern_parts,
+                    dir_segments,
+                    pattern_idx,
+                    dir_idx + 1,
+                ) {
+                    return true;
+                }
+
+                // Option 3: Globstar consumes this segment and moves on
+                self.could_match_in_dir_recursive(
+                    pattern_parts,
+                    dir_segments,
+                    pattern_idx + 1,
+                    dir_idx + 1,
+                )
+            }
+            PatternPart::Literal(lit) => {
+                // For case-insensitive matching, compare lowercase
+                let matches = if self.nocase {
+                    lit.to_lowercase() == dir_segment.to_lowercase()
+                } else {
+                    lit == dir_segment
+                };
+
+                if matches {
+                    // Continue checking remaining segments
+                    self.could_match_in_dir_recursive(
+                        pattern_parts,
+                        dir_segments,
+                        pattern_idx + 1,
+                        dir_idx + 1,
+                    )
+                } else {
+                    false
+                }
+            }
+            PatternPart::Magic(_, regex) => {
+                // Check if the regex matches this directory segment
+                let matches = if self.nocase {
+                    regex.is_match(&dir_segment.to_lowercase()).unwrap_or(false)
+                } else {
+                    regex.is_match(dir_segment).unwrap_or(false)
+                };
+
+                if matches {
+                    // Continue checking remaining segments
+                    self.could_match_in_dir_recursive(
+                        pattern_parts,
+                        dir_segments,
+                        pattern_idx + 1,
+                        dir_idx + 1,
+                    )
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
     /// Check if this pattern explicitly allows dotfiles for the given path.
     /// A pattern explicitly allows dotfiles when:
     /// - A pattern segment explicitly starts with `.` (e.g., `.hidden`, `.git/**`)
@@ -2934,5 +3080,189 @@ mod test_nocase {
         let pat = make_pattern("*.txt", true);
         assert!(pat.matches("FILE.TXT"));
         assert!(pat.matches("file.txt"));
+    }
+}
+
+#[cfg(test)]
+mod test_could_match_in_dir {
+    use super::*;
+
+    #[test]
+    fn test_empty_dir_always_matches() {
+        // Root/empty directory should always return true
+        let pattern = Pattern::new("src/**/*.ts");
+        assert!(pattern.could_match_in_dir(""));
+        assert!(pattern.could_match_in_dir("."));
+    }
+
+    #[test]
+    fn test_literal_prefix_matches() {
+        // Pattern with literal prefix should match that prefix
+        let pattern = Pattern::new("src/lib/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("src/lib"));
+        assert!(pattern.could_match_in_dir("src/lib/deep"));
+        assert!(pattern.could_match_in_dir("src/lib/a/b/c"));
+    }
+
+    #[test]
+    fn test_literal_prefix_no_match() {
+        // Pattern with literal prefix should NOT match other directories
+        let pattern = Pattern::new("src/lib/**/*.ts");
+
+        assert!(!pattern.could_match_in_dir("test"));
+        assert!(!pattern.could_match_in_dir("docs"));
+        assert!(!pattern.could_match_in_dir("node_modules"));
+        assert!(!pattern.could_match_in_dir("src/test")); // lib != test
+    }
+
+    #[test]
+    fn test_globstar_at_start_matches_all() {
+        // Pattern starting with ** should match any directory
+        let pattern = Pattern::new("**/*.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("test"));
+        assert!(pattern.could_match_in_dir("a/b/c/d"));
+        assert!(pattern.could_match_in_dir("any/path/here"));
+    }
+
+    #[test]
+    fn test_globstar_in_middle() {
+        // Pattern with ** in middle should match prefix and anything after
+        let pattern = Pattern::new("src/**/test/*.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("src/lib"));
+        assert!(pattern.could_match_in_dir("src/lib/test"));
+        assert!(pattern.could_match_in_dir("src/a/b/c/test"));
+        assert!(!pattern.could_match_in_dir("test")); // must start with src
+        assert!(!pattern.could_match_in_dir("lib")); // must start with src
+    }
+
+    #[test]
+    fn test_magic_segment_in_pattern() {
+        // Pattern with wildcard segment should match anything there
+        let pattern = Pattern::new("packages/*/src/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("packages"));
+        assert!(pattern.could_match_in_dir("packages/foo"));
+        assert!(pattern.could_match_in_dir("packages/foo/src"));
+        assert!(pattern.could_match_in_dir("packages/bar/src"));
+        assert!(pattern.could_match_in_dir("packages/any-name/src/deep"));
+        assert!(!pattern.could_match_in_dir("src")); // must start with packages
+    }
+
+    #[test]
+    fn test_character_class_in_pattern() {
+        // Pattern with character class should match valid chars
+        let pattern = Pattern::new("[st]rc/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("trc"));
+        assert!(pattern.could_match_in_dir("src/lib"));
+        assert!(!pattern.could_match_in_dir("lib")); // doesn't match [st]
+        assert!(!pattern.could_match_in_dir("arc")); // 'a' not in [st]
+    }
+
+    #[test]
+    fn test_simple_pattern_no_depth() {
+        // Pattern at root level only
+        let pattern = Pattern::new("*.ts");
+
+        // Root-level pattern cannot match in subdirectories
+        // because *.ts only matches at depth 0
+        assert!(!pattern.could_match_in_dir("src"));
+        assert!(!pattern.could_match_in_dir("src/lib"));
+    }
+
+    #[test]
+    fn test_one_level_pattern() {
+        // Pattern at one level deep
+        let pattern = Pattern::new("src/*.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(!pattern.could_match_in_dir("lib"));
+        // Can't match in src/lib because src/*.ts only goes one level
+        assert!(!pattern.could_match_in_dir("src/lib"));
+    }
+
+    #[test]
+    fn test_nocase_directory_matching() {
+        // Case-insensitive pattern matching
+        let pattern = Pattern::with_pattern_options(
+            "SRC/**/*.ts",
+            PatternOptions {
+                nocase: true,
+                ..Default::default()
+            },
+        );
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("SRC"));
+        assert!(pattern.could_match_in_dir("Src"));
+        assert!(pattern.could_match_in_dir("src/lib"));
+        assert!(pattern.could_match_in_dir("SRC/LIB"));
+        assert!(!pattern.could_match_in_dir("test"));
+    }
+
+    #[test]
+    fn test_complex_pattern() {
+        // Complex pattern with multiple segments
+        let pattern = Pattern::new("app/routes/api/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("app"));
+        assert!(pattern.could_match_in_dir("app/routes"));
+        assert!(pattern.could_match_in_dir("app/routes/api"));
+        assert!(pattern.could_match_in_dir("app/routes/api/v1"));
+        assert!(pattern.could_match_in_dir("app/routes/api/v1/users"));
+        assert!(!pattern.could_match_in_dir("app/models")); // models != routes
+        assert!(!pattern.could_match_in_dir("src")); // src != app
+    }
+
+    #[test]
+    fn test_extglob_pattern() {
+        // Pattern with extglob
+        let pattern = Pattern::new("+(src|lib)/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("lib"));
+        assert!(pattern.could_match_in_dir("src/utils"));
+        assert!(pattern.could_match_in_dir("lib/helpers"));
+        assert!(!pattern.could_match_in_dir("test"));
+        assert!(!pattern.could_match_in_dir("docs"));
+    }
+
+    #[test]
+    fn test_deep_directory_with_shallow_pattern() {
+        // Directory deeper than pattern allows
+        let pattern = Pattern::new("src/lib/file.ts");
+
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(pattern.could_match_in_dir("src/lib"));
+        // Directory is deeper than the pattern depth
+        assert!(!pattern.could_match_in_dir("src/lib/deep"));
+    }
+
+    #[test]
+    fn test_trailing_slash_in_dir() {
+        // Directory path with trailing slash
+        let pattern = Pattern::new("src/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("src/"));
+        assert!(pattern.could_match_in_dir("src/lib/"));
+    }
+
+    #[test]
+    fn test_multiple_globstars() {
+        // Pattern with multiple globstars
+        let pattern = Pattern::new("**/src/**/*.ts");
+
+        assert!(pattern.could_match_in_dir("packages"));
+        assert!(pattern.could_match_in_dir("packages/foo"));
+        assert!(pattern.could_match_in_dir("packages/foo/src"));
+        assert!(pattern.could_match_in_dir("packages/foo/src/utils"));
+        assert!(pattern.could_match_in_dir("src")); // ** matches zero segments
     }
 }
