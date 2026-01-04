@@ -1,0 +1,167 @@
+name: Continuous Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build native module
+        run: npm run build
+        continue-on-error: true
+
+      - name: Generate REAL benchmark fixtures
+        run: node benches/setup-fixtures.js
+
+      - name: Run benchmarks on REAL fixtures
+        run: npm run bench:ci
+
+      - name: Download baseline results
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: bench.yml
+          branch: main
+          name: benchmark-baseline
+          path: baseline/
+        continue-on-error: true
+
+      - name: Compare with baseline
+        id: compare
+        run: |
+          node scripts/compare-benchmarks.js \
+            --current bench-results.json \
+            --baseline baseline/bench-results.json \
+            --threshold 10 \
+            --output bench-comparison.json
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let comment = '## Benchmark Results\n\n';
+
+            try {
+              const markdown = fs.readFileSync('bench-comparison.md', 'utf-8');
+              comment += markdown;
+            } catch (err) {
+              comment += 'Benchmarks completed. See artifacts for details.\n';
+            }
+
+            try {
+              const results = JSON.parse(fs.readFileSync('bench-results.json', 'utf-8'));
+              comment += '\n### Current Run Summary\n\n';
+              comment += `- **Node version:** ${results.nodeVersion}\n`;
+              comment += `- **Platform:** ${results.platform}\n`;
+              comment += `- **Patterns tested:** ${results.summary.totalPatterns}\n`;
+              comment += `- **Avg glob time:** ${results.summary.avgGlobTime.toFixed(2)}ms\n`;
+              comment += `- **Avg fast-glob time:** ${results.summary.avgFastGlobTime.toFixed(2)}ms\n`;
+              if (results.summary.avgGloblinTime) {
+                comment += `- **Avg globlin time:** ${results.summary.avgGloblinTime.toFixed(2)}ms\n`;
+                comment += `- **Speedup vs glob:** ${results.summary.avgSpeedupVsGlob.toFixed(1)}x\n`;
+              }
+            } catch (err) {
+              console.log('Could not read benchmark results:', err.message);
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const existingComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('## Benchmark Results')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                comment_id: existingComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+      - name: Fail if regression detected
+        if: steps.compare.outputs.regression == 'true'
+        run: |
+          echo "Performance regression detected (>10%)"
+          cat bench-comparison.md
+          exit 1
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench-results.json
+            bench-comparison.json
+            bench-comparison.md
+          retention-days: 30
+
+      - name: Upload as baseline (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-baseline
+          path: bench-results.json
+          retention-days: 90
+
+      - name: Store benchmark result for tracking
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Globlin Benchmarks
+          tool: 'customSmallerIsBetter'
+          output-file-path: bench-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+          alert-comment-cc-users: '@maintainers'
+        continue-on-error: true
