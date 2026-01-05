@@ -131,22 +131,49 @@ function isGlobInstance(obj: unknown): obj is Glob {
   return obj instanceof Glob
 }
 
+/**
+ * Custom ignore pattern object. Compatible with glob v13's IgnoreLike interface.
+ * 
+ * Both methods receive Path objects from path-scurry, allowing for rich
+ * filtering based on file properties (name, isDirectory, isFile, etc.)
+ */
 export interface IgnorePattern {
-  ignored?: (path: string) => boolean
-  childrenIgnored?: (path: string) => boolean
+  /**
+   * Called for each path to determine if it should be excluded from results.
+   * @param path - The Path object representing the file/directory
+   * @returns true if the path should be ignored (excluded from results)
+   */
+  ignored?: (path: Path) => boolean
+  
+  /**
+   * Called for each directory to determine if its children should be ignored.
+   * When this returns true, the directory's contents are not traversed.
+   * @param path - The Path object representing the directory
+   * @returns true if the directory's children should be skipped
+   */
+  childrenIgnored?: (path: Path) => boolean
 }
 
 /**
- * Helper to check if ignore option is an IgnorePattern object
+ * Helper to check if ignore option is an IgnorePattern object.
+ * Returns true only if the object has at least one of the methods.
+ * An empty object is NOT considered an IgnorePattern.
  */
 function isIgnorePattern(ignore: unknown): ignore is IgnorePattern {
-  return (
-    typeof ignore === 'object' &&
-    ignore !== null &&
-    !Array.isArray(ignore) &&
-    (typeof (ignore as IgnorePattern).ignored === 'function' ||
-      typeof (ignore as IgnorePattern).childrenIgnored === 'function')
-  )
+  if (
+    typeof ignore !== 'object' ||
+    ignore === null ||
+    Array.isArray(ignore)
+  ) {
+    return false
+  }
+  
+  const maybePattern = ignore as IgnorePattern
+  const hasIgnored = typeof maybePattern.ignored === 'function'
+  const hasChildrenIgnored = typeof maybePattern.childrenIgnored === 'function'
+  
+  // Must have at least one of the methods to be considered an IgnorePattern
+  return hasIgnored || hasChildrenIgnored
 }
 
 /**
@@ -157,23 +184,193 @@ function toNativeOptions(options?: GlobOptions): NativeGlobOptions {
     return { cwd: process.cwd() }
   }
 
-  // Check for unsupported IgnorePattern objects
-  if (options.ignore && isIgnorePattern(options.ignore)) {
-    throw new Error(
-      'Custom ignore objects with ignored()/childrenIgnored() methods are not yet supported. ' +
-        'Please use string patterns instead.'
-    )
-  }
-
   // Create native options, excluding JS-only fields (signal)
   const { signal, ...rest } = options
+
+  // Determine what to pass as ignore to native code:
+  // - If it's a custom IgnorePattern object with methods, don't pass it (handled in JS)
+  // - If it's an empty object (no methods), also don't pass it (not a valid ignore)
+  // - If it's a string or string[], pass it through
+  // - If it's undefined/null, don't pass it
+  let nativeIgnore: string | string[] | undefined
+  const ignoreOpt = rest.ignore
+  
+  if (ignoreOpt === undefined || ignoreOpt === null) {
+    nativeIgnore = undefined
+  } else if (typeof ignoreOpt === 'string') {
+    nativeIgnore = ignoreOpt
+  } else if (Array.isArray(ignoreOpt)) {
+    nativeIgnore = ignoreOpt
+  } else if (isIgnorePattern(ignoreOpt)) {
+    // It's a custom object with methods - handled in JS, not passed to native
+    nativeIgnore = undefined
+  } else {
+    // It's some other object (like empty {}) - treat as no ignore
+    nativeIgnore = undefined
+  }
 
   return {
     cwd: rest.cwd ?? process.cwd(),
     ...rest,
-    // Cast ignore to the native type (we've already validated it's not an IgnorePattern)
-    ignore: rest.ignore as string | string[] | undefined,
+    ignore: nativeIgnore,
   }
+}
+
+/**
+ * Apply custom ignore filters to results.
+ * This handles IgnorePattern objects with ignored() and/or childrenIgnored() methods.
+ */
+function applyCustomIgnoreFilter(
+  results: string[],
+  ignorePattern: IgnorePattern,
+  cwd: string
+): string[] {
+  if (!ignorePattern.ignored && !ignorePattern.childrenIgnored) {
+    return results
+  }
+
+  const scurry = new PathScurry(cwd)
+  
+  // Build a set of ignored directories (for childrenIgnored)
+  // We need to check all parent directories that might be childrenIgnored
+  const ignoredDirPrefixes = new Set<string>()
+  
+  // If we have childrenIgnored, we need to pre-check all unique parent directories
+  if (ignorePattern.childrenIgnored) {
+    const allParentDirs = new Set<string>()
+    
+    // Collect all unique parent directories from the results
+    for (const relPath of results) {
+      const parts = relPath.split('/')
+      let current = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current ? current + '/' + parts[i] : parts[i]
+        allParentDirs.add(current)
+      }
+    }
+    
+    // Sort by depth (shallow first) and check childrenIgnored on each
+    const sortedDirs = [...allParentDirs].sort((a, b) => {
+      const depthA = a.split('/').length
+      const depthB = b.split('/').length
+      return depthA - depthB
+    })
+    
+    for (const dir of sortedDirs) {
+      // Skip if already under an ignored prefix
+      let underIgnored = false
+      for (const prefix of ignoredDirPrefixes) {
+        if (dir === prefix || dir.startsWith(prefix + '/')) {
+          underIgnored = true
+          break
+        }
+      }
+      if (underIgnored) continue
+      
+      // Check if this directory's children should be ignored
+      const pathObj = scurry.cwd.resolve(dir)
+      if (ignorePattern.childrenIgnored(pathObj)) {
+        ignoredDirPrefixes.add(dir)
+      }
+    }
+  }
+  
+  // Now filter the results
+  return results.filter(relPath => {
+    // Check if path is under an ignored directory (childrenIgnored)
+    for (const prefix of ignoredDirPrefixes) {
+      // Child paths should be filtered out
+      if (relPath.startsWith(prefix + '/')) {
+        return false
+      }
+    }
+    
+    // Check if this specific path should be ignored
+    if (ignorePattern.ignored) {
+      const pathObj = scurry.cwd.resolve(relPath)
+      if (ignorePattern.ignored(pathObj)) {
+        return false
+      }
+    }
+    
+    return true
+  })
+}
+
+/**
+ * Apply custom ignore filters to Path[] results.
+ * This handles IgnorePattern objects with ignored() and/or childrenIgnored() methods.
+ */
+function applyCustomIgnoreFilterForPaths(
+  pathObjs: Path[],
+  ignorePattern: IgnorePattern
+): Path[] {
+  if (!ignorePattern.ignored && !ignorePattern.childrenIgnored) {
+    return pathObjs
+  }
+  
+  // Build a set of ignored directories (for childrenIgnored)
+  const ignoredDirPrefixes = new Set<string>()
+  
+  // If we have childrenIgnored, pre-check all unique parent directories
+  if (ignorePattern.childrenIgnored) {
+    const allParentDirs = new Map<string, Path>()
+    
+    // Collect all unique parent directories from the results
+    for (const pathObj of pathObjs) {
+      let current = pathObj.parent
+      while (current && current.relative() !== '.') {
+        const relPath = current.relative()
+        if (!allParentDirs.has(relPath)) {
+          allParentDirs.set(relPath, current)
+        }
+        current = current.parent
+      }
+    }
+    
+    // Sort by depth (shallow first) and check childrenIgnored on each
+    const sortedDirs = [...allParentDirs.entries()].sort((a, b) => {
+      const depthA = a[0].split('/').length
+      const depthB = b[0].split('/').length
+      return depthA - depthB
+    })
+    
+    for (const [dir, pathObj] of sortedDirs) {
+      // Skip if already under an ignored prefix
+      let underIgnored = false
+      for (const prefix of ignoredDirPrefixes) {
+        if (dir === prefix || dir.startsWith(prefix + '/')) {
+          underIgnored = true
+          break
+        }
+      }
+      if (underIgnored) continue
+      
+      // Check if this directory's children should be ignored
+      if (ignorePattern.childrenIgnored(pathObj)) {
+        ignoredDirPrefixes.add(dir)
+      }
+    }
+  }
+  
+  // Now filter the results
+  return pathObjs.filter(pathObj => {
+    const relPath = pathObj.relative()
+    
+    // Check if path is under an ignored directory (childrenIgnored)
+    for (const prefix of ignoredDirPrefixes) {
+      if (relPath.startsWith(prefix + '/')) {
+        return false
+      }
+    }
+    
+    // Check if this specific path should be ignored
+    if (ignorePattern.ignored && ignorePattern.ignored(pathObj)) {
+      return false
+    }
+    
+    return true
+  })
 }
 
 /**
@@ -241,17 +438,32 @@ export function globSync(
   }
 
   const opts = toNativeOptions(options)
+  const cwd = opts.cwd ?? process.cwd()
+  const hasCustomIgnore = options?.ignore && isIgnorePattern(options.ignore)
 
   // Handle withFileTypes option
   if (options?.withFileTypes) {
     const data = nativeGlobSyncWithFileTypes(pattern, opts)
-    const cwd = opts.cwd ?? process.cwd()
     // Pass stat option to determine if we should call lstat
-    return convertToPathObjects(data, cwd, options.stat)
+    let pathObjs = convertToPathObjects(data, cwd, options.stat)
+    
+    // Apply custom ignore filter if present
+    if (hasCustomIgnore) {
+      pathObjs = applyCustomIgnoreFilterForPaths(pathObjs, options.ignore as IgnorePattern)
+    }
+    
+    return pathObjs
   }
 
   // Pass patterns directly to native implementation (supports both string and array)
-  return nativeGlobSync(pattern, opts)
+  let results = nativeGlobSync(pattern, opts)
+  
+  // Apply custom ignore filter if present
+  if (hasCustomIgnore) {
+    results = applyCustomIgnoreFilter(results, options.ignore as IgnorePattern, cwd)
+  }
+  
+  return results
 }
 
 /**
@@ -283,10 +495,18 @@ export async function glob(
   }
 
   const opts = toNativeOptions(options)
+  const cwd = opts.cwd ?? process.cwd()
+  const hasCustomIgnore = options?.ignore && isIgnorePattern(options.ignore)
 
   // Handle withFileTypes option
   if (options?.withFileTypes) {
     const promise = nativeGlobWithFileTypes(pattern, opts)
+    
+    // Helper to apply custom ignore filter on Path[] results
+    const applyPathIgnoreFilter = (pathObjs: Path[]): Path[] => {
+      if (!hasCustomIgnore) return pathObjs
+      return applyCustomIgnoreFilterForPaths(pathObjs, options.ignore as IgnorePattern)
+    }
     
     // If we have a signal, set up abort handling
     if (options?.signal) {
@@ -301,8 +521,9 @@ export async function glob(
             if (options.signal!.aborted) {
               reject(options.signal!.reason ?? new Error('The operation was aborted'))
             } else {
-              const cwd = opts.cwd ?? process.cwd()
-              resolve(convertToPathObjects(data, cwd, options.stat))
+              let pathObjs = convertToPathObjects(data, cwd, options.stat)
+              pathObjs = applyPathIgnoreFilter(pathObjs)
+              resolve(pathObjs)
             }
           })
           .catch((err) => {
@@ -313,8 +534,9 @@ export async function glob(
     }
     
     const data = await promise
-    const cwd = opts.cwd ?? process.cwd()
-    return convertToPathObjects(data, cwd, options.stat)
+    let pathObjs = convertToPathObjects(data, cwd, options.stat)
+    pathObjs = applyPathIgnoreFilter(pathObjs)
+    return pathObjs
   }
 
   // Start the async operation
@@ -338,7 +560,11 @@ export async function glob(
           if (options.signal!.aborted) {
             reject(options.signal!.reason ?? new Error('The operation was aborted'))
           } else {
-            resolve(results)
+            // Apply custom ignore filter if present
+            const finalResults = hasCustomIgnore 
+              ? applyCustomIgnoreFilter(results, options.ignore as IgnorePattern, cwd)
+              : results
+            resolve(finalResults)
           }
         })
         .catch((err) => {
@@ -348,7 +574,14 @@ export async function glob(
     })
   }
 
-  return promise
+  let results = await promise
+  
+  // Apply custom ignore filter if present
+  if (hasCustomIgnore) {
+    results = applyCustomIgnoreFilter(results, options.ignore as IgnorePattern, cwd)
+  }
+  
+  return results
 }
 
 /**
