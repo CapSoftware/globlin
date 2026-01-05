@@ -61,6 +61,7 @@ impl PatternPart {
 }
 
 /// Represents a parsed glob pattern with precompiled regex for matching.
+#[derive(Clone)]
 pub struct Pattern {
     /// The original raw pattern string
     raw: String,

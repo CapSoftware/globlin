@@ -278,8 +278,34 @@ impl Glob {
             self.walk_options.clone()
         };
         
-        // Create walker with the optimized walk root and adjusted options
-        let walker = Walker::new(walk_root.clone(), adjusted_walk_options);
+        // Create a directory pruning filter using the patterns' could_match_in_dir method.
+        // This allows us to skip entire directory subtrees that can't possibly contain matches.
+        // 
+        // The filter receives the path relative to walk_root, but the patterns expect paths
+        // relative to cwd. When we have a prefix_to_strip, we need to prepend it.
+        let patterns_for_filter: Vec<Pattern> = self.patterns.clone();
+        let prefix_for_filter = prefix_to_strip.clone();
+        
+        let prune_filter = Box::new(move |dir_path: &str| -> bool {
+            // Construct the path relative to cwd for pattern matching
+            let path_from_cwd = if let Some(ref prefix) = prefix_for_filter {
+                if dir_path.is_empty() {
+                    prefix.clone()
+                } else {
+                    format!("{}/{}", prefix, dir_path)
+                }
+            } else {
+                dir_path.to_string()
+            };
+            
+            // Check if ANY pattern could potentially match files in this directory.
+            // If no pattern can match, we can safely skip this directory.
+            patterns_for_filter.iter().any(|p| p.could_match_in_dir(&path_from_cwd))
+        });
+        
+        // Create walker with the optimized walk root, adjusted options, and pruning filter
+        let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
+            .with_dir_prune_filter(prune_filter);
 
         for entry in walker.walk() {
             let path = entry.path();
@@ -2008,5 +2034,122 @@ mod tests {
         assert_eq!(Glob::longest_common_prefix(&["a/b/c", "a/b/d"]), "a/b");
         assert_eq!(Glob::longest_common_prefix(&["x"]), "x");
         assert_eq!(Glob::longest_common_prefix(&[]), "");
+    }
+
+    // Directory pruning tests (Task 2.5.3.3)
+
+    #[test]
+    fn test_directory_pruning_scoped_pattern() {
+        // Pattern src/lib/**/*.js should only traverse src/lib, not test/ or other dirs
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create a structure with multiple top-level directories
+        fs::create_dir_all(base.join("src/lib/deep")).unwrap();
+        fs::create_dir_all(base.join("test/unit")).unwrap();
+        fs::create_dir_all(base.join("docs")).unwrap();
+
+        File::create(base.join("src/lib/helper.js")).unwrap();
+        File::create(base.join("src/lib/deep/nested.js")).unwrap();
+        File::create(base.join("test/unit/test.js")).unwrap();
+        File::create(base.join("docs/readme.js")).unwrap();
+
+        let glob = Glob::new(
+            "src/lib/**/*.js".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find files under src/lib/
+        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&"src/lib/deep/nested.js".to_string()));
+
+        // Should NOT find files in other directories
+        assert!(!results.contains(&"test/unit/test.js".to_string()));
+        assert!(!results.contains(&"docs/readme.js".to_string()));
+    }
+
+    #[test]
+    fn test_directory_pruning_multi_pattern() {
+        // Multiple patterns with different scopes - pruning should allow both paths
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        fs::create_dir_all(base.join("src")).unwrap();
+        fs::create_dir_all(base.join("test")).unwrap();
+        fs::create_dir_all(base.join("docs")).unwrap();
+
+        File::create(base.join("src/main.js")).unwrap();
+        File::create(base.join("test/test.ts")).unwrap();
+        File::create(base.join("docs/readme.md")).unwrap();
+
+        let glob = Glob::new_multi(
+            vec!["src/**/*.js".to_string(), "test/**/*.ts".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find files matching either pattern
+        assert!(results.contains(&"src/main.js".to_string()));
+        assert!(results.contains(&"test/test.ts".to_string()));
+
+        // Should NOT find files that don't match any pattern
+        assert!(!results.contains(&"docs/readme.md".to_string()));
+    }
+
+    #[test]
+    fn test_directory_pruning_with_globstar_start() {
+        // Pattern **/*.js cannot prune directories (must visit all)
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        fs::create_dir_all(base.join("a/b/c")).unwrap();
+        fs::create_dir_all(base.join("x/y/z")).unwrap();
+
+        File::create(base.join("a/b/c/file.js")).unwrap();
+        File::create(base.join("x/y/z/file.js")).unwrap();
+
+        let glob = Glob::new(
+            "**/*.js".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find files in both paths since ** matches anything
+        assert!(results.contains(&"a/b/c/file.js".to_string()));
+        assert!(results.contains(&"x/y/z/file.js".to_string()));
+    }
+
+    #[test]
+    fn test_directory_pruning_nested_match() {
+        // Pattern packages/*/src/**/*.ts - should only traverse packages/*/src paths
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        fs::create_dir_all(base.join("packages/foo/src/utils")).unwrap();
+        fs::create_dir_all(base.join("packages/foo/test")).unwrap();
+        fs::create_dir_all(base.join("packages/bar/src")).unwrap();
+        fs::create_dir_all(base.join("other")).unwrap();
+
+        File::create(base.join("packages/foo/src/index.ts")).unwrap();
+        File::create(base.join("packages/foo/src/utils/helper.ts")).unwrap();
+        File::create(base.join("packages/foo/test/test.ts")).unwrap();
+        File::create(base.join("packages/bar/src/main.ts")).unwrap();
+        File::create(base.join("other/file.ts")).unwrap();
+
+        let glob = Glob::new(
+            "packages/*/src/**/*.ts".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find files under packages/*/src
+        assert!(results.contains(&"packages/foo/src/index.ts".to_string()));
+        assert!(results.contains(&"packages/foo/src/utils/helper.ts".to_string()));
+        assert!(results.contains(&"packages/bar/src/main.ts".to_string()));
+
+        // Should NOT find files outside of packages/*/src
+        assert!(!results.contains(&"packages/foo/test/test.ts".to_string()));
+        assert!(!results.contains(&"other/file.ts".to_string()));
     }
 }
