@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
+// Parallel walking support via jwalk (jwalk::WalkDir is used directly)
+
 /// Options for directory walking
 #[derive(Debug, Clone, Default)]
 pub struct WalkOptions {
@@ -16,6 +18,10 @@ pub struct WalkOptions {
     /// This is needed for the `mark` option to correctly NOT add trailing slashes to symlinks.
     /// When false, avoids an extra stat call per file (faster).
     pub need_accurate_symlink_detection: bool,
+    /// Enable parallel directory walking using multiple threads.
+    /// When true, uses jwalk for parallel traversal which can be faster on HDDs and network drives.
+    /// When false (default), uses walkdir for serial traversal which is faster on SSDs.
+    pub parallel: bool,
 }
 
 /// A filter function that can prune directories during walking.
@@ -46,6 +52,11 @@ impl WalkOptions {
         self.need_accurate_symlink_detection = need;
         self
     }
+
+    pub fn parallel(mut self, parallel: bool) -> Self {
+        self.parallel = parallel;
+        self
+    }
 }
 
 /// A single entry returned from the walker
@@ -71,6 +82,43 @@ impl WalkEntry {
             is_dir: file_type.is_dir(),
             is_file: file_type.is_file(),
             is_symlink: file_type.is_symlink(),
+        }
+    }
+
+    /// Create a WalkEntry from a jwalk DirEntry without checking symlink metadata.
+    /// Used for parallel walking mode.
+    #[inline]
+    pub fn from_jwalk_entry_fast<C: jwalk::ClientState>(entry: &jwalk::DirEntry<C>) -> Self {
+        let file_type = entry.file_type();
+        Self {
+            path: entry.path(),
+            depth: entry.depth,
+            is_dir: file_type.is_dir(),
+            is_file: file_type.is_file(),
+            is_symlink: file_type.is_symlink(),
+        }
+    }
+
+    /// Create a WalkEntry from a jwalk DirEntry with full symlink detection.
+    /// Used for parallel walking mode when accurate symlink detection is needed.
+    pub fn from_jwalk_entry<C: jwalk::ClientState>(entry: &jwalk::DirEntry<C>) -> Self {
+        let file_type = entry.file_type();
+        let path = entry.path();
+        // When following symlinks, jwalk reports the TARGET type, not the symlink type.
+        // To detect if the entry is a symlink, we need to check symlink_metadata.
+        let is_symlink = if file_type.is_symlink() {
+            true
+        } else {
+            path.symlink_metadata()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+        };
+        Self {
+            path,
+            depth: entry.depth,
+            is_dir: file_type.is_dir(),
+            is_file: file_type.is_file(),
+            is_symlink,
         }
     }
 
@@ -177,7 +225,20 @@ impl Walker {
     ///
     /// Note: When a dir_prune_filter is set, the walk collects entries into a Vec
     /// to properly apply the filter. Without a filter, it returns a lazy iterator.
+    ///
+    /// If `parallel` is enabled in options, uses jwalk for parallel traversal.
+    /// Otherwise, uses walkdir for serial traversal.
     pub fn walk(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
+        if self.options.parallel {
+            self.walk_parallel()
+        } else {
+            self.walk_serial()
+        }
+    }
+
+    /// Walk the directory tree using serial (single-threaded) walkdir.
+    /// This is the default mode, faster on SSDs for small to medium directories.
+    fn walk_serial(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
         let mut walker = WalkDir::new(&self.root).follow_links(self.options.follow_symlinks);
 
         if let Some(max_depth) = self.options.max_depth {
@@ -298,6 +359,144 @@ impl Walker {
     /// Walk the directory tree synchronously, collecting all entries
     pub fn walk_sync(&self) -> Vec<WalkEntry> {
         self.walk().collect()
+    }
+
+    /// Walk the directory tree using parallel (multi-threaded) jwalk.
+    /// This mode can be faster on HDDs and network filesystems.
+    /// Results may be returned in a different order than serial mode.
+    fn walk_parallel(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
+        let need_accurate_symlink = self.options.need_accurate_symlink_detection;
+        let dot = self.options.dot;
+        let root = self.root.clone();
+
+        // Build jwalk walker with parallel traversal
+        // Note: jwalk has skip_hidden=true by default, so we must disable it
+        // and handle dot filtering ourselves in process_read_dir
+        let mut builder = jwalk::WalkDir::new(&self.root)
+            .follow_links(self.options.follow_symlinks)
+            .skip_hidden(false); // Always read all files, filter manually
+
+        if let Some(max_depth) = self.options.max_depth {
+            builder = builder.max_depth(max_depth);
+        }
+
+        // Use rayon's default thread pool for parallelism
+        builder = builder.parallelism(jwalk::Parallelism::RayonDefaultPool {
+            busy_timeout: std::time::Duration::from_secs(1),
+        });
+
+        // Since dir_prune_filter is a Box<dyn Fn>, we can't clone it directly.
+        // For parallel mode with pruning, we need to collect the patterns and
+        // apply filtering in the process_read_dir callback.
+        // For now, parallel mode only supports dot filtering via process_read_dir.
+        // Pruning support would require restructuring to pass pattern data instead of closure.
+        let has_prune_filter = self.dir_prune_filter.is_some();
+
+        // Collect entries from jwalk
+        let raw_entries: Vec<_> = builder
+            .process_read_dir(move |_remaining_depth, _path, _state, children| {
+                // Filter dot files if dot option is false
+                if !dot {
+                    children.retain(|child_result| {
+                        if let Ok(child) = child_result {
+                            // Only filter dotfiles at depth > 0 (allow root through)
+                            // This matches the behavior of walk_serial which checks e.depth() > 0
+                            if child.depth == 0 {
+                                return true;
+                            }
+                            if let Some(name) = child.path().file_name().and_then(|n| n.to_str()) {
+                                if name.starts_with('.') {
+                                    return false;
+                                }
+                            }
+                        }
+                        true
+                    });
+                }
+            })
+            .into_iter()
+            .filter_map(move |result| match result {
+                Ok(entry) => {
+                    let file_type = entry.file_type();
+                    let path = entry.path();
+
+                    // When following symlinks, we may need accurate symlink detection
+                    let is_symlink = if need_accurate_symlink {
+                        if file_type.is_symlink() {
+                            true
+                        } else {
+                            path.symlink_metadata()
+                                .map(|m| m.file_type().is_symlink())
+                                .unwrap_or(false)
+                        }
+                    } else {
+                        file_type.is_symlink()
+                    };
+
+                    Some(WalkEntry {
+                        path,
+                        depth: entry.depth,
+                        is_dir: file_type.is_dir(),
+                        is_file: file_type.is_file(),
+                        is_symlink,
+                    })
+                }
+                Err(err) => {
+                    // Handle broken symlinks
+                    if let Some(path) = err.path() {
+                        if let Ok(meta) = path.symlink_metadata() {
+                            if meta.file_type().is_symlink() {
+                                return Some(WalkEntry {
+                                    path: path.to_path_buf(),
+                                    depth: err.depth(),
+                                    is_dir: false,
+                                    is_file: false,
+                                    is_symlink: true,
+                                });
+                            }
+                        }
+                    }
+                    None
+                }
+            })
+            .collect();
+
+        if has_prune_filter {
+            // Apply the prune filter post-traversal
+            // This is less efficient but works for parallel mode
+            let prune_filter = self.dir_prune_filter.as_ref().unwrap();
+            let filtered: Vec<WalkEntry> = raw_entries
+                .into_iter()
+                .filter(|entry| {
+                    if let Ok(rel_path) = entry.path().strip_prefix(&root) {
+                        let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+                        // Root directory always passes
+                        if rel_str.is_empty() {
+                            return true;
+                        }
+                        // For directories, check if they should be included
+                        // Note: This doesn't prune children during traversal, but filters results
+                        if entry.is_dir() && !prune_filter(&rel_str) {
+                            return false;
+                        }
+                        // For files, check if their parent directory passes the filter
+                        if !entry.is_dir() {
+                            if let Some(parent) = rel_path.parent() {
+                                let parent_str = parent.to_string_lossy().replace('\\', "/");
+                                if !parent_str.is_empty() && !prune_filter(&parent_str) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    true
+                })
+                .collect();
+
+            Box::new(filtered.into_iter())
+        } else {
+            Box::new(raw_entries.into_iter())
+        }
     }
 }
 
@@ -1034,5 +1233,127 @@ mod tests {
 
         // Should not crash regardless of what was created
         assert!(!entries.is_empty());
+    }
+
+    // Parallel walking tests
+
+    #[test]
+    fn test_walker_parallel_basic() {
+        let temp = create_test_fixture();
+        let walker = Walker::new(temp.path().to_path_buf(), WalkOptions::new().parallel(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should find all files (same as serial)
+        assert!(entries.iter().any(|e| e.path().ends_with("foo.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("bar.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("baz.js")));
+        assert!(entries.iter().any(|e| e.path().ends_with("src/main.js")));
+        assert!(entries
+            .iter()
+            .any(|e| e.path().ends_with("src/lib/helper.js")));
+    }
+
+    #[test]
+    fn test_walker_parallel_with_dot() {
+        let temp = create_test_fixture();
+        let walker = Walker::new(
+            temp.path().to_path_buf(),
+            WalkOptions::new().parallel(true).dot(true),
+        );
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should include dotfiles with parallel mode
+        assert!(entries.iter().any(|e| e.path().ends_with(".hidden")));
+        assert!(entries.iter().any(|e| e.path().ends_with(".git")));
+    }
+
+    #[test]
+    fn test_walker_parallel_without_dot() {
+        let temp = create_test_fixture();
+        let walker = Walker::new(
+            temp.path().to_path_buf(),
+            WalkOptions::new().parallel(true).dot(false),
+        );
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should NOT include dotfiles
+        assert!(!entries.iter().any(|e| e.path().ends_with(".hidden")));
+        assert!(!entries.iter().any(|e| e.path().ends_with(".git")));
+
+        // Should include regular files
+        assert!(entries.iter().any(|e| e.path().ends_with("foo.txt")));
+    }
+
+    #[test]
+    fn test_walker_parallel_max_depth() {
+        let temp = create_test_fixture();
+        let walker = Walker::new(
+            temp.path().to_path_buf(),
+            WalkOptions::new().parallel(true).max_depth(Some(1)),
+        );
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should include root-level items
+        assert!(entries.iter().any(|e| e.path().ends_with("foo.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("src")));
+
+        // Should NOT include nested items
+        assert!(!entries.iter().any(|e| e.path().ends_with("main.js")));
+    }
+
+    #[test]
+    fn test_walker_parallel_matches_serial_results() {
+        let temp = create_test_fixture();
+
+        // Run serial walk
+        let serial_walker = Walker::new(
+            temp.path().to_path_buf(),
+            WalkOptions::new().parallel(false),
+        );
+        let serial_entries: std::collections::HashSet<_> = serial_walker
+            .walk_sync()
+            .into_iter()
+            .map(|e| e.path().to_path_buf())
+            .collect();
+
+        // Run parallel walk
+        let parallel_walker =
+            Walker::new(temp.path().to_path_buf(), WalkOptions::new().parallel(true));
+        let parallel_entries: std::collections::HashSet<_> = parallel_walker
+            .walk_sync()
+            .into_iter()
+            .map(|e| e.path().to_path_buf())
+            .collect();
+
+        // Results should match (same files found, order may differ)
+        assert_eq!(
+            serial_entries, parallel_entries,
+            "Parallel and serial should find the same files"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_parallel_with_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure with symlink
+        fs::create_dir_all(base.join("real")).unwrap();
+        File::create(base.join("real/file.txt")).unwrap();
+        symlink(base.join("real"), base.join("link")).unwrap();
+
+        // Walk with follow_symlinks=true
+        let walker = Walker::new(
+            base.to_path_buf(),
+            WalkOptions::new().parallel(true).follow_symlinks(true),
+        );
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should find file through both paths
+        assert!(entries.iter().any(|e| e.path().ends_with("real/file.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("link/file.txt")));
     }
 }

@@ -327,11 +327,14 @@ impl Glob {
         // when not needed.
         let need_accurate_symlink_detection = mark && follow;
 
+        let parallel = options.parallel.unwrap_or(false);
+
         let walk_options = WalkOptions::new()
             .follow_symlinks(follow)
             .max_depth(walker_max_depth)
             .dot(true)
-            .need_accurate_symlink_detection(need_accurate_symlink_detection);
+            .need_accurate_symlink_detection(need_accurate_symlink_detection)
+            .parallel(parallel);
 
         // Pre-compute: check if any pattern requires directory matching (ends with /)
         let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());

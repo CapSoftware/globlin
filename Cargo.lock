@@ -305,6 +305,7 @@ dependencies = [
  "napi-derive",
  "num_cpus",
  "once_cell",
+ "rayon",
  "regex",
  "tempfile",
  "thiserror",

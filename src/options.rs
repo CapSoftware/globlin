@@ -198,6 +198,23 @@ pub struct GlobOptions {
     /// @deprecated Use `windowsPathsNoEscape` instead.
     #[napi(js_name = "allowWindowsEscape")]
     pub allow_windows_escape: Option<bool>,
+
+    // ==================== Performance Options (globlin-specific) ====================
+    /// Enable parallel directory walking using multiple threads.
+    ///
+    /// When `true`, uses parallel traversal which can be faster on:
+    /// - Spinning hard drives (HDDs)
+    /// - Network filesystems (NFS, CIFS)
+    /// - Very large directory trees
+    ///
+    /// When `false` (default), uses serial traversal which is:
+    /// - Faster on SSDs for small to medium directories
+    /// - Deterministic result ordering
+    /// - Lower memory overhead
+    ///
+    /// **Note:** This is a globlin-specific option not present in the original glob package.
+    /// Results may be returned in a different order when `parallel: true`.
+    pub parallel: Option<bool>,
     // ==================== Not Supported in Rust ====================
     // The following options are handled in the JavaScript wrapper:
     // - signal: AbortSignal (JS-only)
