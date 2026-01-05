@@ -921,13 +921,17 @@ impl Glob {
 
     /// Calculate the optimal walk root based on literal prefixes of patterns.
     /// 
-    /// Returns a tuple of (walk_root, prefix_to_strip):
-    /// - walk_root: The directory to start walking from (cwd or cwd/prefix)
+    /// Returns a tuple of (walk_root, prefix_to_strip, is_absolute_pattern):
+    /// - walk_root: The directory to start walking from (cwd, cwd/prefix, or absolute root)
     /// - prefix_to_strip: If Some, this prefix was extracted and should be prepended
     ///   to relative paths from walk_root to get the path relative to cwd
+    /// - is_absolute_pattern: True if we're walking from an absolute pattern root
     /// 
     /// For patterns like `src/**/*.ts`, instead of walking from cwd and visiting
     /// all directories, we can walk from `cwd/src` which is much faster.
+    /// 
+    /// For absolute patterns like `C:/foo/**/*.ts` or `/usr/local/**`, we walk from
+    /// that absolute path directly.
     /// 
     /// When patterns have different prefixes (e.g., `src/**` and `test/**`),
     /// we find the longest common prefix, or fall back to cwd if there's no
@@ -935,6 +939,80 @@ impl Glob {
     fn calculate_walk_root(&self) -> (PathBuf, Option<String>) {
         // If there are no patterns, just walk from cwd
         if self.patterns.is_empty() {
+            return (self.cwd.clone(), None);
+        }
+
+        // Check if any pattern is absolute (has a root like C:/, /, or //server/share/)
+        // If we have absolute patterns, we need to handle them specially
+        let has_absolute_pattern = self.patterns.iter().any(|p| p.is_absolute());
+        
+        if has_absolute_pattern {
+            // For absolute patterns, we need to check if ALL patterns are absolute
+            // and share a common root. If not, we can't optimize.
+            let all_absolute = self.patterns.iter().all(|p| p.is_absolute());
+            
+            if all_absolute && self.patterns.len() == 1 {
+                // Single absolute pattern - walk from its root + literal prefix
+                let pattern = &self.patterns[0];
+                let root = pattern.root();
+                
+                // Get the literal prefix (directories before any glob magic)
+                if let Some(prefix) = pattern.literal_prefix() {
+                    // Walk from root + prefix
+                    let walk_root = PathBuf::from(&root).join(&prefix);
+                    // The prefix to strip is the root + prefix
+                    let full_prefix = if root.ends_with('/') {
+                        format!("{}{}", root, prefix)
+                    } else {
+                        format!("{}/{}", root, prefix)
+                    };
+                    return (walk_root, Some(full_prefix));
+                } else {
+                    // No literal prefix, just walk from the root
+                    return (PathBuf::from(&root), Some(root.to_string()));
+                }
+            } else if all_absolute {
+                // Multiple absolute patterns - find common root
+                let roots: Vec<&str> = self.patterns.iter().map(|p| p.root()).collect();
+                
+                // Check if all roots are the same
+                if !roots.is_empty() && roots.iter().all(|r| *r == roots[0]) {
+                    let common_root = roots[0];
+                    
+                    // Get literal prefixes after the root
+                    let prefixes: Vec<Option<String>> = self.patterns.iter()
+                        .map(|p| p.literal_prefix())
+                        .collect();
+                    
+                    // If any pattern has no prefix, walk from the root
+                    if prefixes.iter().any(|p| p.is_none()) {
+                        return (PathBuf::from(common_root), Some(common_root.to_string()));
+                    }
+                    
+                    // Find common prefix among all patterns
+                    let prefix_strs: Vec<&str> = prefixes.iter()
+                        .filter_map(|p| p.as_ref().map(|s| s.as_str()))
+                        .collect();
+                    
+                    let common_prefix = Self::longest_common_prefix(&prefix_strs);
+                    
+                    if common_prefix.is_empty() {
+                        return (PathBuf::from(common_root), Some(common_root.to_string()));
+                    }
+                    
+                    let walk_root = PathBuf::from(common_root).join(&common_prefix);
+                    let full_prefix = if common_root.ends_with('/') {
+                        format!("{}{}", common_root, common_prefix)
+                    } else {
+                        format!("{}/{}", common_root, common_prefix)
+                    };
+                    return (walk_root, Some(full_prefix));
+                }
+            }
+            
+            // Mixed absolute and relative patterns, or different roots
+            // Fall back to walking from cwd for relative patterns
+            // This is a limitation - we can't efficiently handle mixed patterns
             return (self.cwd.clone(), None);
         }
 
@@ -2725,5 +2803,135 @@ mod tests {
         // foo.txt should appear only once despite matching all patterns
         let foo_count = results.iter().filter(|r| *r == "foo.txt").count();
         assert_eq!(foo_count, 1);
+    }
+
+    // Absolute pattern tests (Task 4.1.1)
+
+    #[test]
+    fn test_absolute_pattern_unix() {
+        // Test absolute Unix path pattern
+        let temp = create_test_fixture();
+        let abs_path = temp.path().to_string_lossy().to_string();
+        
+        // Create an absolute pattern
+        let pattern = format!("{}/**/*.js", abs_path.replace('\\', "/"));
+        
+        let glob = Glob::new(
+            pattern,
+            GlobOptions {
+                cwd: Some("/tmp".to_string()), // Different cwd shouldn't matter
+                ..Default::default()
+            },
+        );
+        
+        let results = glob.walk_sync();
+        
+        // Should find js files in the temp directory
+        // Results should be relative to the pattern root
+        assert!(!results.is_empty());
+        // Check that results contain the expected patterns
+        assert!(results.iter().any(|r| r.contains("main.js") || r.contains("baz.js")));
+    }
+
+    #[test]
+    fn test_absolute_pattern_nonexistent() {
+        // Absolute pattern pointing to nonexistent path should return empty
+        let glob = Glob::new(
+            "/nonexistent/path/**/*.txt".to_string(),
+            GlobOptions::default(),
+        );
+        
+        let results = glob.walk_sync();
+        
+        assert!(results.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_drive_letter_pattern() {
+        // Test Windows drive letter pattern
+        let temp = create_test_fixture();
+        let abs_path = temp.path().to_string_lossy().to_string();
+        
+        // Convert to POSIX-style path
+        let pattern = abs_path.replace('\\', "/");
+        
+        let glob = Glob::new(
+            format!("{}/**/*.txt", pattern),
+            GlobOptions {
+                platform: Some("win32".to_string()),
+                ..Default::default()
+            },
+        );
+        
+        let results = glob.walk_sync();
+        
+        // Should find txt files
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|r| r.contains("foo.txt") || r.contains("bar.txt")));
+    }
+
+    #[test]
+    fn test_absolute_pattern_with_literal_prefix() {
+        // Test that absolute patterns with literal prefixes work correctly
+        let temp = create_test_fixture();
+        let abs_path = temp.path().to_string_lossy().to_string().replace('\\', "/");
+        
+        // Pattern with absolute root + literal prefix
+        let pattern = format!("{}/src/**/*.js", abs_path);
+        
+        let glob = Glob::new(
+            pattern,
+            GlobOptions::default(),
+        );
+        
+        let results = glob.walk_sync();
+        
+        // Should find js files under src
+        assert!(results.iter().any(|r| r.contains("main.js")));
+        assert!(results.iter().any(|r| r.contains("helper.js")));
+        // Should NOT find root-level js
+        assert!(!results.iter().any(|r| r == "baz.js"));
+    }
+
+    #[test]
+    fn test_pattern_is_absolute() {
+        use crate::pattern::{Pattern, PatternOptions};
+        
+        // Unix absolute path
+        let unix_pattern = Pattern::with_pattern_options("/usr/local/**/*.txt", PatternOptions {
+            platform: Some("linux".to_string()),
+            ..Default::default()
+        });
+        assert!(unix_pattern.is_absolute());
+        assert_eq!(unix_pattern.root(), "/");
+        
+        // Windows drive pattern
+        let win_pattern = Pattern::with_pattern_options("C:/Users/**/*.txt", PatternOptions {
+            platform: Some("win32".to_string()),
+            ..Default::default()
+        });
+        assert!(win_pattern.is_absolute());
+        assert!(win_pattern.is_drive());
+        assert_eq!(win_pattern.root(), "C:/");
+        
+        // Relative pattern
+        let rel_pattern = Pattern::with_pattern_options("src/**/*.txt", PatternOptions::default());
+        assert!(!rel_pattern.is_absolute());
+        assert_eq!(rel_pattern.root(), "");
+    }
+
+    #[test]
+    fn test_unc_pattern_detection() {
+        use crate::pattern::{Pattern, PatternOptions};
+        
+        // UNC path
+        let unc_pattern = Pattern::with_pattern_options("//server/share/folder/**/*.txt", PatternOptions {
+            platform: Some("win32".to_string()),
+            ..Default::default()
+        });
+        assert!(unc_pattern.is_absolute());
+        assert!(unc_pattern.is_unc());
+        assert!(unc_pattern.root().starts_with("//"));
     }
 }
