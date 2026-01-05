@@ -1,4 +1,41 @@
 use fancy_regex::Regex;
+use std::collections::HashSet;
+use std::path::Path;
+
+/// Fast-path matching strategies for common patterns.
+/// These allow skipping expensive regex matching for simple cases.
+#[derive(Debug, Clone)]
+pub enum FastPath {
+    /// Pattern is `*.ext` - just check file extension
+    /// Contains the extension to match (without the dot)
+    ExtensionOnly(String),
+
+    /// Pattern is `*.{ext1,ext2}` or `**/*.{ext1,ext2}` - check extension against a set
+    /// Contains the set of valid extensions (without dots)
+    ExtensionSet(HashSet<String>),
+
+    /// Pattern is a literal filename - just compare strings
+    /// Contains the exact filename to match
+    LiteralName(String),
+
+    /// Pattern is `**/*.ext` - recursive extension matching
+    /// Contains the extension to match (without the dot)
+    RecursiveExtension(String),
+
+    /// Pattern is `**/*.{ext1,ext2}` - recursive extension set matching
+    /// Contains the set of valid extensions (without dots)
+    RecursiveExtensionSet(HashSet<String>),
+
+    /// Pattern requires full regex matching (complex patterns)
+    None,
+}
+
+impl FastPath {
+    /// Check if this is a fast-path optimization (not None)
+    pub fn is_fast(&self) -> bool {
+        !matches!(self, FastPath::None)
+    }
+}
 
 /// Options for pattern parsing
 #[derive(Default, Clone)]
@@ -91,6 +128,8 @@ pub struct Pattern {
     nocase: bool,
     /// Whether this pattern ends with / (requires directory match)
     requires_dir: bool,
+    /// Fast-path optimization for this pattern (if applicable)
+    fast_path: FastPath,
 }
 
 // Escape tokens for brace expansion (avoid collisions with actual content)
@@ -173,6 +212,9 @@ impl Pattern {
             options.windows_paths_no_escape,
         );
 
+        // Compute fast-path optimization
+        let fast_path = detect_fast_path(&pattern_for_matching, &parts, options.nocase);
+
         Self {
             raw: pattern.to_string(),
             regex,
@@ -188,6 +230,7 @@ impl Pattern {
             platform,
             nocase: options.nocase,
             requires_dir,
+            fast_path,
         }
     }
 
@@ -243,6 +286,118 @@ impl Pattern {
     /// Check if the pattern requires matching a directory (ends with /).
     pub fn requires_dir(&self) -> bool {
         self.requires_dir
+    }
+
+    /// Get the fast-path optimization for this pattern.
+    ///
+    /// Returns the type of fast-path matching that can be used, or `FastPath::None`
+    /// if full regex matching is required.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let pattern = Pattern::new("*.js");
+    /// assert!(matches!(pattern.fast_path(), FastPath::ExtensionOnly(_)));
+    ///
+    /// let pattern = Pattern::new("**/*.{js,ts}");
+    /// assert!(matches!(pattern.fast_path(), FastPath::RecursiveExtensionSet(_)));
+    ///
+    /// let pattern = Pattern::new("src/**/*.js");
+    /// assert!(matches!(pattern.fast_path(), FastPath::None)); // Has literal prefix
+    /// ```
+    pub fn fast_path(&self) -> &FastPath {
+        &self.fast_path
+    }
+
+    /// Try to match the path using fast-path optimization.
+    ///
+    /// Returns `Some(true)` if the path matches, `Some(false)` if it doesn't match,
+    /// or `None` if fast-path matching is not applicable and full regex matching
+    /// should be used.
+    ///
+    /// # Arguments
+    /// * `path` - The file path to match against (should use forward slashes)
+    ///
+    /// # Examples
+    /// ```ignore
+    /// let pattern = Pattern::new("*.js");
+    ///
+    /// // Fast-path matching for extension-only patterns
+    /// assert_eq!(pattern.matches_fast("foo.js"), Some(true));
+    /// assert_eq!(pattern.matches_fast("foo.ts"), Some(false));
+    ///
+    /// // Fall back to regex for complex patterns
+    /// let complex = Pattern::new("src/**/*.js");
+    /// assert_eq!(complex.matches_fast("src/lib/foo.js"), None);
+    /// ```
+    pub fn matches_fast(&self, path: &str) -> Option<bool> {
+        let path_ref = Path::new(path);
+
+        match &self.fast_path {
+            FastPath::ExtensionOnly(ext) => {
+                // Check if file extension matches
+                // For case-insensitive, compare lowercase
+                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
+                    if self.nocase {
+                        Some(file_ext.to_lowercase() == ext.to_lowercase())
+                    } else {
+                        Some(file_ext == ext)
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::ExtensionSet(exts) => {
+                // Check if file extension is in the set
+                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
+                    if self.nocase {
+                        let lower_ext = file_ext.to_lowercase();
+                        Some(exts.iter().any(|e| e.to_lowercase() == lower_ext))
+                    } else {
+                        Some(exts.contains(file_ext))
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::LiteralName(name) => {
+                // Check if filename matches exactly
+                if let Some(file_name) = path_ref.file_name().and_then(|n| n.to_str()) {
+                    if self.nocase {
+                        Some(file_name.to_lowercase() == name.to_lowercase())
+                    } else {
+                        Some(file_name == name)
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::RecursiveExtension(ext) => {
+                // For **/*.ext, just check the extension (path can be at any depth)
+                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
+                    if self.nocase {
+                        Some(file_ext.to_lowercase() == ext.to_lowercase())
+                    } else {
+                        Some(file_ext == ext)
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::RecursiveExtensionSet(exts) => {
+                // For **/*.{ext1,ext2}, check extension against the set
+                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
+                    if self.nocase {
+                        let lower_ext = file_ext.to_lowercase();
+                        Some(exts.iter().any(|e| e.to_lowercase() == lower_ext))
+                    } else {
+                        Some(exts.contains(file_ext))
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::None => None, // Fall back to regex
+        }
     }
 
     /// Check if the pattern is a UNC path (//server/share).
@@ -1370,6 +1525,150 @@ fn pattern_to_regex(
     regex_str.push('$');
 
     Regex::new(&regex_str).unwrap_or_else(|_| Regex::new("^$").unwrap())
+}
+
+/// Detect the fast-path optimization for a pattern.
+///
+/// This analyzes the pattern to determine if it can use a fast-path matching
+/// strategy instead of full regex matching.
+///
+/// # Fast-path patterns supported:
+/// - `*.ext` -> `ExtensionOnly("ext")`
+/// - `**/*.ext` -> `RecursiveExtension("ext")`
+/// - `*.{ext1,ext2}` (after brace expansion) -> `ExtensionSet`
+/// - `**/*.{ext1,ext2}` (after brace expansion) -> `RecursiveExtensionSet`
+/// - `filename.ext` (no magic) -> `LiteralName("filename.ext")`
+///
+/// # Returns
+/// The detected `FastPath` variant, or `FastPath::None` if no optimization applies.
+fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool) -> FastPath {
+    // Preprocess the pattern (for documentation purposes, actual analysis uses parts)
+    let _pattern = preprocess_pattern(pattern);
+
+    // Check if pattern is a literal (no magic at all)
+    if parts.len() == 1 {
+        if let PatternPart::Literal(name) = &parts[0] {
+            // Pure literal pattern - fast string comparison
+            let name_for_match = if nocase {
+                name.to_lowercase()
+            } else {
+                name.clone()
+            };
+            return FastPath::LiteralName(name_for_match);
+        }
+    }
+
+    // Check for `*.ext` pattern (extension-only at root level)
+    // Pattern should be exactly one part that matches `*.something`
+    if parts.len() == 1 {
+        if let PatternPart::Magic(raw, _) = &parts[0] {
+            if let Some(ext) = parse_extension_pattern(raw) {
+                let ext_for_match = if nocase { ext.to_lowercase() } else { ext };
+                return FastPath::ExtensionOnly(ext_for_match);
+            }
+            if let Some(exts) = parse_extension_set_pattern(raw) {
+                let exts_for_match: HashSet<String> = if nocase {
+                    exts.into_iter().map(|e| e.to_lowercase()).collect()
+                } else {
+                    exts
+                };
+                return FastPath::ExtensionSet(exts_for_match);
+            }
+        }
+    }
+
+    // Check for `**/*.ext` pattern (recursive extension matching)
+    // Should be: [Globstar, Magic("*.ext")]
+    if parts.len() == 2 {
+        if let (PatternPart::Globstar, PatternPart::Magic(raw, _)) = (&parts[0], &parts[1]) {
+            if let Some(ext) = parse_extension_pattern(raw) {
+                let ext_for_match = if nocase { ext.to_lowercase() } else { ext };
+                return FastPath::RecursiveExtension(ext_for_match);
+            }
+            if let Some(exts) = parse_extension_set_pattern(raw) {
+                let exts_for_match: HashSet<String> = if nocase {
+                    exts.into_iter().map(|e| e.to_lowercase()).collect()
+                } else {
+                    exts
+                };
+                return FastPath::RecursiveExtensionSet(exts_for_match);
+            }
+        }
+    }
+
+    // No fast-path optimization detected
+    FastPath::None
+}
+
+/// Parse a pattern like `*.ext` and return the extension.
+/// Returns `Some("ext")` if the pattern is exactly `*.ext`, otherwise `None`.
+fn parse_extension_pattern(pattern: &str) -> Option<String> {
+    // Pattern must start with `*.`
+    if !pattern.starts_with("*.") {
+        return None;
+    }
+
+    // Get the extension part
+    let ext = &pattern[2..];
+
+    // Extension must not contain any magic characters
+    if ext.is_empty() || has_magic_in_pattern(ext, false, false) {
+        return None;
+    }
+
+    // Extension must not contain path separators
+    if ext.contains('/') || ext.contains('\\') {
+        return None;
+    }
+
+    // Extension must not contain braces (those are handled by parse_extension_set_pattern)
+    if ext.contains('{') || ext.contains('}') {
+        return None;
+    }
+
+    Some(ext.to_string())
+}
+
+/// Parse a pattern like `*.{ext1,ext2}` and return the extension set.
+/// Returns `Some(HashSet)` if the pattern matches, otherwise `None`.
+///
+/// Note: This handles simple brace expansion for extensions only.
+/// Complex patterns like `*.{a,b/*.c}` are not supported and return None.
+fn parse_extension_set_pattern(pattern: &str) -> Option<HashSet<String>> {
+    // Pattern must start with `*.{`
+    if !pattern.starts_with("*.{") {
+        return None;
+    }
+
+    // Pattern must end with `}`
+    if !pattern.ends_with('}') {
+        return None;
+    }
+
+    // Extract the brace content
+    let brace_content = &pattern[3..pattern.len() - 1];
+
+    // Split by comma (simple case - no nested braces)
+    if brace_content.contains('{') || brace_content.contains('}') {
+        return None; // Nested braces not supported for fast-path
+    }
+
+    let extensions: Vec<&str> = brace_content.split(',').collect();
+
+    // Validate each extension
+    for ext in &extensions {
+        if ext.is_empty() {
+            return None;
+        }
+        if has_magic_in_pattern(ext, false, false) {
+            return None;
+        }
+        if ext.contains('/') || ext.contains('\\') {
+            return None;
+        }
+    }
+
+    Some(extensions.into_iter().map(String::from).collect())
 }
 
 /// Expand brace expressions in a glob pattern.
@@ -3265,5 +3564,287 @@ mod test_could_match_in_dir {
         assert!(pattern.could_match_in_dir("packages/foo/src"));
         assert!(pattern.could_match_in_dir("packages/foo/src/utils"));
         assert!(pattern.could_match_in_dir("src")); // ** matches zero segments
+    }
+}
+
+#[cfg(test)]
+mod test_fast_path {
+    use super::*;
+
+    // Fast-path detection tests
+
+    #[test]
+    fn test_extension_only_pattern() {
+        // *.ext should use ExtensionOnly fast-path
+        let pattern = Pattern::new("*.js");
+        assert!(
+            matches!(pattern.fast_path(), FastPath::ExtensionOnly(ext) if ext == "js"),
+            "*.js should be ExtensionOnly(js), got {:?}",
+            pattern.fast_path()
+        );
+
+        let pattern = Pattern::new("*.ts");
+        assert!(matches!(pattern.fast_path(), FastPath::ExtensionOnly(ext) if ext == "ts"));
+
+        let pattern = Pattern::new("*.txt");
+        assert!(matches!(pattern.fast_path(), FastPath::ExtensionOnly(ext) if ext == "txt"));
+    }
+
+    #[test]
+    fn test_extension_set_pattern() {
+        // *.{ext1,ext2} should use ExtensionSet fast-path
+        let pattern = Pattern::new("*.{js,ts}");
+        match pattern.fast_path() {
+            FastPath::ExtensionSet(exts) => {
+                assert!(exts.contains("js"), "Should contain js");
+                assert!(exts.contains("ts"), "Should contain ts");
+                assert_eq!(exts.len(), 2, "Should have exactly 2 extensions");
+            }
+            other => panic!("Expected ExtensionSet, got {:?}", other),
+        }
+
+        let pattern = Pattern::new("*.{json,yaml,yml}");
+        match pattern.fast_path() {
+            FastPath::ExtensionSet(exts) => {
+                assert!(exts.contains("json"));
+                assert!(exts.contains("yaml"));
+                assert!(exts.contains("yml"));
+                assert_eq!(exts.len(), 3);
+            }
+            other => panic!("Expected ExtensionSet, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_literal_name_pattern() {
+        // Literal filename should use LiteralName fast-path
+        let pattern = Pattern::new("package.json");
+        assert!(
+            matches!(pattern.fast_path(), FastPath::LiteralName(name) if name == "package.json"),
+            "package.json should be LiteralName, got {:?}",
+            pattern.fast_path()
+        );
+
+        let pattern = Pattern::new("README.md");
+        assert!(matches!(pattern.fast_path(), FastPath::LiteralName(name) if name == "README.md"));
+
+        let pattern = Pattern::new(".gitignore");
+        assert!(matches!(pattern.fast_path(), FastPath::LiteralName(name) if name == ".gitignore"));
+    }
+
+    #[test]
+    fn test_recursive_extension_pattern() {
+        // **/*.ext should use RecursiveExtension fast-path
+        let pattern = Pattern::new("**/*.js");
+        assert!(
+            matches!(pattern.fast_path(), FastPath::RecursiveExtension(ext) if ext == "js"),
+            "**/*.js should be RecursiveExtension(js), got {:?}",
+            pattern.fast_path()
+        );
+
+        let pattern = Pattern::new("**/*.ts");
+        assert!(matches!(pattern.fast_path(), FastPath::RecursiveExtension(ext) if ext == "ts"));
+
+        let pattern = Pattern::new("**/*.md");
+        assert!(matches!(pattern.fast_path(), FastPath::RecursiveExtension(ext) if ext == "md"));
+    }
+
+    #[test]
+    fn test_recursive_extension_set_pattern() {
+        // **/*.{ext1,ext2} should use RecursiveExtensionSet fast-path
+        let pattern = Pattern::new("**/*.{js,ts}");
+        match pattern.fast_path() {
+            FastPath::RecursiveExtensionSet(exts) => {
+                assert!(exts.contains("js"));
+                assert!(exts.contains("ts"));
+                assert_eq!(exts.len(), 2);
+            }
+            other => panic!("Expected RecursiveExtensionSet, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_no_fast_path_for_complex_patterns() {
+        // Patterns with literal prefixes should not use fast-path
+        let pattern = Pattern::new("src/**/*.js");
+        assert!(
+            matches!(pattern.fast_path(), FastPath::None),
+            "src/**/*.js should be None, got {:?}",
+            pattern.fast_path()
+        );
+
+        // Patterns with multiple wildcards
+        let pattern = Pattern::new("*/*/*.js");
+        assert!(matches!(pattern.fast_path(), FastPath::None));
+
+        // Patterns with question marks
+        let pattern = Pattern::new("*.???");
+        assert!(matches!(pattern.fast_path(), FastPath::None));
+
+        // Patterns with character classes
+        let pattern = Pattern::new("*.[jt]s");
+        assert!(matches!(pattern.fast_path(), FastPath::None));
+
+        // Patterns with extglobs
+        let pattern = Pattern::new("*.+(js|ts)");
+        assert!(matches!(pattern.fast_path(), FastPath::None));
+    }
+
+    // Fast-path matching tests
+
+    #[test]
+    fn test_matches_fast_extension_only() {
+        let pattern = Pattern::new("*.js");
+
+        // Should match
+        assert_eq!(pattern.matches_fast("foo.js"), Some(true));
+        assert_eq!(pattern.matches_fast("bar.js"), Some(true));
+        assert_eq!(pattern.matches_fast("index.js"), Some(true));
+
+        // Should not match
+        assert_eq!(pattern.matches_fast("foo.ts"), Some(false));
+        assert_eq!(pattern.matches_fast("foo.jsx"), Some(false));
+        assert_eq!(pattern.matches_fast("foo"), Some(false));
+    }
+
+    #[test]
+    fn test_matches_fast_extension_set() {
+        let pattern = Pattern::new("*.{js,ts}");
+
+        // Should match
+        assert_eq!(pattern.matches_fast("foo.js"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.ts"), Some(true));
+
+        // Should not match
+        assert_eq!(pattern.matches_fast("foo.jsx"), Some(false));
+        assert_eq!(pattern.matches_fast("foo.tsx"), Some(false));
+    }
+
+    #[test]
+    fn test_matches_fast_literal_name() {
+        let pattern = Pattern::new("package.json");
+
+        // Should match
+        assert_eq!(pattern.matches_fast("package.json"), Some(true));
+
+        // Should not match
+        assert_eq!(pattern.matches_fast("package-lock.json"), Some(false));
+        assert_eq!(pattern.matches_fast("tsconfig.json"), Some(false));
+        assert_eq!(pattern.matches_fast("PACKAGE.JSON"), Some(false)); // case-sensitive
+    }
+
+    #[test]
+    fn test_matches_fast_recursive_extension() {
+        let pattern = Pattern::new("**/*.js");
+
+        // Should match files at any depth
+        assert_eq!(pattern.matches_fast("foo.js"), Some(true));
+        assert_eq!(pattern.matches_fast("src/foo.js"), Some(true));
+        assert_eq!(pattern.matches_fast("src/lib/deep/foo.js"), Some(true));
+
+        // Should not match wrong extensions
+        assert_eq!(pattern.matches_fast("foo.ts"), Some(false));
+        assert_eq!(pattern.matches_fast("src/foo.ts"), Some(false));
+    }
+
+    #[test]
+    fn test_matches_fast_recursive_extension_set() {
+        let pattern = Pattern::new("**/*.{js,ts}");
+
+        // Should match
+        assert_eq!(pattern.matches_fast("foo.js"), Some(true));
+        assert_eq!(pattern.matches_fast("src/foo.ts"), Some(true));
+
+        // Should not match
+        assert_eq!(pattern.matches_fast("foo.jsx"), Some(false));
+    }
+
+    #[test]
+    fn test_matches_fast_returns_none_for_complex() {
+        // Complex patterns should return None (use regex fallback)
+        let pattern = Pattern::new("src/**/*.js");
+        assert_eq!(pattern.matches_fast("src/foo.js"), None);
+
+        let pattern = Pattern::new("*/*/*.js");
+        assert_eq!(pattern.matches_fast("a/b/c.js"), None);
+    }
+
+    #[test]
+    fn test_matches_fast_nocase() {
+        // Case-insensitive matching
+        let pattern = Pattern::with_pattern_options(
+            "*.JS",
+            PatternOptions {
+                nocase: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(pattern.matches_fast("foo.js"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.JS"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.Js"), Some(true));
+
+        // Literal name with nocase
+        let pattern = Pattern::with_pattern_options(
+            "README.md",
+            PatternOptions {
+                nocase: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(pattern.matches_fast("readme.md"), Some(true));
+        assert_eq!(pattern.matches_fast("README.MD"), Some(true));
+        assert_eq!(pattern.matches_fast("Readme.Md"), Some(true));
+    }
+
+    // Helper function tests
+
+    #[test]
+    fn test_parse_extension_pattern() {
+        // Valid extension patterns
+        assert_eq!(parse_extension_pattern("*.js"), Some("js".to_string()));
+        assert_eq!(parse_extension_pattern("*.ts"), Some("ts".to_string()));
+        assert_eq!(parse_extension_pattern("*.json"), Some("json".to_string()));
+
+        // Invalid patterns
+        assert_eq!(parse_extension_pattern("*."), None); // empty extension
+        assert_eq!(parse_extension_pattern("**/*.js"), None); // has **
+        assert_eq!(parse_extension_pattern("*.j?s"), None); // has magic
+        assert_eq!(parse_extension_pattern("*.j*s"), None); // has magic
+        assert_eq!(parse_extension_pattern("foo.js"), None); // no leading *
+        assert_eq!(parse_extension_pattern("*.js/bar"), None); // has path separator
+    }
+
+    #[test]
+    fn test_parse_extension_set_pattern() {
+        // Valid extension set patterns
+        let result = parse_extension_set_pattern("*.{js,ts}");
+        assert!(result.is_some());
+        let exts = result.unwrap();
+        assert!(exts.contains("js"));
+        assert!(exts.contains("ts"));
+
+        let result = parse_extension_set_pattern("*.{json,yaml,yml}");
+        assert!(result.is_some());
+        let exts = result.unwrap();
+        assert_eq!(exts.len(), 3);
+
+        // Invalid patterns
+        assert!(parse_extension_set_pattern("*.js").is_none()); // no braces
+        assert!(parse_extension_set_pattern("*.{js}").is_some()); // single item is ok
+        assert!(parse_extension_set_pattern("*.{js,}").is_none()); // empty item
+        assert!(parse_extension_set_pattern("*.{,ts}").is_none()); // empty item
+        assert!(parse_extension_set_pattern("*.{js,t*s}").is_none()); // magic in extension
+    }
+
+    #[test]
+    fn test_fast_path_is_fast() {
+        assert!(FastPath::ExtensionOnly("js".to_string()).is_fast());
+        assert!(FastPath::ExtensionSet(HashSet::new()).is_fast());
+        assert!(FastPath::LiteralName("foo".to_string()).is_fast());
+        assert!(FastPath::RecursiveExtension("js".to_string()).is_fast());
+        assert!(FastPath::RecursiveExtensionSet(HashSet::new()).is_fast());
+        assert!(!FastPath::None.is_fast());
     }
 }
