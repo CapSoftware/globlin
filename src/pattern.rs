@@ -180,13 +180,17 @@ impl Pattern {
             pattern.to_string()
         };
 
+        // Preprocess to strip ./ prefix - this must happen before parsing into parts
+        // so that parts don't include the leading "." segment
+        let preprocessed = preprocess_pattern(&processed_pattern);
+
         // Check if pattern ends with / (requires directory match)
         // Strip the trailing slash for matching purposes
-        let requires_dir = processed_pattern.ends_with('/');
+        let requires_dir = preprocessed.ends_with('/');
         let pattern_for_matching = if requires_dir {
-            processed_pattern.trim_end_matches('/').to_string()
+            preprocessed.trim_end_matches('/').to_string()
         } else {
-            processed_pattern.clone()
+            preprocessed.clone()
         };
 
         // Parse pattern into parts
@@ -544,7 +548,8 @@ impl Pattern {
             match part {
                 PatternPart::Literal(s) => {
                     // Skip root markers like "/" for Unix absolute paths
-                    if s == "/" {
+                    // Skip "." as it's just the current directory marker
+                    if s == "/" || s == "." {
                         continue;
                     }
                     prefix_parts.push(s);

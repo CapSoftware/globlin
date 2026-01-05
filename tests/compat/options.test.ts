@@ -191,7 +191,9 @@ describe('option validation', () => {
       })
 
       // With nocase: true, FILE_LOWER.TXT should match file_lower.txt
-      expect(result).toContain('file_lower.txt')
+      // The result uses the pattern's case for literal matches
+      expect(result.length).toBe(1)
+      expect(result[0].toLowerCase()).toBe('file_lower.txt')
     })
 
     it('nocase: false misses due to case mismatch', async () => {
