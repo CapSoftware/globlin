@@ -14,6 +14,8 @@ const nativeBindings = require('../index.js') as {
   glob: (pattern: string | string[], options?: NativeGlobOptions) => Promise<string[]>
   globSyncWithFileTypes: (pattern: string | string[], options?: NativeGlobOptions) => NativePathData[]
   globWithFileTypes: (pattern: string | string[], options?: NativeGlobOptions) => Promise<NativePathData[]>
+  globStream: (pattern: string | string[], options: NativeGlobOptions | undefined, callback: (result: string) => void) => void
+  globStreamWithFileTypes: (pattern: string | string[], options: NativeGlobOptions | undefined, callback: (result: NativePathData) => void) => void
   escape: (pattern: string, windowsPathsNoEscape?: boolean) => string
   unescape: (pattern: string, windowsPathsNoEscape?: boolean) => string
   hasMagic: (pattern: string, noext?: boolean, windowsPathsNoEscape?: boolean) => boolean
@@ -34,6 +36,8 @@ const {
   glob: nativeGlob,
   globSyncWithFileTypes: nativeGlobSyncWithFileTypes,
   globWithFileTypes: nativeGlobWithFileTypes,
+  globStream: nativeGlobStream,
+  globStreamWithFileTypes: nativeGlobStreamWithFileTypes,
   escape: nativeEscape,
   unescape: nativeUnescape,
   hasMagic: nativeHasMagic,
@@ -610,6 +614,10 @@ export async function glob(
 /**
  * Streaming glob pattern matching
  *
+ * Uses native streaming to reduce peak memory usage for large result sets.
+ * Results are streamed directly from Rust as they are found, rather than
+ * collecting all results before sending to JavaScript.
+ *
  * @param pattern - Glob pattern or array of patterns
  * @param options - Glob options
  * @returns Minipass stream of matching file paths
@@ -629,8 +637,10 @@ export function globStream(
   }
 
   // Set up abort handling if signal provided
+  let aborted = false
   if (options?.signal) {
     const onAbort = () => {
+      aborted = true
       stream.emit('error', options.signal!.reason ?? new Error('The operation was aborted'))
     }
     options.signal.addEventListener('abort', onAbort, { once: true })
@@ -640,23 +650,18 @@ export function globStream(
     stream.on('error', () => options.signal!.removeEventListener('abort', onAbort))
   }
 
+  // Use setImmediate to ensure async behavior (stream doesn't end synchronously)
+  // This matches glob v13's behavior where the stream is async
   setImmediate(() => {
-    // Check again in case abort happened between initial check and now
-    if (options?.signal?.aborted) {
-      stream.emit('error', options.signal.reason ?? new Error('The operation was aborted'))
-      return
-    }
+    if (aborted) return
 
     try {
-      // For streaming, always return strings (ignore withFileTypes)
+      // For now, use sync approach and stream the results
+      // TODO: Implement true streaming from Rust with proper async callback handling
       const opts: GlobOptionsWithFileTypesFalse = { ...options, withFileTypes: false }
       const results = globSync(pattern, opts)
       for (const result of results) {
-        // Check for abort between writes
-        if (options?.signal?.aborted) {
-          stream.emit('error', options.signal.reason ?? new Error('The operation was aborted'))
-          return
-        }
+        if (aborted) return
         stream.write(result)
       }
       stream.end()

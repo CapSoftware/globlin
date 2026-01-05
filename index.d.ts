@@ -30,6 +30,27 @@ export declare function globSyncWithFileTypes(pattern: string | Array<string>, o
  */
 export declare function globWithFileTypes(pattern: string | Array<string>, options?: GlobOptions | undefined | null): Promise<Array<PathData>>
 /**
+ * Streaming glob pattern matching.
+ * Streams results back to JavaScript via a callback function.
+ * This reduces peak memory usage for large result sets by not collecting all results before sending.
+ *
+ * @param pattern - Glob pattern or array of patterns
+ * @param options - Glob options
+ * @param callback - Function called with each result string
+ * @returns Promise that resolves when all results have been streamed
+ */
+export declare function globStream(pattern: string | Array<string>, options: GlobOptions | undefined | null, callback: (result: string) => void): void
+/**
+ * Streaming glob pattern matching with file type information.
+ * Streams PathData results back to JavaScript via a callback function.
+ *
+ * @param pattern - Glob pattern or array of patterns
+ * @param options - Glob options
+ * @param callback - Function called with each PathData result
+ * @returns Promise that resolves when all results have been streamed
+ */
+export declare function globStreamWithFileTypes(pattern: string | Array<string>, options: GlobOptions | undefined | null, callback: (result: { path: string, isDirectory: boolean, isFile: boolean, isSymlink: boolean }) => void): void
+/**
  * Complete GlobOptions struct with all glob v13 options.
  *
  * All options are optional and false by default unless otherwise noted.

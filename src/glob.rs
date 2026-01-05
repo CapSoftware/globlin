@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use ahash::AHashSet;
 use napi::bindgen_prelude::*;
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 
 use crate::cache::get_or_compile_pattern;
 use crate::ignore::IgnoreFilter;
@@ -149,6 +150,79 @@ pub async fn glob_with_file_types(
 
     let glob = Glob::new_multi(patterns, opts.clone());
     Ok(glob.walk_sync_with_file_types())
+}
+
+/// Streaming glob pattern matching.
+/// Streams results back to JavaScript via a callback function.
+/// This reduces peak memory usage for large result sets by not collecting all results before sending.
+///
+/// @param pattern - Glob pattern or array of patterns
+/// @param options - Glob options
+/// @param callback - Function called with each result string
+/// @returns Promise that resolves when all results have been streamed
+#[napi]
+pub fn glob_stream(
+    pattern: Either<String, Vec<String>>,
+    options: Option<GlobOptions>,
+    #[napi(ts_arg_type = "(result: string) => void")] callback: ThreadsafeFunction<String>,
+) -> Result<()> {
+    let opts = options.unwrap_or_default();
+
+    // Validate options using the centralized validation
+    validate_options(&opts)?;
+
+    let patterns = match pattern {
+        Either::A(s) => vec![s],
+        Either::B(v) => v,
+    };
+
+    let glob = Glob::new_multi(patterns, opts);
+
+    // Stream results directly to JavaScript callback
+    // This avoids collecting all results into a Vec, reducing peak memory usage
+    glob.walk_stream(|result| {
+        // Call the JS callback with each result
+        // Use NonBlocking mode to avoid blocking the walking thread
+        callback.call(Ok(result), ThreadsafeFunctionCallMode::NonBlocking);
+    });
+
+    Ok(())
+}
+
+/// Streaming glob pattern matching with file type information.
+/// Streams PathData results back to JavaScript via a callback function.
+///
+/// @param pattern - Glob pattern or array of patterns  
+/// @param options - Glob options
+/// @param callback - Function called with each PathData result
+/// @returns Promise that resolves when all results have been streamed
+#[napi]
+pub fn glob_stream_with_file_types(
+    pattern: Either<String, Vec<String>>,
+    options: Option<GlobOptions>,
+    #[napi(
+        ts_arg_type = "(result: { path: string, isDirectory: boolean, isFile: boolean, isSymlink: boolean }) => void"
+    )]
+    callback: ThreadsafeFunction<PathData>,
+) -> Result<()> {
+    let opts = options.unwrap_or_default();
+
+    // Validate options using the centralized validation
+    validate_options(&opts)?;
+
+    let patterns = match pattern {
+        Either::A(s) => vec![s],
+        Either::B(v) => v,
+    };
+
+    let glob = Glob::new_multi(patterns, opts);
+
+    // Stream results directly to JavaScript callback
+    glob.walk_stream_with_file_types(|result| {
+        callback.call(Ok(result), ThreadsafeFunctionCallMode::NonBlocking);
+    });
+
+    Ok(())
 }
 
 impl Glob {
@@ -1252,6 +1326,416 @@ impl Glob {
         }
 
         common_components.join("/")
+    }
+
+    /// Walk the directory tree and stream results via callback.
+    /// This reduces peak memory usage by not collecting all results into a Vec.
+    pub fn walk_stream<F>(&self, mut callback: F)
+    where
+        F: FnMut(String),
+    {
+        // If maxDepth is negative, return empty results
+        if let Some(d) = self.max_depth {
+            if d < 0 {
+                return;
+            }
+        }
+
+        // Use AHashSet for deduplication (can't eliminate this for correctness)
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(self.estimate_result_capacity());
+        let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8);
+
+        // When includeChildMatches is false, track matched paths to exclude their children
+        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
+            AHashSet::new()
+        } else {
+            AHashSet::with_capacity(64)
+        };
+
+        // Pre-allocate a reusable buffer for path formatting
+        let mut result_buffer = String::with_capacity(self.estimate_path_buffer_capacity());
+
+        // Check if any pattern matches the cwd itself
+        let include_cwd = self.patterns.iter().any(|p| {
+            let raw = p.raw();
+            raw == "**" || raw == "." || raw == "./**" || {
+                let preprocessed = preprocess_pattern(raw);
+                preprocessed == "**" || preprocessed == "."
+            }
+        });
+
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        let (walk_root, prefix_to_strip) = self.calculate_walk_root();
+
+        // Adjust walk options for prefix-based walking
+        let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
+            let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
+            if let Some(max_d) = self.walk_options.max_depth {
+                if max_d <= prefix_depth {
+                    self.walk_options.clone().max_depth(Some(0))
+                } else {
+                    self.walk_options
+                        .clone()
+                        .max_depth(Some(max_d - prefix_depth))
+                }
+            } else {
+                self.walk_options.clone()
+            }
+        } else {
+            self.walk_options.clone()
+        };
+
+        // Create directory pruning filter
+        let patterns_for_filter = Arc::clone(&self.patterns);
+        let prefix_for_filter = prefix_to_strip.clone();
+
+        let prune_filter = Box::new(move |dir_path: &str| -> bool {
+            let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
+                if dir_path.is_empty() {
+                    Cow::Borrowed(prefix.as_str())
+                } else {
+                    Cow::Owned(format!("{prefix}/{dir_path}"))
+                }
+            } else {
+                Cow::Borrowed(dir_path)
+            };
+
+            patterns_for_filter
+                .iter()
+                .any(|p| p.could_match_in_dir(&path_from_cwd))
+        });
+
+        let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
+            .with_dir_prune_filter(prune_filter);
+
+        let has_ignore_filter = self.ignore_filter.is_some();
+
+        for entry in walker.walk() {
+            let path = entry.path();
+
+            let rel_path_from_walk_root = match path.strip_prefix(&walk_root) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
+            let is_walk_root_entry = rel_str_from_walk_root.is_empty();
+
+            let normalized = self.normalize_path(
+                &rel_str_from_walk_root,
+                &prefix_to_strip,
+                is_walk_root_entry,
+            );
+
+            if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
+                continue;
+            }
+
+            if has_ignore_filter {
+                let rel_path = if prefix_to_strip.is_some() {
+                    PathBuf::from(normalized.as_ref())
+                } else {
+                    rel_path_from_walk_root.to_path_buf()
+                };
+                let abs_path = abs_cwd.join(&rel_path);
+                let ignore_filter = self.ignore_filter.as_ref().unwrap();
+
+                if ignore_filter.should_ignore(&normalized, &abs_path) {
+                    if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                        ignored_dirs.insert(normalized.into_owned());
+                    }
+                    continue;
+                }
+
+                if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                    ignored_dirs.insert(normalized.to_string());
+                }
+            }
+
+            // Handle root
+            if is_walk_root_entry && prefix_to_strip.is_none() {
+                if include_cwd && !self.nodir {
+                    if let Some(ref ignore_filter) = self.ignore_filter {
+                        if ignore_filter.should_ignore(".", &abs_cwd) {
+                            continue;
+                        }
+                    }
+
+                    let result = if self.absolute {
+                        let formatted = self.format_path_into_buffer(&abs_cwd, &mut result_buffer);
+                        if self.mark {
+                            if formatted.ends_with('/') || formatted.ends_with('\\') {
+                                formatted.to_string()
+                            } else {
+                                format!("{formatted}/")
+                            }
+                        } else {
+                            formatted.to_string()
+                        }
+                    } else if self.mark {
+                        "./".to_string()
+                    } else {
+                        ".".to_string()
+                    };
+                    if seen.insert(result.clone()) {
+                        callback(result);
+                    }
+                }
+                continue;
+            }
+
+            if normalized.is_empty() {
+                continue;
+            }
+
+            if self.nodir && entry.is_dir() {
+                continue;
+            }
+
+            if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
+                continue;
+            }
+
+            if !self.include_child_matches
+                && self.is_child_of_matched(&normalized, &matched_parents)
+            {
+                continue;
+            }
+
+            let is_dir = entry.is_dir();
+            let is_symlink = entry.is_symlink();
+
+            let matches = if !self.any_pattern_requires_dir {
+                self.patterns
+                    .iter()
+                    .any(|p| match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    })
+            } else {
+                self.patterns.iter().any(|p| {
+                    let path_matches = match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    };
+                    if path_matches && p.requires_dir() {
+                        is_dir
+                    } else {
+                        path_matches
+                    }
+                })
+            };
+
+            if matches {
+                let result = self.build_result_path(
+                    &normalized,
+                    is_dir,
+                    is_symlink,
+                    &abs_cwd,
+                    &mut result_buffer,
+                );
+
+                if seen.insert(result.clone()) {
+                    if !self.include_child_matches {
+                        matched_parents.insert(normalized.into_owned());
+                    }
+                    callback(result);
+                }
+            }
+        }
+    }
+
+    /// Walk the directory tree and stream PathData results via callback.
+    /// This reduces peak memory usage by not collecting all results into a Vec.
+    pub fn walk_stream_with_file_types<F>(&self, mut callback: F)
+    where
+        F: FnMut(PathData),
+    {
+        // If maxDepth is negative, return empty results
+        if let Some(d) = self.max_depth {
+            if d < 0 {
+                return;
+            }
+        }
+
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(self.estimate_result_capacity());
+        let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8);
+        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
+            AHashSet::new()
+        } else {
+            AHashSet::with_capacity(64)
+        };
+
+        let include_cwd = self.patterns.iter().any(|p| {
+            let raw = p.raw();
+            raw == "**" || raw == "." || raw == "./**" || {
+                let preprocessed = preprocess_pattern(raw);
+                preprocessed == "**" || preprocessed == "."
+            }
+        });
+
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        let (walk_root, prefix_to_strip) = self.calculate_walk_root();
+
+        let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
+            let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
+            if let Some(max_d) = self.walk_options.max_depth {
+                if max_d <= prefix_depth {
+                    self.walk_options.clone().max_depth(Some(0))
+                } else {
+                    self.walk_options
+                        .clone()
+                        .max_depth(Some(max_d - prefix_depth))
+                }
+            } else {
+                self.walk_options.clone()
+            }
+        } else {
+            self.walk_options.clone()
+        };
+
+        let patterns_for_filter = Arc::clone(&self.patterns);
+        let prefix_for_filter = prefix_to_strip.clone();
+
+        let prune_filter = Box::new(move |dir_path: &str| -> bool {
+            let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
+                if dir_path.is_empty() {
+                    Cow::Borrowed(prefix.as_str())
+                } else {
+                    Cow::Owned(format!("{prefix}/{dir_path}"))
+                }
+            } else {
+                Cow::Borrowed(dir_path)
+            };
+
+            patterns_for_filter
+                .iter()
+                .any(|p| p.could_match_in_dir(&path_from_cwd))
+        });
+
+        let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
+            .with_dir_prune_filter(prune_filter);
+
+        let has_ignore_filter = self.ignore_filter.is_some();
+
+        for entry in walker.walk() {
+            let path = entry.path();
+
+            let rel_path_from_walk_root = match path.strip_prefix(&walk_root) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
+            let is_walk_root_entry = rel_str_from_walk_root.is_empty();
+
+            let normalized = self.normalize_path(
+                &rel_str_from_walk_root,
+                &prefix_to_strip,
+                is_walk_root_entry,
+            );
+
+            if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
+                continue;
+            }
+
+            if has_ignore_filter {
+                let rel_path = if prefix_to_strip.is_some() {
+                    PathBuf::from(normalized.as_ref())
+                } else {
+                    rel_path_from_walk_root.to_path_buf()
+                };
+                let abs_path = abs_cwd.join(&rel_path);
+                let ignore_filter = self.ignore_filter.as_ref().unwrap();
+
+                if ignore_filter.should_ignore(&normalized, &abs_path) {
+                    if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                        ignored_dirs.insert(normalized.into_owned());
+                    }
+                    continue;
+                }
+
+                if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                    ignored_dirs.insert(normalized.to_string());
+                }
+            }
+
+            if is_walk_root_entry && prefix_to_strip.is_none() {
+                if include_cwd && !self.nodir {
+                    if let Some(ref ignore_filter) = self.ignore_filter {
+                        if ignore_filter.should_ignore(".", &abs_cwd) {
+                            continue;
+                        }
+                    }
+
+                    let result_path = ".".to_string();
+                    if seen.insert(result_path.clone()) {
+                        callback(PathData {
+                            path: result_path,
+                            is_directory: true,
+                            is_file: false,
+                            is_symlink: entry.is_symlink(),
+                        });
+                    }
+                }
+                continue;
+            }
+
+            if normalized.is_empty() {
+                continue;
+            }
+
+            if self.nodir && entry.is_dir() {
+                continue;
+            }
+
+            if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
+                continue;
+            }
+
+            if !self.include_child_matches
+                && self.is_child_of_matched(&normalized, &matched_parents)
+            {
+                continue;
+            }
+
+            let is_dir = entry.is_dir();
+
+            let matches = if !self.any_pattern_requires_dir {
+                self.patterns
+                    .iter()
+                    .any(|p| match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    })
+            } else {
+                self.patterns.iter().any(|p| {
+                    let path_matches = match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    };
+                    if path_matches && p.requires_dir() {
+                        is_dir
+                    } else {
+                        path_matches
+                    }
+                })
+            };
+
+            if matches {
+                let normalized_string = normalized.into_owned();
+                if seen.insert(normalized_string.clone()) {
+                    if !self.include_child_matches {
+                        matched_parents.insert(normalized_string.clone());
+                    }
+
+                    callback(PathData {
+                        path: normalized_string,
+                        is_directory: is_dir,
+                        is_file: entry.is_file(),
+                        is_symlink: entry.is_symlink(),
+                    });
+                }
+            }
+        }
     }
 }
 
