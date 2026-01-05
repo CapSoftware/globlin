@@ -62,6 +62,8 @@ pub struct Glob {
     any_pattern_requires_dir: bool,
     /// Pre-computed: number of fast-path patterns (for optimization decisions)
     fast_pattern_count: usize,
+    /// When false, don't include children of matched paths
+    include_child_matches: bool,
 }
 
 #[napi]
@@ -161,6 +163,7 @@ impl Glob {
         let noglobstar = options.noglobstar.unwrap_or(false);
         let nocase = options.effective_nocase();
         let platform = options.effective_platform();
+        let include_child_matches = options.effective_include_child_matches();
 
         // Create pattern options
         let pattern_opts = PatternOptions {
@@ -310,6 +313,7 @@ impl Glob {
             ignore_filter,
             any_pattern_requires_dir,
             fast_pattern_count,
+            include_child_matches,
         }
     }
 
@@ -328,6 +332,9 @@ impl Glob {
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs = std::collections::HashSet::new();
+        
+        // When includeChildMatches is false, track matched paths to exclude their children
+        let mut matched_parents: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Check if any pattern matches the cwd itself ("**" or ".").
         // Cache this check since preprocess_pattern is called for each pattern.
@@ -525,6 +532,20 @@ impl Glob {
             if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
                 continue;
             }
+            
+            // When includeChildMatches is false, skip paths that are children of already-matched paths
+            if !self.include_child_matches && !matched_parents.is_empty() {
+                let normalized_bytes = normalized.as_bytes();
+                let is_child_of_matched = matched_parents.iter().any(|matched_path: &String| {
+                    let matched_bytes = matched_path.as_bytes();
+                    normalized_bytes.starts_with(matched_bytes) && 
+                    normalized_bytes.len() > matched_bytes.len() &&
+                    normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+                });
+                if is_child_of_matched {
+                    continue;
+                }
+            }
 
             // Check if any pattern matches
             // For patterns that end with /, only match if entry is a directory
@@ -557,6 +578,14 @@ impl Glob {
             };
             
             if matches {
+                // Save the normalized path for tracking before constructing the result
+                // (since normalized may be moved into result)
+                let path_for_tracking = if !self.include_child_matches {
+                    Some(normalized.clone())
+                } else {
+                    None
+                };
+                
                 let result = if self.absolute {
                     // Return absolute path
                     let abs_path = abs_cwd.join(&rel_path);
@@ -582,6 +611,11 @@ impl Glob {
                 // Deduplicate results (important for overlapping brace expansions)
                 if seen.insert(result.clone()) {
                     results.push(result);
+                    
+                    // When includeChildMatches is false, track this path to exclude its children
+                    if let Some(tracking_path) = path_for_tracking {
+                        matched_parents.insert(tracking_path);
+                    }
                 }
             }
         }
@@ -604,6 +638,9 @@ impl Glob {
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs = std::collections::HashSet::new();
+        
+        // When includeChildMatches is false, track matched paths to exclude their children
+        let mut matched_parents: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Check if any pattern matches the cwd itself ("**" or ".").
         let include_cwd = self.patterns.iter().any(|p| {
@@ -757,6 +794,20 @@ impl Glob {
             if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
                 continue;
             }
+            
+            // When includeChildMatches is false, skip paths that are children of already-matched paths
+            if !self.include_child_matches && !matched_parents.is_empty() {
+                let normalized_bytes = normalized.as_bytes();
+                let is_child_of_matched = matched_parents.iter().any(|matched_path: &String| {
+                    let matched_bytes = matched_path.as_bytes();
+                    normalized_bytes.starts_with(matched_bytes) && 
+                    normalized_bytes.len() > matched_bytes.len() &&
+                    normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+                });
+                if is_child_of_matched {
+                    continue;
+                }
+            }
 
             // Check if any pattern matches
             let is_dir = entry.is_dir();
@@ -786,6 +837,11 @@ impl Glob {
                 // For withFileTypes, we return the relative path (no dotRelative/mark modifications)
                 // The JavaScript wrapper handles path formatting via PathScurry
                 if seen.insert(normalized.clone()) {
+                    // When includeChildMatches is false, track this path to exclude its children
+                    if !self.include_child_matches {
+                        matched_parents.insert(normalized.clone());
+                    }
+                    
                     results.push(PathData {
                         path: normalized,
                         is_directory: is_dir,
