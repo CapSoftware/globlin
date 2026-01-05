@@ -7,6 +7,21 @@ use crate::options::{validate_options, GlobOptions};
 use crate::pattern::{expand_braces, preprocess_pattern, Pattern, PatternOptions};
 use crate::walker::{WalkOptions, Walker};
 
+/// Path data returned by glob with withFileTypes: true.
+/// This struct is converted to PathScurry Path objects in the JavaScript wrapper.
+#[napi(object)]
+#[derive(Debug, Clone)]
+pub struct PathData {
+    /// The path relative to cwd (or absolute if absolute option is set)
+    pub path: String,
+    /// True if this is a directory
+    pub is_directory: bool,
+    /// True if this is a file
+    pub is_file: bool,
+    /// True if this is a symbolic link
+    pub is_symlink: bool,
+}
+
 pub struct Glob {
     #[allow(dead_code)]
     pattern_strs: Vec<String>,
@@ -79,6 +94,42 @@ pub async fn glob(pattern: Either<String, Vec<String>>, options: Option<GlobOpti
     
     let glob = Glob::new_multi(patterns, opts.clone());
     Ok(glob.walk_sync())
+}
+
+/// Synchronous glob pattern matching with file type information.
+/// Returns PathData objects instead of strings.
+#[napi]
+pub fn glob_sync_with_file_types(pattern: Either<String, Vec<String>>, options: Option<GlobOptions>) -> Result<Vec<PathData>> {
+    let opts = options.unwrap_or_default();
+    
+    // Validate options using the centralized validation
+    validate_options(&opts)?;
+    
+    let patterns = match pattern {
+        Either::A(s) => vec![s],
+        Either::B(v) => v,
+    };
+    
+    let glob = Glob::new_multi(patterns, opts.clone());
+    Ok(glob.walk_sync_with_file_types())
+}
+
+/// Asynchronous glob pattern matching with file type information.
+/// Returns PathData objects instead of strings.
+#[napi]
+pub async fn glob_with_file_types(pattern: Either<String, Vec<String>>, options: Option<GlobOptions>) -> Result<Vec<PathData>> {
+    let opts = options.unwrap_or_default();
+    
+    // Validate options using the centralized validation
+    validate_options(&opts)?;
+    
+    let patterns = match pattern {
+        Either::A(s) => vec![s],
+        Either::B(v) => v,
+    };
+    
+    let glob = Glob::new_multi(patterns, opts.clone());
+    Ok(glob.walk_sync_with_file_types())
 }
 
 impl Glob {
@@ -531,6 +582,216 @@ impl Glob {
                 // Deduplicate results (important for overlapping brace expansions)
                 if seen.insert(result.clone()) {
                     results.push(result);
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Walk the directory tree and return PathData objects.
+    /// This is used when withFileTypes: true is set.
+    pub fn walk_sync_with_file_types(&self) -> Vec<PathData> {
+        // If maxDepth is negative, return empty results
+        if let Some(d) = self.max_depth {
+            if d < 0 {
+                return Vec::new();
+            }
+        }
+
+        // Pre-allocate result vector with estimated capacity
+        let estimated_capacity = self.estimate_result_capacity();
+        let mut results = Vec::with_capacity(estimated_capacity);
+        let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
+        let mut ignored_dirs = std::collections::HashSet::new();
+
+        // Check if any pattern matches the cwd itself ("**" or ".").
+        let include_cwd = self.patterns.iter().any(|p| {
+            let raw = p.raw();
+            raw == "**" || raw == "." || raw == "./**" || {
+                let preprocessed = preprocess_pattern(raw);
+                preprocessed == "**" || preprocessed == "."
+            }
+        });
+
+        // Get the absolute cwd path, canonicalized
+        let abs_cwd = self
+            .cwd
+            .canonicalize()
+            .unwrap_or_else(|_| self.cwd.clone());
+
+        // Calculate the walk root based on literal prefixes
+        let (walk_root, prefix_to_strip) = self.calculate_walk_root();
+        
+        // Adjust walk options for prefix-based walking
+        let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
+            let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
+            if let Some(max_d) = self.walk_options.max_depth {
+                if max_d <= prefix_depth {
+                    self.walk_options.clone().max_depth(Some(0))
+                } else {
+                    self.walk_options.clone().max_depth(Some(max_d - prefix_depth))
+                }
+            } else {
+                self.walk_options.clone()
+            }
+        } else {
+            self.walk_options.clone()
+        };
+        
+        // Create directory pruning filter
+        let patterns_for_filter: Vec<Pattern> = self.patterns.clone();
+        let prefix_for_filter = prefix_to_strip.clone();
+        
+        let prune_filter = Box::new(move |dir_path: &str| -> bool {
+            let path_from_cwd = if let Some(ref prefix) = prefix_for_filter {
+                if dir_path.is_empty() {
+                    prefix.clone()
+                } else {
+                    format!("{}/{}", prefix, dir_path)
+                }
+            } else {
+                dir_path.to_string()
+            };
+            
+            patterns_for_filter.iter().any(|p| p.could_match_in_dir(&path_from_cwd))
+        });
+        
+        // Create walker
+        let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
+            .with_dir_prune_filter(prune_filter);
+
+        for entry in walker.walk() {
+            let path = entry.path();
+
+            let rel_path_from_walk_root = match path.strip_prefix(&walk_root) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
+            
+            let is_walk_root = rel_str_from_walk_root.is_empty();
+            
+            let normalized: String = if let Some(ref prefix) = prefix_to_strip {
+                if is_walk_root {
+                    prefix.clone()
+                } else if rel_str_from_walk_root.contains('\\') {
+                    format!("{}/{}", prefix, rel_str_from_walk_root.replace('\\', "/"))
+                } else {
+                    format!("{}/{}", prefix, rel_str_from_walk_root)
+                }
+            } else if rel_str_from_walk_root.contains('\\') {
+                rel_str_from_walk_root.replace('\\', "/")
+            } else {
+                rel_str_from_walk_root.into_owned()
+            };
+            
+            let rel_path = if prefix_to_strip.is_some() {
+                std::path::PathBuf::from(&normalized)
+            } else {
+                rel_path_from_walk_root.to_path_buf()
+            };
+
+            // Check if this path is inside an ignored directory
+            if !ignored_dirs.is_empty() {
+                let normalized_bytes = normalized.as_bytes();
+                let is_in_ignored = ignored_dirs.iter().any(|ignored_dir: &String| {
+                    let ignored_bytes = ignored_dir.as_bytes();
+                    normalized_bytes.starts_with(ignored_bytes) && 
+                    (normalized_bytes.len() == ignored_bytes.len() || 
+                     normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
+                });
+                if is_in_ignored {
+                    continue;
+                }
+            }
+
+            // Check ignore patterns
+            if let Some(ref ignore_filter) = self.ignore_filter {
+                let abs_path = abs_cwd.join(&rel_path);
+                
+                if ignore_filter.should_ignore(&normalized, &abs_path) {
+                    if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                        ignored_dirs.insert(normalized.to_string());
+                    }
+                    continue;
+                }
+                
+                if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                    ignored_dirs.insert(normalized.to_string());
+                }
+            }
+
+            // Handle root of walk_root
+            if is_walk_root && prefix_to_strip.is_none() {
+                if include_cwd && !self.nodir {
+                    if let Some(ref ignore_filter) = self.ignore_filter {
+                        if ignore_filter.should_ignore(".", &abs_cwd) {
+                            continue;
+                        }
+                    }
+                    
+                    let result_path = ".".to_string();
+                    if seen.insert(result_path.clone()) {
+                        results.push(PathData {
+                            path: result_path,
+                            is_directory: true,
+                            is_file: false,
+                            is_symlink: entry.is_symlink(),
+                        });
+                    }
+                }
+                continue;
+            }
+
+            if normalized.is_empty() {
+                continue;
+            }
+
+            // If nodir is true, skip directories
+            if self.nodir && entry.is_dir() {
+                continue;
+            }
+
+            // If dot:false, check if this path contains dotfile segments
+            if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
+                continue;
+            }
+
+            // Check if any pattern matches
+            let is_dir = entry.is_dir();
+            
+            let matches = if !self.any_pattern_requires_dir {
+                self.patterns.iter().any(|p| {
+                    match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    }
+                })
+            } else {
+                self.patterns.iter().any(|p| {
+                    let path_matches = match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    };
+                    if path_matches && p.requires_dir() {
+                        is_dir
+                    } else {
+                        path_matches
+                    }
+                })
+            };
+            
+            if matches {
+                // For withFileTypes, we return the relative path (no dotRelative/mark modifications)
+                // The JavaScript wrapper handles path formatting via PathScurry
+                if seen.insert(normalized.clone()) {
+                    results.push(PathData {
+                        path: normalized,
+                        is_directory: is_dir,
+                        is_file: entry.is_file(),
+                        is_symlink: entry.is_symlink(),
+                    });
                 }
             }
         }

@@ -12,21 +12,36 @@
 const nativeBindings = require('../index.js') as {
   globSync: (pattern: string | string[], options?: NativeGlobOptions) => string[]
   glob: (pattern: string | string[], options?: NativeGlobOptions) => Promise<string[]>
+  globSyncWithFileTypes: (pattern: string | string[], options?: NativeGlobOptions) => NativePathData[]
+  globWithFileTypes: (pattern: string | string[], options?: NativeGlobOptions) => Promise<NativePathData[]>
   escape: (pattern: string, windowsPathsNoEscape?: boolean) => string
   unescape: (pattern: string, windowsPathsNoEscape?: boolean) => string
   hasMagic: (pattern: string, noext?: boolean, windowsPathsNoEscape?: boolean) => boolean
 }
 
+/**
+ * Path data returned from native glob with withFileTypes
+ */
+interface NativePathData {
+  path: string
+  isDirectory: boolean
+  isFile: boolean
+  isSymlink: boolean
+}
+
 const {
   globSync: nativeGlobSync,
   glob: nativeGlob,
+  globSyncWithFileTypes: nativeGlobSyncWithFileTypes,
+  globWithFileTypes: nativeGlobWithFileTypes,
   escape: nativeEscape,
   unescape: nativeUnescape,
   hasMagic: nativeHasMagic,
 } = nativeBindings
 
 // Re-export path-scurry for API compatibility
-export { PathScurry, Path } from 'path-scurry'
+import { PathScurry, Path } from 'path-scurry'
+export { PathScurry, Path }
 
 // Re-export minimatch for API compatibility
 export { Minimatch, minimatch } from 'minimatch'
@@ -162,22 +177,78 @@ function toNativeOptions(options?: GlobOptions): NativeGlobOptions {
 }
 
 /**
+ * Options for glob with withFileTypes: true
+ */
+export interface GlobOptionsWithFileTypesTrue extends GlobOptions {
+  withFileTypes: true
+}
+
+/**
+ * Options for glob with withFileTypes: false or undefined
+ */
+export interface GlobOptionsWithFileTypesFalse extends GlobOptions {
+  withFileTypes?: false | undefined
+}
+
+/**
+ * Convert native PathData to PathScurry Path objects.
+ * Creates a PathScurry instance and resolves each path to get proper Path objects.
+ * The Path objects will need lstat() called on them to populate type information.
+ */
+function convertToPathObjects(
+  data: NativePathData[],
+  cwd: string,
+  performLstat: boolean = false
+): Path[] {
+  const scurry = new PathScurry(cwd)
+  return data.map(d => {
+    const p = scurry.cwd.resolve(d.path)
+    // If performLstat is true, call lstatSync to populate type information
+    // Otherwise, the Path object is returned without type info (saves syscalls)
+    if (performLstat) {
+      p.lstatSync()
+    }
+    return p
+  })
+}
+
+/**
  * Synchronous glob pattern matching
  *
  * @param pattern - Glob pattern or array of patterns
  * @param options - Glob options
- * @returns Array of matching file paths
+ * @returns Array of matching file paths (or Path objects if withFileTypes: true)
  */
 export function globSync(
   pattern: string | string[],
+  options: GlobOptionsWithFileTypesTrue
+): Path[]
+export function globSync(
+  pattern: string | string[],
+  options?: GlobOptionsWithFileTypesFalse
+): string[]
+export function globSync(
+  pattern: string | string[],
   options?: GlobOptions
-): string[] {
+): string[] | Path[]
+export function globSync(
+  pattern: string | string[],
+  options?: GlobOptions
+): string[] | Path[] {
   // Check if signal is already aborted before starting
   if (options?.signal?.aborted) {
     throw options.signal.reason ?? new Error('The operation was aborted')
   }
 
   const opts = toNativeOptions(options)
+
+  // Handle withFileTypes option
+  if (options?.withFileTypes) {
+    const data = nativeGlobSyncWithFileTypes(pattern, opts)
+    const cwd = opts.cwd ?? process.cwd()
+    // Pass stat option to determine if we should call lstat
+    return convertToPathObjects(data, cwd, options.stat)
+  }
 
   // Pass patterns directly to native implementation (supports both string and array)
   return nativeGlobSync(pattern, opts)
@@ -188,18 +259,63 @@ export function globSync(
  *
  * @param pattern - Glob pattern or array of patterns
  * @param options - Glob options
- * @returns Promise resolving to array of matching file paths
+ * @returns Promise resolving to array of matching file paths (or Path objects if withFileTypes: true)
  */
 export async function glob(
   pattern: string | string[],
+  options: GlobOptionsWithFileTypesTrue
+): Promise<Path[]>
+export async function glob(
+  pattern: string | string[],
+  options?: GlobOptionsWithFileTypesFalse
+): Promise<string[]>
+export async function glob(
+  pattern: string | string[],
   options?: GlobOptions
-): Promise<string[]> {
+): Promise<string[] | Path[]>
+export async function glob(
+  pattern: string | string[],
+  options?: GlobOptions
+): Promise<string[] | Path[]> {
   // Check if signal is already aborted before starting
   if (options?.signal?.aborted) {
     throw options.signal.reason ?? new Error('The operation was aborted')
   }
 
   const opts = toNativeOptions(options)
+
+  // Handle withFileTypes option
+  if (options?.withFileTypes) {
+    const promise = nativeGlobWithFileTypes(pattern, opts)
+    
+    // If we have a signal, set up abort handling
+    if (options?.signal) {
+      return new Promise<Path[]>((resolve, reject) => {
+        const onAbort = () => {
+          reject(options.signal!.reason ?? new Error('The operation was aborted'))
+        }
+        options.signal!.addEventListener('abort', onAbort, { once: true })
+        promise
+          .then((data) => {
+            options.signal!.removeEventListener('abort', onAbort)
+            if (options.signal!.aborted) {
+              reject(options.signal!.reason ?? new Error('The operation was aborted'))
+            } else {
+              const cwd = opts.cwd ?? process.cwd()
+              resolve(convertToPathObjects(data, cwd, options.stat))
+            }
+          })
+          .catch((err) => {
+            options.signal!.removeEventListener('abort', onAbort)
+            reject(err)
+          })
+      })
+    }
+    
+    const data = await promise
+    const cwd = opts.cwd ?? process.cwd()
+    return convertToPathObjects(data, cwd, options.stat)
+  }
 
   // Start the async operation
   const promise = nativeGlob(pattern, opts)
@@ -276,7 +392,9 @@ export function globStream(
     }
 
     try {
-      const results = globSync(pattern, options)
+      // For streaming, always return strings (ignore withFileTypes)
+      const opts: GlobOptionsWithFileTypesFalse = { ...options, withFileTypes: false }
+      const results = globSync(pattern, opts)
       for (const result of results) {
         // Check for abort between writes
         if (options?.signal?.aborted) {
@@ -317,7 +435,9 @@ export function globStreamSync(
   }
 
   try {
-    const results = globSync(pattern, options)
+    // For streaming, always return strings (ignore withFileTypes)
+    const opts: GlobOptionsWithFileTypesFalse = { ...options, withFileTypes: false }
+    const results = globSync(pattern, opts)
     for (const result of results) {
       // Check for abort between writes (for sync stream with existing results)
       if (options?.signal?.aborted) {
@@ -345,8 +465,9 @@ export async function* globIterate(
   pattern: string | string[],
   options?: GlobOptions
 ): AsyncGenerator<string, void, void> {
-  // TODO: Implement proper async iteration
-  const results = await glob(pattern, options)
+  // For iteration, always return strings (ignore withFileTypes)
+  const opts: GlobOptionsWithFileTypesFalse = { ...options, withFileTypes: false }
+  const results = await glob(pattern, opts)
   for (const result of results) {
     yield result
   }
@@ -363,7 +484,9 @@ export function* globIterateSync(
   pattern: string | string[],
   options?: GlobOptions
 ): Generator<string, void, void> {
-  const results = globSync(pattern, options)
+  // For iteration, always return strings (ignore withFileTypes)
+  const opts: GlobOptionsWithFileTypesFalse = { ...options, withFileTypes: false }
+  const results = globSync(pattern, opts)
   for (const result of results) {
     yield result
   }
@@ -471,11 +594,15 @@ export class Glob {
   }
 
   walk(): Promise<string[]> {
-    return glob(this.pattern, this.options)
+    // For the Glob class, always return strings (ignore withFileTypes)
+    const opts: GlobOptionsWithFileTypesFalse = { ...this.options, withFileTypes: false }
+    return glob(this.pattern, opts)
   }
 
   walkSync(): string[] {
-    return globSync(this.pattern, this.options)
+    // For the Glob class, always return strings (ignore withFileTypes)
+    const opts: GlobOptionsWithFileTypesFalse = { ...this.options, withFileTypes: false }
+    return globSync(this.pattern, opts)
   }
 
   stream(): Minipass<string, string> {

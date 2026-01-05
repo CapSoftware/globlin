@@ -310,10 +310,12 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { globSync, glob, escape, unescape, hasMagic } = nativeBinding
+const { globSync, glob, globSyncWithFileTypes, globWithFileTypes, escape, unescape, hasMagic } = nativeBinding
 
 module.exports.globSync = globSync
 module.exports.glob = glob
+module.exports.globSyncWithFileTypes = globSyncWithFileTypes
+module.exports.globWithFileTypes = globWithFileTypes
 module.exports.escape = escape
 module.exports.unescape = unescape
 module.exports.hasMagic = hasMagic

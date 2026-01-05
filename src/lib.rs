@@ -15,6 +15,7 @@ mod util;
 // Re-exports
 pub use glob::*;
 pub use options::GlobOptions;
+pub use glob::PathData;
 
 use napi::bindgen_prelude::*;
 
