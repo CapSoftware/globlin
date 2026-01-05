@@ -1532,13 +1532,26 @@ fn pattern_to_regex(
                         }
                         continue;
                     }
-                    // Not a proper globstar, treat as .*
-                    regex_str.push_str(".*");
+                    // Not a proper globstar - treat as two * wildcards
+                    // Each * matches any chars except /
+                    // e.g., b** becomes b[^/]*[^/]* which is equivalent to b[^/]*
+                    regex_str.push_str("[^/]*[^/]*");
                     i += 2;
                     continue;
                 }
-                // Single * - match any chars except /
-                regex_str.push_str("[^/]*");
+                // Single * - check if it's a standalone segment or part of a segment
+                // Standalone segment (preceded by / or at start, followed by / or at end): [^/]+
+                // Part of a segment (suffix like a*, prefix like *a): [^/]*
+                let at_segment_start = i == 0 || chars[i - 1] == '/';
+                let at_segment_end = i + 1 >= len || chars[i + 1] == '/';
+
+                if at_segment_start && at_segment_end {
+                    // Standalone * as a complete segment - must match at least one char
+                    regex_str.push_str("[^/]+");
+                } else {
+                    // * is part of a segment (e.g., a*, *a, a*b) - can match zero chars
+                    regex_str.push_str("[^/]*");
+                }
             }
             '?' => {
                 // Match single char except /
