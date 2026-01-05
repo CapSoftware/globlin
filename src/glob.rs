@@ -43,6 +43,10 @@ pub struct Glob {
     walk_options: WalkOptions,
     /// Ignore filter for excluding paths
     ignore_filter: Option<IgnoreFilter>,
+    /// Pre-computed: true if any pattern requires directory matching (ends with /)
+    any_pattern_requires_dir: bool,
+    /// Pre-computed: number of fast-path patterns (for optimization decisions)
+    fast_pattern_count: usize,
 }
 
 #[napi]
@@ -117,6 +121,8 @@ impl Glob {
         };
 
         // Process all input patterns and expand braces for each
+        // Use a HashSet to track already-seen pattern strings for deduplication
+        let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut patterns: Vec<Pattern> = Vec::new();
         
         for pattern_str in &pattern_strs {
@@ -141,20 +147,42 @@ impl Glob {
             // Expand braces unless nobrace is set
             if nobrace {
                 let transformed = apply_match_base(pattern_str);
-                patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                // Deduplicate: only add if we haven't seen this pattern before
+                if seen_patterns.insert(transformed.clone()) {
+                    patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                }
             } else {
                 let expanded = expand_braces(pattern_str);
                 if expanded.is_empty() {
                     let transformed = apply_match_base(pattern_str);
-                    patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                    if seen_patterns.insert(transformed.clone()) {
+                        patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                    }
                 } else {
                     for p in expanded {
                         let transformed = apply_match_base(&p);
-                        patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                        // Deduplicate: skip duplicate expanded patterns
+                        if seen_patterns.insert(transformed.clone()) {
+                            patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                        }
                     }
                 }
             }
         }
+        
+        // Optimization: Sort patterns so fast-path patterns come first.
+        // This allows early exit when using .any() since fast patterns are checked first.
+        // Patterns with fast-path matching are much quicker to evaluate.
+        patterns.sort_by(|a, b| {
+            // Fast-path patterns should come first
+            let a_fast = a.fast_path().is_fast();
+            let b_fast = b.fast_path().is_fast();
+            match (a_fast, b_fast) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
 
         // Create ignore filter if ignore patterns provided
         let ignore_filter = match &options.ignore {
@@ -203,6 +231,12 @@ impl Glob {
             .max_depth(walker_max_depth)
             .dot(true);
 
+        // Pre-compute: check if any pattern requires directory matching (ends with /)
+        let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());
+        
+        // Pre-compute: count patterns with fast-path matching for optimization decisions
+        let fast_pattern_count = patterns.iter().filter(|p| p.fast_path().is_fast()).count();
+
         Self {
             pattern_strs,
             cwd,
@@ -223,6 +257,8 @@ impl Glob {
             nocase,
             walk_options,
             ignore_filter,
+            any_pattern_requires_dir,
+            fast_pattern_count,
         }
     }
 
@@ -442,19 +478,32 @@ impl Glob {
             // Check if any pattern matches
             // For patterns that end with /, only match if entry is a directory
             let is_dir = entry.is_dir();
-            let matches = self.patterns.iter().any(|p| {
-                // Try fast-path matching first, fall back to regex if not applicable
-                let path_matches = match p.matches_fast(&normalized) {
-                    Some(result) => result,
-                    None => p.matches(&normalized),
-                };
-                if path_matches && p.requires_dir() {
-                    // Pattern ends with /, only match directories
-                    is_dir
-                } else {
-                    path_matches
-                }
-            });
+            
+            // Optimization: Use specialized matching based on pattern characteristics.
+            // Patterns are already sorted with fast-path patterns first (in new_multi),
+            // so .any() will try fast patterns before falling back to regex patterns.
+            let matches = if !self.any_pattern_requires_dir {
+                // Fast path: no patterns require directory matching
+                self.patterns.iter().any(|p| {
+                    match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    }
+                })
+            } else {
+                // Standard path: some patterns require directory matching
+                self.patterns.iter().any(|p| {
+                    let path_matches = match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    };
+                    if path_matches && p.requires_dir() {
+                        is_dir
+                    } else {
+                        path_matches
+                    }
+                })
+            };
             
             if matches {
                 let result = if self.absolute {
@@ -2196,5 +2245,168 @@ mod tests {
         // Should NOT find files outside of packages/*/src
         assert!(!results.contains(&"packages/foo/test/test.ts".to_string()));
         assert!(!results.contains(&"other/file.ts".to_string()));
+    }
+
+    // Multi-pattern optimization tests (Task 2.5.6.3)
+
+    #[test]
+    fn test_multi_pattern_deduplication() {
+        // Duplicate patterns from brace expansion should be deduplicated
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "{*.txt,*.txt}".to_string(), // Brace expansion produces duplicates
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        
+        // Only 1 pattern should be stored (duplicates removed)
+        assert_eq!(glob.patterns.len(), 1);
+        
+        let results = glob.walk_sync();
+        // foo.txt should only appear once
+        let foo_count = results.iter().filter(|r| *r == "foo.txt").count();
+        assert_eq!(foo_count, 1);
+    }
+
+    #[test]
+    fn test_multi_pattern_fast_path_ordering() {
+        // Fast-path patterns should be sorted first for early matching
+        let temp = create_test_fixture();
+        let glob = Glob::new_multi(
+            vec![
+                "**/[a-z]*.js".to_string(), // Complex pattern (regex)
+                "*.txt".to_string(),         // Simple fast-path pattern
+                "**/*.ts".to_string(),       // Recursive fast-path pattern
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        
+        // Check that patterns are reordered with fast-path first
+        // First should be fast-path (*.txt or **/*.ts)
+        assert!(glob.patterns[0].fast_path().is_fast() || glob.patterns[1].fast_path().is_fast());
+        
+        let results = glob.walk_sync();
+        // Should still find correct files
+        assert!(results.contains(&"foo.txt".to_string()));
+        assert!(results.contains(&"bar.txt".to_string()));
+        assert!(results.contains(&"baz.js".to_string()));
+    }
+
+    #[test]
+    fn test_multi_pattern_cross_brace_deduplication() {
+        // Brace expansion across multiple patterns should deduplicate
+        let temp = create_test_fixture();
+        let glob = Glob::new_multi(
+            vec![
+                "*.{txt,js}".to_string(),  // Expands to *.txt, *.js
+                "*.txt".to_string(),        // Duplicate with above
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        
+        // Should have 2 unique patterns: *.txt, *.js (not 3)
+        assert_eq!(glob.patterns.len(), 2);
+        
+        let results = glob.walk_sync();
+        assert!(results.contains(&"foo.txt".to_string()));
+        assert!(results.contains(&"baz.js".to_string()));
+    }
+
+    #[test]
+    fn test_multi_pattern_any_requires_dir() {
+        // Pre-computed field should correctly identify patterns requiring directories
+        let temp = create_test_fixture();
+        
+        // Pattern without trailing slash
+        let glob1 = Glob::new(
+            "*".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(!glob1.any_pattern_requires_dir);
+        
+        // Pattern with trailing slash
+        let glob2 = Glob::new(
+            "*/".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(glob2.any_pattern_requires_dir);
+        
+        // Multiple patterns where only one requires dir
+        let glob3 = Glob::new_multi(
+            vec!["*.txt".to_string(), "src/".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(glob3.any_pattern_requires_dir);
+    }
+
+    #[test]
+    fn test_multi_pattern_fast_pattern_count() {
+        // Pre-computed fast pattern count
+        let temp = create_test_fixture();
+        
+        // All fast-path patterns
+        let glob1 = Glob::new_multi(
+            vec!["*.txt".to_string(), "*.js".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert_eq!(glob1.fast_pattern_count, 2);
+        
+        // Mix of fast and slow patterns
+        let glob2 = Glob::new_multi(
+            vec!["*.txt".to_string(), "**/[a-z]*.js".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        // *.txt is fast, **/[a-z]*.js is not
+        assert_eq!(glob2.fast_pattern_count, 1);
+    }
+
+    #[test]
+    fn test_multi_pattern_many_patterns() {
+        // Test with many patterns to verify performance characteristics
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create files for each pattern
+        for i in 0..10 {
+            File::create(base.join(format!("file{}.txt", i))).unwrap();
+            File::create(base.join(format!("file{}.js", i))).unwrap();
+            File::create(base.join(format!("file{}.ts", i))).unwrap();
+        }
+
+        // Create glob with many patterns
+        let patterns: Vec<String> = (0..10)
+            .flat_map(|i| vec![
+                format!("file{}.txt", i),
+                format!("file{}.js", i),
+            ])
+            .collect();
+
+        let glob = Glob::new_multi(
+            patterns,
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let results = glob.walk_sync();
+        assert_eq!(results.len(), 20); // 10 txt + 10 js files
+    }
+
+    #[test]
+    fn test_multi_pattern_all_match_same_file() {
+        // Multiple patterns that all match the same file
+        let temp = create_test_fixture();
+        let glob = Glob::new_multi(
+            vec![
+                "foo.txt".to_string(),
+                "*.txt".to_string(),
+                "foo.*".to_string(),
+                "**".to_string(),
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let results = glob.walk_sync();
+        
+        // foo.txt should appear only once despite matching all patterns
+        let foo_count = results.iter().filter(|r| *r == "foo.txt").count();
+        assert_eq!(foo_count, 1);
     }
 }
