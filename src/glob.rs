@@ -550,6 +550,7 @@ impl Glob {
             // Check if any pattern matches
             // For patterns that end with /, only match if entry is a directory
             let is_dir = entry.is_dir();
+            let is_symlink = entry.is_symlink();
             
             // Optimization: Use specialized matching based on pattern characteristics.
             // Patterns are already sorted with fast-path patterns first (in new_multi),
@@ -586,11 +587,15 @@ impl Glob {
                     None
                 };
                 
+                // When mark:true, add trailing slash to directories but NOT to symlinks
+                // (even when they point to directories). This matches glob's behavior.
+                let should_mark_as_dir = is_dir && !is_symlink;
+                
                 let result = if self.absolute {
                     // Return absolute path
                     let abs_path = abs_cwd.join(&rel_path);
                     let mut path = self.format_path(&abs_path);
-                    if self.mark && is_dir {
+                    if self.mark && should_mark_as_dir {
                         path = self.ensure_trailing_slash(&path);
                     }
                     path
@@ -602,7 +607,7 @@ impl Glob {
                 } else {
                     normalized
                 };
-                    if self.mark && is_dir {
+                    if self.mark && should_mark_as_dir {
                         path = self.ensure_trailing_slash(&path);
                     }
                     path

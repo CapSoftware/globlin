@@ -52,12 +52,25 @@ pub struct WalkEntry {
 impl WalkEntry {
     pub fn from_dir_entry(entry: &DirEntry) -> Self {
         let file_type = entry.file_type();
+        // When following symlinks, walkdir reports the TARGET type, not the symlink type.
+        // To detect if the entry is a symlink, we need to check symlink_metadata.
+        // This is needed for correct behavior of the `mark` option.
+        let is_symlink = if file_type.is_symlink() {
+            true
+        } else {
+            // Check with symlink_metadata since walkdir may have followed the link
+            entry
+                .path()
+                .symlink_metadata()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+        };
         Self {
             path: entry.path().to_path_buf(),
             depth: entry.depth(),
             is_dir: file_type.is_dir(),
             is_file: file_type.is_file(),
-            is_symlink: file_type.is_symlink(),
+            is_symlink,
         }
     }
 
@@ -608,5 +621,47 @@ mod tests {
             .filter(|e| e.path().to_string_lossy().contains("self/self"))
             .collect();
         assert!(deep_paths.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_symlink_dir_with_follow() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create a real directory with a file
+        fs::create_dir_all(base.join("real-dir")).unwrap();
+        File::create(base.join("real-dir/file.txt")).unwrap();
+
+        // Create a symlink to the directory
+        symlink(base.join("real-dir"), base.join("symlink-to-dir")).unwrap();
+
+        // Walk WITH following symlinks - check what is_symlink reports
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Find the symlink entry
+        let symlink_entry = entries
+            .iter()
+            .find(|e| e.path().ends_with("symlink-to-dir"))
+            .expect("Should find symlink-to-dir");
+
+        // When following symlinks, walkdir reports the TARGET type for is_dir/is_file,
+        // but we use symlink_metadata to still detect that it IS a symlink.
+        println!(
+            "symlink_entry: is_dir={}, is_file={}, is_symlink={}",
+            symlink_entry.is_dir(),
+            symlink_entry.is_file(),
+            symlink_entry.is_symlink()
+        );
+
+        // is_dir=true because we follow the link and see a directory
+        assert!(symlink_entry.is_dir());
+        assert!(!symlink_entry.is_file());
+        // is_symlink=true because we check symlink_metadata regardless of follow setting
+        // This is needed for correct `mark` option behavior
+        assert!(symlink_entry.is_symlink());
     }
 }
