@@ -234,18 +234,24 @@ impl Glob {
             }
         }
 
-        let mut results = Vec::new();
-        let mut seen = std::collections::HashSet::new();
+        // Pre-allocate result vector with estimated capacity based on pattern depth.
+        // Simple patterns (depth 0-1) typically match fewer files than recursive patterns.
+        // This reduces reallocations during collection.
+        let estimated_capacity = self.estimate_result_capacity();
+        let mut results = Vec::with_capacity(estimated_capacity);
+        let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs = std::collections::HashSet::new();
 
-        // Check if any pattern matches the cwd itself ("**" or ".")
-        let include_cwd = self
-            .patterns
-            .iter()
-            .any(|p| {
-                let preprocessed = preprocess_pattern(p.raw());
+        // Check if any pattern matches the cwd itself ("**" or ".").
+        // Cache this check since preprocess_pattern is called for each pattern.
+        let include_cwd = self.patterns.iter().any(|p| {
+            let raw = p.raw();
+            // Fast path: check common cases without calling preprocess_pattern
+            raw == "**" || raw == "." || raw == "./**" || {
+                let preprocessed = preprocess_pattern(raw);
                 preprocessed == "**" || preprocessed == "."
-            });
+            }
+        });
 
         // Get the absolute cwd path, canonicalized
         let abs_cwd = self
@@ -319,15 +325,24 @@ impl Glob {
             };
             let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
             
-            // Construct the path relative to cwd by prepending the stripped prefix
-            let normalized = if let Some(ref prefix) = prefix_to_strip {
-                if rel_str_from_walk_root.is_empty() {
+            // Cache whether this is the walk root (empty relative path)
+            let is_walk_root = rel_str_from_walk_root.is_empty();
+            
+            // Construct the path relative to cwd by prepending the stripped prefix.
+            // Optimization: Avoid allocation when no backslashes present (common on Unix).
+            let normalized: String = if let Some(ref prefix) = prefix_to_strip {
+                if is_walk_root {
                     prefix.clone()
-                } else {
+                } else if rel_str_from_walk_root.contains('\\') {
                     format!("{}/{}", prefix, rel_str_from_walk_root.replace('\\', "/"))
+                } else {
+                    format!("{}/{}", prefix, rel_str_from_walk_root)
                 }
-            } else {
+            } else if rel_str_from_walk_root.contains('\\') {
                 rel_str_from_walk_root.replace('\\', "/")
+            } else {
+                // No backslashes and no prefix - convert to owned string
+                rel_str_from_walk_root.into_owned()
             };
             
             // For operations that need the actual relative path from cwd
@@ -337,12 +352,15 @@ impl Glob {
                 rel_path_from_walk_root.to_path_buf()
             };
 
-            // Check if this path is inside an ignored directory
+            // Check if this path is inside an ignored directory.
+            // Optimization: Use byte-level comparison instead of char iteration.
             if !ignored_dirs.is_empty() {
+                let normalized_bytes = normalized.as_bytes();
                 let is_in_ignored = ignored_dirs.iter().any(|ignored_dir: &String| {
-                    normalized.starts_with(ignored_dir) && 
-                    (normalized.len() == ignored_dir.len() || 
-                     normalized.chars().nth(ignored_dir.len()) == Some('/'))
+                    let ignored_bytes = ignored_dir.as_bytes();
+                    normalized_bytes.starts_with(ignored_bytes) && 
+                    (normalized_bytes.len() == ignored_bytes.len() || 
+                     normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
                 });
                 if is_in_ignored {
                     continue;
@@ -357,7 +375,7 @@ impl Glob {
                 if ignore_filter.should_ignore(&normalized, &abs_path) {
                     // If children are also ignored, mark this directory
                     if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                        ignored_dirs.insert(normalized.clone());
+                        ignored_dirs.insert(normalized.to_string());
                     }
                     continue;
                 }
@@ -365,12 +383,12 @@ impl Glob {
                 // Also check if this is a directory whose children should be ignored
                 // (for optimization - skip traversing)
                 if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                    ignored_dirs.insert(normalized.clone());
+                    ignored_dirs.insert(normalized.to_string());
                 }
             }
 
             // Handle root of walk_root (which might be cwd or cwd/prefix)
-            if rel_str_from_walk_root.is_empty() && prefix_to_strip.is_none() {
+            if is_walk_root && prefix_to_strip.is_none() {
                 // This is the cwd itself - handle specially
                 // Root directory - only include if pattern matches it
                 // With nodir: true, skip even the root directory since it's a directory
@@ -452,9 +470,9 @@ impl Glob {
                     // But not for patterns starting with "../"
                     let mut path = if self.dot_relative && !normalized.starts_with("../") {
                         format!("./{}", normalized)
-                    } else {
-                        normalized
-                    };
+                } else {
+                    normalized
+                };
                     if self.mark && is_dir {
                         path = self.ensure_trailing_slash(&path);
                     }
@@ -511,6 +529,28 @@ impl Glob {
 
         // Check if any pattern explicitly allows the dotfiles in this path
         self.patterns.iter().any(|p| p.allows_dotfile(path))
+    }
+
+    /// Estimate the capacity for the result vector based on pattern characteristics.
+    /// 
+    /// This helps reduce reallocations during result collection. The estimate is
+    /// based on pattern depth and whether the pattern is recursive:
+    /// - Simple root patterns (*.txt): ~16 results expected
+    /// - One-level patterns (src/*.js): ~64 results expected  
+    /// - Recursive patterns (**/*.js): ~256 results expected
+    fn estimate_result_capacity(&self) -> usize {
+        // Find the maximum depth across all patterns
+        let max_pattern_depth = self.patterns.iter()
+            .filter_map(|p| p.max_depth())
+            .max();
+        
+        match max_pattern_depth {
+            Some(0) => 16,      // Root-level patterns: few files expected
+            Some(1) => 64,      // One directory level: moderate number
+            Some(2) => 128,     // Two levels deep
+            Some(_) => 256,     // Deeper patterns
+            None => 256,        // Recursive patterns (**): could be many files
+        }
     }
 
     /// Calculate the optimal walk root based on literal prefixes of patterns.
