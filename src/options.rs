@@ -80,10 +80,10 @@ pub struct GlobOptions {
     pub max_depth: Option<i32>,
 
     /// Perform a basename-only match if the pattern does not contain any slash
-    /// characters. That is, `*.js` would be treated as equivalent to `**/*.js`,
-    /// matching all js files in all directories.
+    /// characters. That is, a pattern like "*.js" would be treated as equivalent
+    /// to a recursive pattern matching all js files in all directories.
     ///
-    /// Cannot be used with `noglobstar: true`.
+    /// Cannot be used with noglobstar: true.
     #[napi(js_name = "matchBase")]
     pub match_base: Option<bool>,
 
@@ -168,7 +168,7 @@ pub struct GlobOptions {
 
     /// Do not match any children of any matches.
     ///
-    /// For example, the pattern `**/foo` would match `a/foo`, but not `a/foo/b/foo`
+    /// For example, a recursive pattern would match "a/foo" but not "a/foo/b/foo"
     /// in this mode.
     ///
     /// This is especially useful for cases like "find all `node_modules` folders,

@@ -25,6 +25,8 @@
     "node_modules",
     "dist",
     "vendor",
-    "benches/fixtures"
+    "benches/fixtures",
+    "tests/fixtures",
+    "index.d.ts"
   ]
 }
