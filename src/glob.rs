@@ -2939,4 +2939,27 @@ mod tests {
         assert!(unc_pattern.is_unc());
         assert!(unc_pattern.root().starts_with("//"));
     }
+
+    #[test]
+    fn test_glob_double_dot_extension() {
+        use crate::options::GlobOptions;
+        
+        // Create a temporary directory with test files
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Create test/a.test.ts
+        std::fs::create_dir_all(temp_path.join("test")).unwrap();
+        std::fs::write(temp_path.join("test/a.test.ts"), "").unwrap();
+        std::fs::write(temp_path.join("test/b.test.tsx"), "").unwrap();
+        
+        let mut options = GlobOptions::default();
+        options.cwd = Some(temp_path.to_string_lossy().to_string());
+        
+        let glob = Glob::new_multi(vec!["**/*.test.ts".to_string()], options);
+        let results = glob.walk_sync();
+        
+        assert!(results.contains(&"test/a.test.ts".to_string()), "Should contain test/a.test.ts");
+        assert!(!results.contains(&"test/b.test.tsx".to_string()), "Should not contain test/b.test.tsx");
+    }
 }

@@ -1673,6 +1673,10 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool, nobrace:
 
 /// Parse a pattern like `*.ext` and return the extension.
 /// Returns `Some("ext")` if the pattern is exactly `*.ext`, otherwise `None`.
+///
+/// This only handles simple extension patterns where the extension does not contain
+/// any dots. Patterns like `*.test.ts` are NOT simple extension patterns because
+/// the `*` matches more than just the filename prefix before the final dot.
 fn parse_extension_pattern(pattern: &str) -> Option<String> {
     // Pattern must start with `*.`
     if !pattern.starts_with("*.") {
@@ -1694,6 +1698,13 @@ fn parse_extension_pattern(pattern: &str) -> Option<String> {
 
     // Extension must not contain braces (those are handled by parse_extension_set_pattern)
     if ext.contains('{') || ext.contains('}') {
+        return None;
+    }
+
+    // Extension must not contain dots - patterns like `*.test.ts` are NOT
+    // simple extension patterns. `*.test.ts` should match `foo.test.ts`
+    // via regex, where `*` matches `foo`, not via extension matching.
+    if ext.contains('.') {
         return None;
     }
 
@@ -3968,5 +3979,26 @@ mod test_fast_path {
         assert!(FastPath::RecursiveExtension("js".to_string()).is_fast());
         assert!(FastPath::RecursiveExtensionSet(HashSet::new()).is_fast());
         assert!(!FastPath::None.is_fast());
+    }
+
+    #[test]
+    fn test_pattern_double_dot_extension() {
+        // Pattern `**/*.test.ts` should NOT use fast-path extension matching
+        // because `.test.ts` is not a simple extension (contains multiple dots)
+        let pattern = Pattern::new("**/*.test.ts");
+
+        // Should match files ending in .test.ts
+        assert!(pattern.matches("a.test.ts"));
+        assert!(pattern.matches("test/a.test.ts"));
+        assert!(pattern.matches("src/foo.test.ts"));
+        assert!(pattern.matches("deep/path/file.test.ts"));
+
+        // Should not match other extensions
+        assert!(!pattern.matches("a.test.tsx"));
+        assert!(!pattern.matches("a.ts"));
+        assert!(!pattern.matches("test.ts.bak"));
+
+        // fast_path should be None (not RecursiveExtension)
+        assert!(matches!(pattern.fast_path(), &FastPath::None));
     }
 }
