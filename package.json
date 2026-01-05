@@ -61,7 +61,11 @@
     "bench:ci": "npx tsx benches/bench-ci.ts --output bench-results.json",
     "bench:profile": "npx tsx benches/profile_node.ts",
     "bench:boundary": "npx tsx benches/profile_boundary.ts",
+    "bench:parallel": "npx tsx benches/parallel_bench.ts",
+    "bench:parallel:all": "npx tsx benches/parallel_bench.ts --all",
+    "bench:parallel:large": "npx tsx benches/parallel_bench.ts --large",
     "bench:setup": "node benches/setup-fixtures.js",
+    "bench:setup:huge": "node benches/setup-huge-fixture.js",
     "universal": "napi universal",
     "version": "napi version"
   },
