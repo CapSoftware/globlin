@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 
 use napi::bindgen_prelude::*;
 
@@ -378,11 +379,18 @@ impl Glob {
         let estimated_capacity = self.estimate_result_capacity();
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
-        let mut ignored_dirs = std::collections::HashSet::new();
+        let mut ignored_dirs: std::collections::HashSet<String> =
+            std::collections::HashSet::with_capacity(8); // Most globs have few ignored dirs
 
         // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut matched_parents: std::collections::HashSet<String> = if self.include_child_matches {
+            std::collections::HashSet::new() // Empty, won't be used
+        } else {
+            std::collections::HashSet::with_capacity(estimated_capacity / 4)
+        };
+
+        // Pre-allocate a reusable buffer for path formatting
+        let mut result_buffer = String::with_capacity(self.estimate_path_buffer_capacity());
 
         // Check if any pattern matches the cwd itself ("**" or ".").
         // Cache this check since preprocess_pattern is called for each pattern.
@@ -472,38 +480,19 @@ impl Glob {
             let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
 
             // Cache whether this is the walk root (empty relative path)
-            let is_walk_root = rel_str_from_walk_root.is_empty();
+            let is_walk_root_entry = rel_str_from_walk_root.is_empty();
 
             // Construct the path relative to cwd by prepending the stripped prefix.
-            // Optimization: Avoid allocation when no backslashes present (common on Unix).
-            let normalized: String = if let Some(ref prefix) = prefix_to_strip {
-                if is_walk_root {
-                    prefix.clone()
-                } else if rel_str_from_walk_root.contains('\\') {
-                    format!("{}/{}", prefix, rel_str_from_walk_root.replace('\\', "/"))
-                } else {
-                    format!("{prefix}/{rel_str_from_walk_root}")
-                }
-            } else if rel_str_from_walk_root.contains('\\') {
-                rel_str_from_walk_root.replace('\\', "/")
-            } else {
-                // No backslashes and no prefix - convert to owned string
-                rel_str_from_walk_root.into_owned()
-            };
+            // Use Cow to avoid allocation when possible.
+            let normalized = self.normalize_path(
+                &rel_str_from_walk_root,
+                &prefix_to_strip,
+                is_walk_root_entry,
+            );
 
             // Check if this path is inside an ignored directory.
-            // Optimization: Use byte-level comparison instead of char iteration.
-            if !ignored_dirs.is_empty() {
-                let normalized_bytes = normalized.as_bytes();
-                let is_in_ignored = ignored_dirs.iter().any(|ignored_dir: &String| {
-                    let ignored_bytes = ignored_dir.as_bytes();
-                    normalized_bytes.starts_with(ignored_bytes)
-                        && (normalized_bytes.len() == ignored_bytes.len()
-                            || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
-                });
-                if is_in_ignored {
-                    continue;
-                }
+            if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
+                continue;
             }
 
             // Check ignore patterns
@@ -511,7 +500,7 @@ impl Glob {
             if has_ignore_filter {
                 // For operations that need the actual relative path from cwd
                 let rel_path = if prefix_to_strip.is_some() {
-                    std::path::PathBuf::from(&normalized)
+                    PathBuf::from(normalized.as_ref())
                 } else {
                     rel_path_from_walk_root.to_path_buf()
                 };
@@ -522,7 +511,7 @@ impl Glob {
                 if ignore_filter.should_ignore(&normalized, &abs_path) {
                     // If children are also ignored, mark this directory
                     if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                        ignored_dirs.insert(normalized.clone());
+                        ignored_dirs.insert(normalized.into_owned());
                     }
                     continue;
                 }
@@ -530,12 +519,12 @@ impl Glob {
                 // Also check if this is a directory whose children should be ignored
                 // (for optimization - skip traversing)
                 if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                    ignored_dirs.insert(normalized.clone());
+                    ignored_dirs.insert(normalized.to_string());
                 }
             }
 
             // Handle root of walk_root (which might be cwd or cwd/prefix)
-            if is_walk_root && prefix_to_strip.is_none() {
+            if is_walk_root_entry && prefix_to_strip.is_none() {
                 // This is the cwd itself - handle specially
                 // Root directory - only include if pattern matches it
                 // With nodir: true, skip even the root directory since it's a directory
@@ -548,11 +537,18 @@ impl Glob {
                     }
 
                     let result = if self.absolute {
-                        let mut path = self.format_path(&abs_cwd);
+                        let formatted = self.format_path_into_buffer(&abs_cwd, &mut result_buffer);
                         if self.mark {
-                            path = self.ensure_trailing_slash(&path);
+                            if formatted.ends_with('/') || formatted.ends_with('\\') {
+                                formatted.to_string()
+                            } else {
+                                let mut s = formatted.to_string();
+                                s.push('/');
+                                s
+                            }
+                        } else {
+                            formatted.to_string()
                         }
-                        path
                     } else {
                         // For relative paths, "." becomes "./" with mark:true
                         if self.mark {
@@ -587,17 +583,10 @@ impl Glob {
             }
 
             // When includeChildMatches is false, skip paths that are children of already-matched paths
-            if !self.include_child_matches && !matched_parents.is_empty() {
-                let normalized_bytes = normalized.as_bytes();
-                let is_child_of_matched = matched_parents.iter().any(|matched_path: &String| {
-                    let matched_bytes = matched_path.as_bytes();
-                    normalized_bytes.starts_with(matched_bytes)
-                        && normalized_bytes.len() > matched_bytes.len()
-                        && normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
-                });
-                if is_child_of_matched {
-                    continue;
-                }
+            if !self.include_child_matches
+                && self.is_child_of_matched(&normalized, &matched_parents)
+            {
+                continue;
             }
 
             // Check if any pattern matches
@@ -632,50 +621,22 @@ impl Glob {
             };
 
             if matches {
-                // Save the normalized path for tracking before constructing the result
-                // (since normalized may be moved into result)
-                let path_for_tracking = if !self.include_child_matches {
-                    Some(normalized.clone())
-                } else {
-                    None
-                };
-
-                // When mark:true, add trailing slash to directories but NOT to symlinks
-                // (even when they point to directories). This matches glob's behavior.
-                let should_mark_as_dir = is_dir && !is_symlink;
-
-                let result = if self.absolute {
-                    // Return absolute path
-                    // Optimization: Construct the absolute path from normalized string
-                    // instead of creating a PathBuf first
-                    let abs_path = abs_cwd.join(&normalized);
-                    let mut path = self.format_path(&abs_path);
-                    if self.mark && should_mark_as_dir {
-                        path = self.ensure_trailing_slash(&path);
-                    }
-                    path
-                } else {
-                    // Apply dotRelative: prepend "./" to relative paths
-                    // But not for patterns starting with "../"
-                    let mut path = if self.dot_relative && !normalized.starts_with("../") {
-                        format!("./{normalized}")
-                    } else {
-                        normalized
-                    };
-                    if self.mark && should_mark_as_dir {
-                        path = self.ensure_trailing_slash(&path);
-                    }
-                    path
-                };
+                // Build the result path using optimized helper
+                let result = self.build_result_path(
+                    &normalized,
+                    is_dir,
+                    is_symlink,
+                    &abs_cwd,
+                    &mut result_buffer,
+                );
 
                 // Deduplicate results (important for overlapping brace expansions)
                 if seen.insert(result.clone()) {
-                    results.push(result);
-
                     // When includeChildMatches is false, track this path to exclude its children
-                    if let Some(tracking_path) = path_for_tracking {
-                        matched_parents.insert(tracking_path);
+                    if !self.include_child_matches {
+                        matched_parents.insert(normalized.into_owned());
                     }
+                    results.push(result);
                 }
             }
         }
@@ -697,11 +658,15 @@ impl Glob {
         let estimated_capacity = self.estimate_result_capacity();
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
-        let mut ignored_dirs = std::collections::HashSet::new();
+        let mut ignored_dirs: std::collections::HashSet<String> =
+            std::collections::HashSet::with_capacity(8);
 
         // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut matched_parents: std::collections::HashSet<String> = if self.include_child_matches {
+            std::collections::HashSet::new()
+        } else {
+            std::collections::HashSet::with_capacity(estimated_capacity / 4)
+        };
 
         // Check if any pattern matches the cwd itself ("**" or ".").
         let include_cwd = self.patterns.iter().any(|p| {
@@ -760,6 +725,9 @@ impl Glob {
         let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
             .with_dir_prune_filter(prune_filter);
 
+        // Check if we have ignore patterns
+        let has_ignore_filter = self.ignore_filter.is_some();
+
         for entry in walker.walk() {
             let path = entry.path();
 
@@ -769,49 +737,33 @@ impl Glob {
             };
             let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
 
-            let is_walk_root = rel_str_from_walk_root.is_empty();
+            let is_walk_root_entry = rel_str_from_walk_root.is_empty();
 
-            let normalized: String = if let Some(ref prefix) = prefix_to_strip {
-                if is_walk_root {
-                    prefix.clone()
-                } else if rel_str_from_walk_root.contains('\\') {
-                    format!("{}/{}", prefix, rel_str_from_walk_root.replace('\\', "/"))
-                } else {
-                    format!("{prefix}/{rel_str_from_walk_root}")
-                }
-            } else if rel_str_from_walk_root.contains('\\') {
-                rel_str_from_walk_root.replace('\\', "/")
-            } else {
-                rel_str_from_walk_root.into_owned()
-            };
-
-            let rel_path = if prefix_to_strip.is_some() {
-                std::path::PathBuf::from(&normalized)
-            } else {
-                rel_path_from_walk_root.to_path_buf()
-            };
+            // Use optimized normalization with Cow
+            let normalized = self.normalize_path(
+                &rel_str_from_walk_root,
+                &prefix_to_strip,
+                is_walk_root_entry,
+            );
 
             // Check if this path is inside an ignored directory
-            if !ignored_dirs.is_empty() {
-                let normalized_bytes = normalized.as_bytes();
-                let is_in_ignored = ignored_dirs.iter().any(|ignored_dir: &String| {
-                    let ignored_bytes = ignored_dir.as_bytes();
-                    normalized_bytes.starts_with(ignored_bytes)
-                        && (normalized_bytes.len() == ignored_bytes.len()
-                            || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
-                });
-                if is_in_ignored {
-                    continue;
-                }
+            if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
+                continue;
             }
 
             // Check ignore patterns
-            if let Some(ref ignore_filter) = self.ignore_filter {
+            if has_ignore_filter {
+                let rel_path = if prefix_to_strip.is_some() {
+                    PathBuf::from(normalized.as_ref())
+                } else {
+                    rel_path_from_walk_root.to_path_buf()
+                };
                 let abs_path = abs_cwd.join(&rel_path);
+                let ignore_filter = self.ignore_filter.as_ref().unwrap();
 
                 if ignore_filter.should_ignore(&normalized, &abs_path) {
                     if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                        ignored_dirs.insert(normalized.to_string());
+                        ignored_dirs.insert(normalized.into_owned());
                     }
                     continue;
                 }
@@ -822,7 +774,7 @@ impl Glob {
             }
 
             // Handle root of walk_root
-            if is_walk_root && prefix_to_strip.is_none() {
+            if is_walk_root_entry && prefix_to_strip.is_none() {
                 if include_cwd && !self.nodir {
                     if let Some(ref ignore_filter) = self.ignore_filter {
                         if ignore_filter.should_ignore(".", &abs_cwd) {
@@ -858,17 +810,10 @@ impl Glob {
             }
 
             // When includeChildMatches is false, skip paths that are children of already-matched paths
-            if !self.include_child_matches && !matched_parents.is_empty() {
-                let normalized_bytes = normalized.as_bytes();
-                let is_child_of_matched = matched_parents.iter().any(|matched_path: &String| {
-                    let matched_bytes = matched_path.as_bytes();
-                    normalized_bytes.starts_with(matched_bytes)
-                        && normalized_bytes.len() > matched_bytes.len()
-                        && normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
-                });
-                if is_child_of_matched {
-                    continue;
-                }
+            if !self.include_child_matches
+                && self.is_child_of_matched(&normalized, &matched_parents)
+            {
+                continue;
             }
 
             // Check if any pattern matches
@@ -898,14 +843,15 @@ impl Glob {
             if matches {
                 // For withFileTypes, we return the relative path (no dotRelative/mark modifications)
                 // The JavaScript wrapper handles path formatting via PathScurry
-                if seen.insert(normalized.clone()) {
+                let normalized_string = normalized.into_owned();
+                if seen.insert(normalized_string.clone()) {
                     // When includeChildMatches is false, track this path to exclude its children
                     if !self.include_child_matches {
-                        matched_parents.insert(normalized.clone());
+                        matched_parents.insert(normalized_string.clone());
                     }
 
                     results.push(PathData {
-                        path: normalized,
+                        path: normalized_string,
                         is_directory: is_dir,
                         is_file: entry.is_file(),
                         is_symlink: entry.is_symlink(),
@@ -977,6 +923,164 @@ impl Glob {
             Some(_) => 256, // Deeper patterns
             None => 256,    // Recursive patterns (**): could be many files
         }
+    }
+
+    /// Estimate string buffer capacity based on pattern characteristics.
+    /// Used to pre-allocate string buffers for path construction.
+    #[inline]
+    fn estimate_path_buffer_capacity(&self) -> usize {
+        // Average path length: ~40-60 characters for typical project structures
+        // Add extra for absolute paths and prefix
+        if self.absolute {
+            128 // Absolute paths can be longer
+        } else if self.dot_relative {
+            64 // Relative with ./ prefix
+        } else {
+            48 // Simple relative paths
+        }
+    }
+
+    /// Format a path into the provided buffer, returning a reference to the result.
+    /// This avoids allocations by reusing the buffer across iterations.
+    #[inline]
+    fn format_path_into_buffer<'a>(&self, path: &Path, buffer: &'a mut String) -> &'a str {
+        buffer.clear();
+        let path_str = path.to_string_lossy();
+        if self.posix {
+            // Convert backslashes to forward slashes
+            for c in path_str.chars() {
+                buffer.push(if c == '\\' { '/' } else { c });
+            }
+        } else {
+            buffer.push_str(&path_str);
+        }
+        buffer.as_str()
+    }
+
+    /// Build a normalized path from walk entry, minimizing allocations.
+    /// Returns Cow::Borrowed when no transformation is needed, Cow::Owned otherwise.
+    #[inline]
+    fn normalize_path<'a>(
+        &self,
+        rel_str_from_walk_root: &'a str,
+        prefix_to_strip: &Option<String>,
+        is_walk_root: bool,
+    ) -> Cow<'a, str> {
+        // Fast path: no prefix and no backslashes
+        if prefix_to_strip.is_none() && !rel_str_from_walk_root.contains('\\') {
+            return Cow::Borrowed(rel_str_from_walk_root);
+        }
+
+        // Need to construct the path
+        match prefix_to_strip {
+            Some(prefix) => {
+                if is_walk_root {
+                    Cow::Owned(prefix.clone())
+                } else if rel_str_from_walk_root.contains('\\') {
+                    Cow::Owned(format!(
+                        "{}/{}",
+                        prefix,
+                        rel_str_from_walk_root.replace('\\', "/")
+                    ))
+                } else {
+                    Cow::Owned(format!("{prefix}/{rel_str_from_walk_root}"))
+                }
+            }
+            None => {
+                // Has backslashes, needs conversion
+                Cow::Owned(rel_str_from_walk_root.replace('\\', "/"))
+            }
+        }
+    }
+
+    /// Build the final result path from the normalized path.
+    /// Uses the provided buffer to minimize allocations.
+    #[inline]
+    fn build_result_path(
+        &self,
+        normalized: &str,
+        is_dir: bool,
+        is_symlink: bool,
+        abs_cwd: &Path,
+        result_buffer: &mut String,
+    ) -> String {
+        // When mark:true, add trailing slash to directories but NOT to symlinks
+        let should_mark_as_dir = is_dir && !is_symlink && self.mark;
+
+        if self.absolute {
+            // Build absolute path
+            result_buffer.clear();
+            let abs_path = abs_cwd.join(normalized);
+            let formatted = self.format_path_into_buffer(&abs_path, result_buffer);
+
+            if should_mark_as_dir && !formatted.ends_with('/') && !formatted.ends_with('\\') {
+                let mut result = formatted.to_string();
+                result.push('/');
+                result
+            } else {
+                formatted.to_string()
+            }
+        } else {
+            // Build relative path
+            let base = if self.dot_relative && !normalized.starts_with("../") {
+                result_buffer.clear();
+                result_buffer.push_str("./");
+                result_buffer.push_str(normalized);
+                result_buffer.as_str()
+            } else {
+                normalized
+            };
+
+            if should_mark_as_dir && !base.ends_with('/') && !base.ends_with('\\') {
+                let mut result = base.to_string();
+                result.push('/');
+                result
+            } else {
+                base.to_string()
+            }
+        }
+    }
+
+    /// Check if a path is inside any of the ignored directories.
+    /// Uses byte-level comparison for performance.
+    #[inline]
+    fn is_in_ignored_dir(
+        &self,
+        normalized: &str,
+        ignored_dirs: &std::collections::HashSet<String>,
+    ) -> bool {
+        if ignored_dirs.is_empty() {
+            return false;
+        }
+
+        let normalized_bytes = normalized.as_bytes();
+        ignored_dirs.iter().any(|ignored_dir: &String| {
+            let ignored_bytes = ignored_dir.as_bytes();
+            normalized_bytes.starts_with(ignored_bytes)
+                && (normalized_bytes.len() == ignored_bytes.len()
+                    || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
+        })
+    }
+
+    /// Check if a path is a child of any matched parent.
+    /// Used when includeChildMatches is false.
+    #[inline]
+    fn is_child_of_matched(
+        &self,
+        normalized: &str,
+        matched_parents: &std::collections::HashSet<String>,
+    ) -> bool {
+        if matched_parents.is_empty() {
+            return false;
+        }
+
+        let normalized_bytes = normalized.as_bytes();
+        matched_parents.iter().any(|matched_path: &String| {
+            let matched_bytes = matched_path.as_bytes();
+            normalized_bytes.starts_with(matched_bytes)
+                && normalized_bytes.len() > matched_bytes.len()
+                && normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+        })
     }
 
     /// Calculate the optimal walk root based on literal prefixes of patterns.
