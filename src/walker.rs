@@ -484,4 +484,129 @@ mod tests {
         // When following symlinks, it reports as the target type
         assert!(link_entry.is_file());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_cyclic_symlink_self_reference() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure:
+        // dir/
+        //   file.txt
+        //   self -> . (symlink to itself)
+        fs::create_dir_all(base.join("dir")).unwrap();
+        File::create(base.join("dir/file.txt")).unwrap();
+        symlink(".", base.join("dir/self")).unwrap();
+
+        // Walk with follow_symlinks=true - should NOT infinite loop
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should complete with finite results
+        assert!(entries.len() < 100);
+        assert!(entries.len() >= 2); // At least root and file.txt
+
+        // Should find the file
+        assert!(entries.iter().any(|e| e.path().ends_with("file.txt")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_cyclic_symlink_parent_reference() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure:
+        // root.txt
+        // child/
+        //   child.txt
+        //   back -> .. (symlink to parent)
+        File::create(base.join("root.txt")).unwrap();
+        fs::create_dir_all(base.join("child")).unwrap();
+        File::create(base.join("child/child.txt")).unwrap();
+        symlink("..", base.join("child/back")).unwrap();
+
+        // Walk with follow_symlinks=true - should NOT infinite loop
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should complete with finite results
+        assert!(entries.len() < 100);
+
+        // Should find files
+        assert!(entries.iter().any(|e| e.path().ends_with("root.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("child.txt")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_cyclic_symlink_mutual_reference() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure:
+        // a/
+        //   a.txt
+        //   to-b -> ../b
+        // b/
+        //   b.txt
+        //   to-a -> ../a
+        fs::create_dir_all(base.join("a")).unwrap();
+        fs::create_dir_all(base.join("b")).unwrap();
+        File::create(base.join("a/a.txt")).unwrap();
+        File::create(base.join("b/b.txt")).unwrap();
+        symlink("../b", base.join("a/to-b")).unwrap();
+        symlink("../a", base.join("b/to-a")).unwrap();
+
+        // Walk with follow_symlinks=true - should NOT infinite loop
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should complete with finite results
+        assert!(entries.len() < 100);
+
+        // Should find files
+        assert!(entries.iter().any(|e| e.path().ends_with("a.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("b.txt")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_cyclic_symlink_without_follow() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure with cycle
+        fs::create_dir_all(base.join("dir")).unwrap();
+        File::create(base.join("dir/file.txt")).unwrap();
+        symlink(".", base.join("dir/self")).unwrap();
+
+        // Walk without following - symlink should be listed but not traversed
+        let walker = Walker::new(
+            base.to_path_buf(),
+            WalkOptions::new().follow_symlinks(false),
+        );
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should find the symlink entry
+        assert!(entries
+            .iter()
+            .any(|e| { e.path().ends_with("self") && e.is_symlink() }));
+
+        // Should NOT have any deeply nested paths through the cycle
+        let deep_paths: Vec<_> = entries
+            .iter()
+            .filter(|e| e.path().to_string_lossy().contains("self/self"))
+            .collect();
+        assert!(deep_paths.is_empty());
+    }
 }
