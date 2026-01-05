@@ -79,6 +79,7 @@ interface NativeGlobOptions {
   platform?: string
   windowsPathsNoEscape?: boolean
   allowWindowsEscape?: boolean
+  parallel?: boolean
 }
 
 // Types
@@ -122,6 +123,27 @@ export interface GlobOptions {
 
   // Control options
   signal?: AbortSignal
+
+  // Performance options (globlin-specific)
+  /**
+   * Enable parallel directory walking using multiple threads.
+   * 
+   * When `true`, uses parallel traversal which can be faster on:
+   * - Spinning hard drives (HDDs)
+   * - Network filesystems (NFS, CIFS)
+   * - Very large directory trees (100k+ files)
+   * 
+   * When `false` (default), uses serial traversal which is:
+   * - Faster on SSDs for small to medium directories
+   * - Deterministic result ordering
+   * - Lower memory overhead
+   * 
+   * **Note:** This is a globlin-specific option not present in the original glob package.
+   * Results may be returned in a different order when `parallel: true`.
+   * 
+   * @default false
+   */
+  parallel?: boolean
 }
 
 /**
