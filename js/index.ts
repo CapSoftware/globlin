@@ -109,6 +109,13 @@ export interface GlobOptions {
   signal?: AbortSignal
 }
 
+/**
+ * Type guard to check if an object is a Glob instance (for cache reuse)
+ */
+function isGlobInstance(obj: unknown): obj is Glob {
+  return obj instanceof Glob
+}
+
 export interface IgnorePattern {
   ignored?: (path: string) => boolean
   childrenIgnored?: (path: string) => boolean
@@ -415,22 +422,52 @@ export function unescape(pattern: string, options?: GlobOptions): string {
 
 /**
  * Glob class for reusable glob operations
+ *
+ * @example
+ * ```ts
+ * // Basic usage
+ * const g = new Glob('*.js', { cwd: '/path' })
+ * const files = g.walkSync()
+ *
+ * // Cache reuse - pass a Glob instance as options to reuse settings
+ * const g2 = new Glob('*.ts', g)  // Reuses cwd, dot, nocase, etc. from g
+ * ```
  */
 export class Glob {
   readonly pattern: string[]
   readonly options: GlobOptions
 
-  constructor(pattern: string | string[], options: GlobOptions = {}) {
+  /**
+   * Create a new Glob instance.
+   *
+   * @param pattern - Glob pattern or array of patterns
+   * @param options - Glob options or a previous Glob instance to reuse settings
+   *
+   * When a Glob instance is passed as options, its settings (cwd, dot, nocase, etc.)
+   * are copied to the new instance. This allows for efficient reuse of settings
+   * when running multiple glob operations with similar configurations.
+   */
+  constructor(pattern: string | string[], options: GlobOptions | Glob = {}) {
+    // If options is a Glob instance, extract its options (cache reuse pattern)
+    // This matches glob v13 behavior where you can pass a Glob as options
+    let resolvedOptions: GlobOptions
+    if (isGlobInstance(options)) {
+      // Copy options from the existing Glob instance
+      resolvedOptions = { ...options.options }
+    } else {
+      resolvedOptions = options
+    }
+
     // Validate options on construction (same as glob v13)
-    if (options.withFileTypes && options.absolute !== undefined) {
+    if (resolvedOptions.withFileTypes && resolvedOptions.absolute !== undefined) {
       throw new TypeError('cannot set absolute and withFileTypes:true')
     }
-    if (options.matchBase && options.noglobstar) {
+    if (resolvedOptions.matchBase && resolvedOptions.noglobstar) {
       throw new TypeError('base matching requires globstar')
     }
 
     this.pattern = Array.isArray(pattern) ? pattern : [pattern]
-    this.options = options
+    this.options = resolvedOptions
   }
 
   walk(): Promise<string[]> {
