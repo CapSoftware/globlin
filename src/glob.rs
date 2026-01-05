@@ -318,10 +318,19 @@ impl Glob {
             (None, Some(d)) => Some(d + 1),   // Pattern depth + 1 (for root directory)
             (None, None) => None,             // Unlimited (has **)
         };
+
+        // Optimization: Only enable accurate symlink detection when needed.
+        // The `mark` option requires knowing whether an entry is a symlink to avoid
+        // adding a trailing slash. When following symlinks, walkdir reports the TARGET
+        // type, so we need an extra syscall to detect the symlink. Skip this overhead
+        // when not needed.
+        let need_accurate_symlink_detection = mark && follow;
+
         let walk_options = WalkOptions::new()
             .follow_symlinks(follow)
             .max_depth(walker_max_depth)
-            .dot(true);
+            .dot(true)
+            .need_accurate_symlink_detection(need_accurate_symlink_detection);
 
         // Pre-compute: check if any pattern requires directory matching (ends with /)
         let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());
@@ -448,6 +457,9 @@ impl Glob {
         let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
             .with_dir_prune_filter(prune_filter);
 
+        // Optimization: Check if we have any ignore patterns to avoid unnecessary work
+        let has_ignore_filter = self.ignore_filter.is_some();
+
         for entry in walker.walk() {
             let path = entry.path();
 
@@ -479,13 +491,6 @@ impl Glob {
                 rel_str_from_walk_root.into_owned()
             };
 
-            // For operations that need the actual relative path from cwd
-            let rel_path = if prefix_to_strip.is_some() {
-                std::path::PathBuf::from(&normalized)
-            } else {
-                rel_path_from_walk_root.to_path_buf()
-            };
-
             // Check if this path is inside an ignored directory.
             // Optimization: Use byte-level comparison instead of char iteration.
             if !ignored_dirs.is_empty() {
@@ -502,14 +507,22 @@ impl Glob {
             }
 
             // Check ignore patterns
-            if let Some(ref ignore_filter) = self.ignore_filter {
+            // Optimization: Only create rel_path and abs_path when we have ignore patterns
+            if has_ignore_filter {
+                // For operations that need the actual relative path from cwd
+                let rel_path = if prefix_to_strip.is_some() {
+                    std::path::PathBuf::from(&normalized)
+                } else {
+                    rel_path_from_walk_root.to_path_buf()
+                };
                 let abs_path = abs_cwd.join(&rel_path);
+                let ignore_filter = self.ignore_filter.as_ref().unwrap();
 
                 // Check if this specific path should be ignored
                 if ignore_filter.should_ignore(&normalized, &abs_path) {
                     // If children are also ignored, mark this directory
                     if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                        ignored_dirs.insert(normalized.to_string());
+                        ignored_dirs.insert(normalized.clone());
                     }
                     continue;
                 }
@@ -517,7 +530,7 @@ impl Glob {
                 // Also check if this is a directory whose children should be ignored
                 // (for optimization - skip traversing)
                 if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                    ignored_dirs.insert(normalized.to_string());
+                    ignored_dirs.insert(normalized.clone());
                 }
             }
 
@@ -633,7 +646,9 @@ impl Glob {
 
                 let result = if self.absolute {
                     // Return absolute path
-                    let abs_path = abs_cwd.join(&rel_path);
+                    // Optimization: Construct the absolute path from normalized string
+                    // instead of creating a PathBuf first
+                    let abs_path = abs_cwd.join(&normalized);
                     let mut path = self.format_path(&abs_path);
                     if self.mark && should_mark_as_dir {
                         path = self.ensure_trailing_slash(&path);

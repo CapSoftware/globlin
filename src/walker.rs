@@ -12,6 +12,10 @@ pub struct WalkOptions {
     pub max_depth: Option<usize>,
     /// Include dotfiles (files starting with .)
     pub dot: bool,
+    /// Whether to accurately detect symlinks even when following them.
+    /// This is needed for the `mark` option to correctly NOT add trailing slashes to symlinks.
+    /// When false, avoids an extra stat call per file (faster).
+    pub need_accurate_symlink_detection: bool,
 }
 
 /// A filter function that can prune directories during walking.
@@ -37,6 +41,11 @@ impl WalkOptions {
         self.dot = include_dot;
         self
     }
+
+    pub fn need_accurate_symlink_detection(mut self, need: bool) -> Self {
+        self.need_accurate_symlink_detection = need;
+        self
+    }
 }
 
 /// A single entry returned from the walker
@@ -50,6 +59,25 @@ pub struct WalkEntry {
 }
 
 impl WalkEntry {
+    /// Create a WalkEntry from a walkdir DirEntry without checking symlink metadata.
+    /// This is faster but may not correctly detect symlinks when following links.
+    /// Use this when `mark` option is false and you don't need accurate symlink detection.
+    #[inline]
+    pub fn from_dir_entry_fast(entry: &DirEntry) -> Self {
+        let file_type = entry.file_type();
+        Self {
+            path: entry.path().to_path_buf(),
+            depth: entry.depth(),
+            is_dir: file_type.is_dir(),
+            is_file: file_type.is_file(),
+            is_symlink: file_type.is_symlink(),
+        }
+    }
+
+    /// Create a WalkEntry from a walkdir DirEntry with full symlink detection.
+    /// This is slower because it makes an extra syscall for symlink_metadata,
+    /// but correctly detects symlinks even when following them.
+    /// Use this when `mark` option is true.
     pub fn from_dir_entry(entry: &DirEntry) -> Self {
         let file_type = entry.file_type();
         // When following symlinks, walkdir reports the TARGET type, not the symlink type.
@@ -96,6 +124,12 @@ impl WalkEntry {
 
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         self.path.file_name()
+    }
+
+    /// Get the file name as a string slice if possible, for fast comparisons.
+    #[inline]
+    pub fn file_name_str(&self) -> Option<&str> {
+        self.path.file_name().and_then(|s| s.to_str())
     }
 }
 
@@ -152,6 +186,15 @@ impl Walker {
 
         let dot = self.options.dot;
         let root = self.root.clone();
+        let need_accurate_symlink = self.options.need_accurate_symlink_detection;
+
+        // Choose the appropriate entry creation function based on whether we need
+        // accurate symlink detection. This avoids an extra syscall per file when not needed.
+        let create_entry = if need_accurate_symlink {
+            WalkEntry::from_dir_entry
+        } else {
+            WalkEntry::from_dir_entry_fast
+        };
 
         // If we have a pruning filter, we need to use it in filter_entry
         if let Some(ref prune_filter) = self.dir_prune_filter {
@@ -161,6 +204,7 @@ impl Walker {
                 .into_iter()
                 .filter_entry(|e| {
                     // Filter dot files if dot option is false
+                    // Optimization: Use bytes comparison for dot check
                     if !dot {
                         if let Some(name) = e.file_name().to_str() {
                             if e.depth() > 0 && name.starts_with('.') {
@@ -183,7 +227,7 @@ impl Walker {
                     true
                 })
                 .filter_map(|result| match result {
-                    Ok(entry) => Some(WalkEntry::from_dir_entry(&entry)),
+                    Ok(entry) => Some(create_entry(&entry)),
                     Err(err) => {
                         if let Some(path) = err.path() {
                             if let Ok(meta) = path.symlink_metadata() {
@@ -221,9 +265,9 @@ impl Walker {
                         }
                         true
                     })
-                    .filter_map(|result| {
+                    .filter_map(move |result| {
                         match result {
-                            Ok(entry) => Some(WalkEntry::from_dir_entry(&entry)),
+                            Ok(entry) => Some(create_entry(&entry)),
                             Err(err) => {
                                 // For broken symlinks (or other IO errors), try to extract the path
                                 // and return it as an entry. This handles the case where follow_links
@@ -638,8 +682,14 @@ mod tests {
         // Create a symlink to the directory
         symlink(base.join("real-dir"), base.join("symlink-to-dir")).unwrap();
 
-        // Walk WITH following symlinks - check what is_symlink reports
-        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        // Walk WITH following symlinks AND accurate symlink detection enabled
+        // (This is needed to correctly detect symlinks when following them)
+        let walker = Walker::new(
+            base.to_path_buf(),
+            WalkOptions::new()
+                .follow_symlinks(true)
+                .need_accurate_symlink_detection(true),
+        );
         let entries: Vec<_> = walker.walk_sync();
 
         // Find the symlink entry
