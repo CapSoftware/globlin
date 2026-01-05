@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::Path;
 
 use crate::pattern::{expand_braces, Pattern, PatternOptions};
@@ -18,6 +19,33 @@ pub struct IgnoreFilter {
     absolute_children: Vec<Pattern>,
     /// Pattern options for creating patterns
     pattern_opts: PatternOptions,
+}
+
+/// Normalize path separators, avoiding allocation when no backslashes are present.
+/// Returns Cow::Borrowed when the input already uses forward slashes only.
+#[inline]
+fn normalize_path_separators(path: &str) -> Cow<'_, str> {
+    if path.contains('\\') {
+        Cow::Owned(path.replace('\\', "/"))
+    } else {
+        Cow::Borrowed(path)
+    }
+}
+
+/// Build path with trailing slash, avoiding allocation when already has slash.
+#[inline]
+fn with_trailing_slash<'a>(path: &'a str, buffer: &'a mut String) -> &'a str {
+    if path == "." {
+        "./"
+    } else if path.ends_with('/') {
+        path
+    } else {
+        buffer.clear();
+        buffer.reserve(path.len() + 1);
+        buffer.push_str(path);
+        buffer.push('/');
+        buffer.as_str()
+    }
 }
 
 impl IgnoreFilter {
@@ -108,34 +136,31 @@ impl IgnoreFilter {
     /// `rel_path` is the relative path from the glob's cwd.
     /// `abs_path` is the absolute path.
     pub fn should_ignore(&self, rel_path: &str, abs_path: &Path) -> bool {
-        // Normalize the relative path
-        let rel_normalized = rel_path.replace('\\', "/");
-        let rel_with_slash = if rel_normalized == "." {
-            "./".to_string()
-        } else if rel_normalized.ends_with('/') {
-            rel_normalized.clone()
-        } else {
-            format!("{rel_normalized}/")
-        };
+        // Normalize the relative path (avoids allocation if no backslashes)
+        let rel_normalized = normalize_path_separators(rel_path);
+
+        // Build path with trailing slash using reusable buffer
+        let mut slash_buffer = String::new();
+        let rel_with_slash = with_trailing_slash(&rel_normalized, &mut slash_buffer);
 
         // Check relative patterns
         for pattern in &self.relative {
             // Use the pattern's match method which handles globstar correctly
-            if pattern.matches(&rel_normalized) || pattern.matches(&rel_with_slash) {
+            if pattern.matches(&rel_normalized) || pattern.matches(rel_with_slash) {
                 return true;
             }
         }
 
         // Check absolute patterns
-        let abs_str = abs_path.to_string_lossy().replace('\\', "/");
-        let abs_with_slash = if abs_str.ends_with('/') {
-            abs_str.clone()
-        } else {
-            format!("{abs_str}/")
-        };
+        let abs_lossy = abs_path.to_string_lossy();
+        let abs_str = normalize_path_separators(&abs_lossy);
+
+        // Reuse buffer for absolute path with slash
+        slash_buffer.clear();
+        let abs_with_slash = with_trailing_slash(&abs_str, &mut slash_buffer);
 
         for pattern in &self.absolute {
-            if pattern.matches(&abs_str) || pattern.matches(&abs_with_slash) {
+            if pattern.matches(&abs_str) || pattern.matches(abs_with_slash) {
                 return true;
             }
         }
@@ -147,33 +172,30 @@ impl IgnoreFilter {
     ///
     /// This is used to skip traversing into directories that match patterns like "node_modules/**".
     pub fn children_ignored(&self, rel_path: &str, abs_path: &Path) -> bool {
-        // Normalize the relative path with trailing slash
-        let rel_normalized = rel_path.replace('\\', "/");
-        let rel_with_slash = if rel_normalized == "." {
-            "./".to_string()
-        } else if rel_normalized.ends_with('/') {
-            rel_normalized.clone()
-        } else {
-            format!("{rel_normalized}/")
-        };
+        // Normalize the relative path (avoids allocation if no backslashes)
+        let rel_normalized = normalize_path_separators(rel_path);
+
+        // Build path with trailing slash using reusable buffer
+        let mut slash_buffer = String::new();
+        let rel_with_slash = with_trailing_slash(&rel_normalized, &mut slash_buffer);
 
         // Check relative children patterns
         for pattern in &self.relative_children {
-            if pattern.matches(&rel_normalized) || pattern.matches(&rel_with_slash) {
+            if pattern.matches(&rel_normalized) || pattern.matches(rel_with_slash) {
                 return true;
             }
         }
 
         // Check absolute children patterns
-        let abs_str = abs_path.to_string_lossy().replace('\\', "/");
-        let abs_with_slash = if abs_str.ends_with('/') {
-            abs_str.clone()
-        } else {
-            format!("{abs_str}/")
-        };
+        let abs_lossy = abs_path.to_string_lossy();
+        let abs_str = normalize_path_separators(&abs_lossy);
+
+        // Reuse buffer for absolute path with slash
+        slash_buffer.clear();
+        let abs_with_slash = with_trailing_slash(&abs_str, &mut slash_buffer);
 
         for pattern in &self.absolute_children {
-            if pattern.matches(&abs_str) || pattern.matches(&abs_with_slash) {
+            if pattern.matches(&abs_str) || pattern.matches(abs_with_slash) {
                 return true;
             }
         }

@@ -1,9 +1,21 @@
 // Directory walking and filesystem traversal
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
 // Parallel walking support via jwalk (jwalk::WalkDir is used directly)
+
+/// Normalize path separators from backslash to forward slash.
+/// Returns Cow::Borrowed when no backslashes are present (avoids allocation).
+#[inline]
+fn normalize_path_str(path: &str) -> Cow<'_, str> {
+    if path.contains('\\') {
+        Cow::Owned(path.replace('\\', "/"))
+    } else {
+        Cow::Borrowed(path)
+    }
+}
 
 /// Options for directory walking
 #[derive(Debug, Clone, Default)]
@@ -278,7 +290,8 @@ impl Walker {
                     if e.file_type().is_dir() && e.depth() > 0 {
                         // Get the path relative to root
                         if let Ok(rel_path) = e.path().strip_prefix(&root) {
-                            let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+                            let rel_lossy = rel_path.to_string_lossy();
+                            let rel_str = normalize_path_str(&rel_lossy);
                             // If the prune filter returns false, skip this directory and its descendants
                             if !prune_filter(&rel_str) {
                                 return false;
@@ -469,7 +482,8 @@ impl Walker {
                 .into_iter()
                 .filter(|entry| {
                     if let Ok(rel_path) = entry.path().strip_prefix(&root) {
-                        let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+                        let rel_lossy = rel_path.to_string_lossy();
+                        let rel_str = normalize_path_str(&rel_lossy);
                         // Root directory always passes
                         if rel_str.is_empty() {
                             return true;
@@ -482,7 +496,8 @@ impl Walker {
                         // For files, check if their parent directory passes the filter
                         if !entry.is_dir() {
                             if let Some(parent) = rel_path.parent() {
-                                let parent_str = parent.to_string_lossy().replace('\\', "/");
+                                let parent_lossy = parent.to_string_lossy();
+                                let parent_str = normalize_path_str(&parent_lossy);
                                 if !parent_str.is_empty() && !prune_filter(&parent_str) {
                                     return false;
                                 }

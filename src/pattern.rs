@@ -1,4 +1,5 @@
 use fancy_regex::Regex;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -196,10 +197,10 @@ impl Pattern {
         // Check if pattern ends with / (requires directory match)
         // Strip the trailing slash for matching purposes
         let requires_dir = preprocessed.ends_with('/');
-        let pattern_for_matching = if requires_dir {
-            preprocessed.trim_end_matches('/').to_string()
+        let pattern_for_matching: Cow<'_, str> = if requires_dir {
+            Cow::Owned(preprocessed.trim_end_matches('/').to_string())
         } else {
-            preprocessed.clone()
+            preprocessed
         };
 
         // Parse pattern into parts
@@ -1104,21 +1105,33 @@ fn has_extglob(pattern: &str) -> bool {
 
 /// Preprocess a glob pattern for matching.
 /// Handles ./ prefix stripping and other normalization.
-pub fn preprocess_pattern(pattern: &str) -> String {
-    let mut result = pattern.to_string();
+/// Returns Cow::Borrowed when no transformation is needed to avoid allocation.
+pub fn preprocess_pattern(pattern: &str) -> Cow<'_, str> {
+    // Fast path: no transformation needed
+    if !pattern.starts_with("./") {
+        return Cow::Borrowed(pattern);
+    }
 
     // Strip leading ./ (common in glob patterns)
-    while result.starts_with("./") {
-        result = result[2..].to_string();
+    let mut rest = pattern;
+    while let Some(stripped) = rest.strip_prefix("./") {
+        rest = stripped;
     }
 
     // If the pattern was just "./" (or ".//" etc), it becomes empty after stripping.
     // Treat this as "." which matches the current directory.
-    if result.is_empty() && pattern.starts_with("./") {
-        return ".".to_string();
+    if rest.is_empty() {
+        Cow::Borrowed(".")
+    } else {
+        Cow::Owned(rest.to_string())
     }
+}
 
-    result
+/// String version of preprocess_pattern for cases where String is required.
+/// Used in places where the caller needs ownership.
+#[inline]
+pub fn preprocess_pattern_owned(pattern: &str) -> String {
+    preprocess_pattern(pattern).into_owned()
 }
 
 /// Parse an extglob pattern starting at position i (which is the type character).
