@@ -822,4 +822,167 @@ mod tests {
             .collect();
         assert!(secrets.is_empty());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_broken_symlink_returns_entry() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create a broken symlink (target doesn't exist)
+        symlink("nonexistent-target", base.join("broken-link")).unwrap();
+        File::create(base.join("real-file.txt")).unwrap();
+
+        // Walk without following symlinks - should find both entries
+        let walker = Walker::new(
+            base.to_path_buf(),
+            WalkOptions::new().follow_symlinks(false),
+        );
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should find real file
+        assert!(entries.iter().any(|e| e.path().ends_with("real-file.txt")));
+        // Should find broken symlink as well
+        assert!(entries
+            .iter()
+            .any(|e| e.path().ends_with("broken-link") && e.is_symlink()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_broken_symlink_with_follow() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create a broken symlink
+        symlink("nonexistent-target", base.join("broken-link")).unwrap();
+        File::create(base.join("real-file.txt")).unwrap();
+
+        // Walk WITH following symlinks - broken symlink should still be returned
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should find real file
+        assert!(entries.iter().any(|e| e.path().ends_with("real-file.txt")));
+        // Should find broken symlink (returned as symlink entry)
+        let broken = entries.iter().find(|e| e.path().ends_with("broken-link"));
+        assert!(broken.is_some(), "Broken symlink should be returned");
+        assert!(broken.unwrap().is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_symlink_target_deleted_after_creation() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create a real file and symlink to it
+        let target = base.join("target.txt");
+        File::create(&target).unwrap();
+        symlink(&target, base.join("link.txt")).unwrap();
+
+        // Create another file so we have something to find
+        File::create(base.join("other.txt")).unwrap();
+
+        // Delete the target, making the symlink broken
+        fs::remove_file(&target).unwrap();
+
+        // Walker should not crash and should return the broken symlink
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().follow_symlinks(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should not have crashed
+        assert!(entries.len() >= 2); // At least root and other.txt
+
+        // Should find other.txt
+        assert!(entries.iter().any(|e| e.path().ends_with("other.txt")));
+
+        // Should find the broken symlink
+        let link = entries.iter().find(|e| e.path().ends_with("link.txt"));
+        assert!(link.is_some(), "Broken symlink should be in results");
+    }
+
+    #[test]
+    fn test_walker_nonexistent_root() {
+        let nonexistent = PathBuf::from("/definitely/does/not/exist/path");
+
+        // Walker on nonexistent path should return empty, not crash
+        let walker = Walker::new(nonexistent, WalkOptions::new());
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should return empty results or just a single entry with error
+        // The important thing is it doesn't crash
+        assert!(entries.len() <= 1);
+    }
+
+    #[test]
+    fn test_walker_empty_directory() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Don't create any files - empty directory
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new());
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should have only the root entry
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].is_dir());
+    }
+
+    #[test]
+    fn test_walker_special_characters_in_path() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create files with special characters
+        File::create(base.join("file with spaces.txt")).unwrap();
+        File::create(base.join("file-with-dashes.txt")).unwrap();
+        File::create(base.join("file_with_underscores.txt")).unwrap();
+        File::create(base.join("file.multiple.dots.txt")).unwrap();
+
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new());
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should find all files
+        assert!(entries
+            .iter()
+            .any(|e| e.path().ends_with("file with spaces.txt")));
+        assert!(entries
+            .iter()
+            .any(|e| e.path().ends_with("file-with-dashes.txt")));
+        assert!(entries
+            .iter()
+            .any(|e| e.path().ends_with("file_with_underscores.txt")));
+        assert!(entries
+            .iter()
+            .any(|e| e.path().ends_with("file.multiple.dots.txt")));
+    }
+
+    #[test]
+    fn test_walker_unicode_filenames() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create files with unicode names (these should work on most filesystems)
+        let unicode_names = ["файл.txt", "ファイル.txt", "αρχείο.txt"];
+
+        for name in unicode_names {
+            if File::create(base.join(name)).is_err() {
+                // Skip if filesystem doesn't support this filename
+                continue;
+            }
+        }
+
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new());
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Should not crash regardless of what was created
+        assert!(!entries.is_empty());
+    }
 }
