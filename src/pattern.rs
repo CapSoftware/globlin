@@ -48,6 +48,8 @@ pub struct PatternOptions {
     pub platform: Option<String>,
     /// Perform case-insensitive matching
     pub nocase: bool,
+    /// Treat braces as literal characters (disables brace expansion)
+    pub nobrace: bool,
 }
 
 /// Represents a segment of a parsed glob pattern.
@@ -156,9 +158,7 @@ impl Pattern {
             pattern,
             PatternOptions {
                 noext,
-                windows_paths_no_escape: false,
-                platform: None,
-                nocase: false,
+                ..Default::default()
             },
         )
     }
@@ -213,7 +213,12 @@ impl Pattern {
         );
 
         // Compute fast-path optimization
-        let fast_path = detect_fast_path(&pattern_for_matching, &parts, options.nocase);
+        let fast_path = detect_fast_path(
+            &pattern_for_matching,
+            &parts,
+            options.nocase,
+            options.nobrace,
+        );
 
         Self {
             raw: pattern.to_string(),
@@ -1541,7 +1546,7 @@ fn pattern_to_regex(
 ///
 /// # Returns
 /// The detected `FastPath` variant, or `FastPath::None` if no optimization applies.
-fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool) -> FastPath {
+fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool, nobrace: bool) -> FastPath {
     // Preprocess the pattern (for documentation purposes, actual analysis uses parts)
     let _pattern = preprocess_pattern(pattern);
 
@@ -1566,13 +1571,17 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool) -> FastP
                 let ext_for_match = if nocase { ext.to_lowercase() } else { ext };
                 return FastPath::ExtensionOnly(ext_for_match);
             }
-            if let Some(exts) = parse_extension_set_pattern(raw) {
-                let exts_for_match: HashSet<String> = if nocase {
-                    exts.into_iter().map(|e| e.to_lowercase()).collect()
-                } else {
-                    exts
-                };
-                return FastPath::ExtensionSet(exts_for_match);
+            // Only detect extension set patterns if nobrace is false
+            // When nobrace is true, braces should be treated as literal characters
+            if !nobrace {
+                if let Some(exts) = parse_extension_set_pattern(raw) {
+                    let exts_for_match: HashSet<String> = if nocase {
+                        exts.into_iter().map(|e| e.to_lowercase()).collect()
+                    } else {
+                        exts
+                    };
+                    return FastPath::ExtensionSet(exts_for_match);
+                }
             }
         }
     }
@@ -1585,13 +1594,16 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool) -> FastP
                 let ext_for_match = if nocase { ext.to_lowercase() } else { ext };
                 return FastPath::RecursiveExtension(ext_for_match);
             }
-            if let Some(exts) = parse_extension_set_pattern(raw) {
-                let exts_for_match: HashSet<String> = if nocase {
-                    exts.into_iter().map(|e| e.to_lowercase()).collect()
-                } else {
-                    exts
-                };
-                return FastPath::RecursiveExtensionSet(exts_for_match);
+            // Only detect extension set patterns if nobrace is false
+            if !nobrace {
+                if let Some(exts) = parse_extension_set_pattern(raw) {
+                    let exts_for_match: HashSet<String> = if nocase {
+                        exts.into_iter().map(|e| e.to_lowercase()).collect()
+                    } else {
+                        exts
+                    };
+                    return FastPath::RecursiveExtensionSet(exts_for_match);
+                }
             }
         }
     }
@@ -2825,10 +2837,8 @@ mod tests {
     fn test_windows_paths_no_escape() {
         // With windowsPathsNoEscape, backslashes are path separators
         let opts = PatternOptions {
-            noext: false,
             windows_paths_no_escape: true,
-            platform: None,
-            nocase: false,
+            ..Default::default()
         };
 
         let pattern = Pattern::with_pattern_options(r"a\b\c", opts.clone());
@@ -2841,10 +2851,8 @@ mod tests {
     fn test_windows_paths_escape_chars_literal() {
         // With windowsPathsNoEscape, we can't escape magic chars with backslash
         let opts = PatternOptions {
-            noext: false,
             windows_paths_no_escape: true,
-            platform: None,
-            nocase: false,
+            ..Default::default()
         };
 
         let pattern = Pattern::with_pattern_options(r"a\*", opts.clone());
@@ -2989,10 +2997,8 @@ mod tests {
         let pattern = Pattern::with_pattern_options(
             "/etc/passwd",
             PatternOptions {
-                noext: false,
-                windows_paths_no_escape: false,
                 platform: Some("linux".to_string()),
-                nocase: false,
+                ..Default::default()
             },
         );
         assert!(pattern.is_absolute());
@@ -3007,10 +3013,8 @@ mod tests {
         let pattern = Pattern::with_pattern_options(
             "C:/Users/test",
             PatternOptions {
-                noext: false,
-                windows_paths_no_escape: false,
                 platform: Some("win32".to_string()),
-                nocase: false,
+                ..Default::default()
             },
         );
         assert!(pattern.is_absolute());
@@ -3025,10 +3029,8 @@ mod tests {
         let pattern = Pattern::with_pattern_options(
             "//server/share/file",
             PatternOptions {
-                noext: false,
-                windows_paths_no_escape: false,
                 platform: Some("win32".to_string()),
-                nocase: false,
+                ..Default::default()
             },
         );
         assert!(pattern.is_absolute());
@@ -3081,10 +3083,8 @@ mod tests {
         let pattern = Pattern::with_pattern_options(
             "/etc/passwd",
             PatternOptions {
-                noext: false,
-                windows_paths_no_escape: false,
                 platform: Some("linux".to_string()),
-                nocase: false,
+                ..Default::default()
             },
         );
         assert_eq!(pattern.glob_string(), "/etc/passwd");
@@ -3243,10 +3243,8 @@ mod tests {
         let pattern = Pattern::with_pattern_options(
             "//?/C:/Users/test",
             PatternOptions {
-                noext: false,
-                windows_paths_no_escape: false,
                 platform: Some("win32".to_string()),
-                nocase: false,
+                ..Default::default()
             },
         );
         assert!(pattern.is_absolute());
@@ -3298,10 +3296,8 @@ mod test_nocase {
         Pattern::with_pattern_options(
             pattern,
             PatternOptions {
-                noext: false,
-                windows_paths_no_escape: false,
-                platform: None,
                 nocase,
+                ..Default::default()
             },
         )
     }

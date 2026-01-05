@@ -113,6 +113,7 @@ impl Glob {
             windows_paths_no_escape,
             platform: Some(platform.clone()),
             nocase,
+            nobrace,
         };
 
         // Process all input patterns and expand braces for each
@@ -424,7 +425,11 @@ impl Glob {
             // For patterns that end with /, only match if entry is a directory
             let is_dir = entry.is_dir();
             let matches = self.patterns.iter().any(|p| {
-                let path_matches = p.matches(&normalized);
+                // Try fast-path matching first, fall back to regex if not applicable
+                let path_matches = match p.matches_fast(&normalized) {
+                    Some(result) => result,
+                    None => p.matches(&normalized),
+                };
                 if path_matches && p.requires_dir() {
                     // Pattern ends with /, only match directories
                     is_dir

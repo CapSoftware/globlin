@@ -26,8 +26,8 @@ impl IgnoreFilter {
         let pattern_opts = PatternOptions {
             noext,
             windows_paths_no_escape,
-            platform: None,
             nocase: false, // Ignore patterns are always case-sensitive per glob behavior
+            ..Default::default()
         };
 
         let mut filter = Self {
