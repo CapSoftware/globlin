@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use napi::bindgen_prelude::*;
 
+use crate::cache::get_or_compile_pattern;
 use crate::ignore::IgnoreFilter;
 use crate::options::{validate_options, GlobOptions};
 use crate::pattern::{expand_braces, preprocess_pattern, Pattern, PatternOptions};
@@ -220,30 +221,24 @@ impl Glob {
                 let transformed = apply_match_base(pattern_str);
                 // Deduplicate: only add if we haven't seen this pattern before
                 if seen_patterns.insert(transformed.clone()) {
-                    patterns.push(Pattern::with_pattern_options(
-                        &transformed,
-                        pattern_opts.clone(),
-                    ));
+                    // Use pattern cache for compiled patterns
+                    patterns.push(get_or_compile_pattern(&transformed, &pattern_opts));
                 }
             } else {
                 let expanded = expand_braces(pattern_str);
                 if expanded.is_empty() {
                     let transformed = apply_match_base(pattern_str);
                     if seen_patterns.insert(transformed.clone()) {
-                        patterns.push(Pattern::with_pattern_options(
-                            &transformed,
-                            pattern_opts.clone(),
-                        ));
+                        // Use pattern cache for compiled patterns
+                        patterns.push(get_or_compile_pattern(&transformed, &pattern_opts));
                     }
                 } else {
                     for p in expanded {
                         let transformed = apply_match_base(&p);
                         // Deduplicate: skip duplicate expanded patterns
                         if seen_patterns.insert(transformed.clone()) {
-                            patterns.push(Pattern::with_pattern_options(
-                                &transformed,
-                                pattern_opts.clone(),
-                            ));
+                            // Use pattern cache for compiled patterns
+                            patterns.push(get_or_compile_pattern(&transformed, &pattern_opts));
                         }
                     }
                 }

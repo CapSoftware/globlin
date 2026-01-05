@@ -5,6 +5,7 @@
 extern crate napi_derive;
 
 // Module declarations - made public for profiling binary
+pub mod cache;
 pub mod glob;
 pub mod ignore;
 pub mod options;
