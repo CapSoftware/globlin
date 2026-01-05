@@ -26,6 +26,15 @@ pub enum FastPath {
     /// Contains the set of valid extensions (without dots)
     RecursiveExtensionSet(HashSet<String>),
 
+    /// Pattern ends with a suffix (e.g., `*.test.js`, `**/*.spec.ts`)
+    /// Contains the suffix to match (with the dot, e.g., ".test.js")
+    /// and whether it's recursive (matches at any depth)
+    SuffixMatch { suffix: String, recursive: bool },
+
+    /// Pattern is a simple prefix match (e.g., `foo*`, `test-*`)
+    /// Contains the prefix to match (without the wildcard)
+    PrefixMatch(String),
+
     /// Pattern requires full regex matching (complex patterns)
     None,
 }
@@ -400,6 +409,38 @@ impl Pattern {
                         Some(exts.iter().any(|e| e.to_lowercase() == lower_ext))
                     } else {
                         Some(exts.contains(file_ext))
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::SuffixMatch { suffix, recursive } => {
+                // For patterns like *.test.js or **/*.spec.ts, check if filename ends with suffix
+                if let Some(file_name) = path_ref.file_name().and_then(|n| n.to_str()) {
+                    // For non-recursive patterns, path must be at root level (no path separators)
+                    if !recursive && path.contains('/') {
+                        return Some(false);
+                    }
+                    if self.nocase {
+                        Some(file_name.to_lowercase().ends_with(&suffix.to_lowercase()))
+                    } else {
+                        Some(file_name.ends_with(suffix))
+                    }
+                } else {
+                    Some(false)
+                }
+            }
+            FastPath::PrefixMatch(prefix) => {
+                // For patterns like foo* or test-*, check if filename starts with prefix
+                // This only applies to root-level files (no path separators)
+                if path.contains('/') {
+                    return Some(false);
+                }
+                if let Some(file_name) = path_ref.file_name().and_then(|n| n.to_str()) {
+                    if self.nocase {
+                        Some(file_name.to_lowercase().starts_with(&prefix.to_lowercase()))
+                    } else {
+                        Some(file_name.starts_with(prefix))
                     }
                 } else {
                     Some(false)
@@ -1664,6 +1705,44 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool, nobrace:
                     return FastPath::RecursiveExtensionSet(exts_for_match);
                 }
             }
+            // Check for suffix patterns like **/*.test.js or **/*.spec.ts
+            if let Some(suffix) = parse_suffix_pattern(raw) {
+                let suffix_for_match = if nocase {
+                    suffix.to_lowercase()
+                } else {
+                    suffix
+                };
+                return FastPath::SuffixMatch {
+                    suffix: suffix_for_match,
+                    recursive: true,
+                };
+            }
+        }
+    }
+
+    // Check for suffix patterns at root level: *.test.js, *.spec.ts
+    if parts.len() == 1 {
+        if let PatternPart::Magic(raw, _) = &parts[0] {
+            if let Some(suffix) = parse_suffix_pattern(raw) {
+                let suffix_for_match = if nocase {
+                    suffix.to_lowercase()
+                } else {
+                    suffix
+                };
+                return FastPath::SuffixMatch {
+                    suffix: suffix_for_match,
+                    recursive: false,
+                };
+            }
+            // Check for prefix patterns like foo*, test-*
+            if let Some(prefix) = parse_prefix_pattern(raw) {
+                let prefix_for_match = if nocase {
+                    prefix.to_lowercase()
+                } else {
+                    prefix
+                };
+                return FastPath::PrefixMatch(prefix_for_match);
+            }
         }
     }
 
@@ -1751,6 +1830,105 @@ fn parse_extension_set_pattern(pattern: &str) -> Option<HashSet<String>> {
     }
 
     Some(extensions.into_iter().map(String::from).collect())
+}
+
+/// Parse a pattern like `*.test.js` or `*.spec.ts` and return the suffix.
+/// Returns `Some(".test.js")` if the pattern is `*.something.ext`, otherwise `None`.
+///
+/// This handles patterns where:
+/// - Pattern starts with `*`
+/// - There are multiple dots after the `*`
+/// - No other magic characters in the suffix
+///
+/// Examples:
+/// - `*.test.js` -> Some(".test.js")
+/// - `*.spec.ts` -> Some(".spec.ts")
+/// - `*.config.json` -> Some(".config.json")
+/// - `*.js` -> None (single extension, handled by parse_extension_pattern)
+/// - `*.{js,ts}` -> None (has braces)
+fn parse_suffix_pattern(pattern: &str) -> Option<String> {
+    // Pattern must start with `*`
+    if !pattern.starts_with('*') {
+        return None;
+    }
+
+    // Get the part after `*`
+    let suffix = &pattern[1..];
+
+    // Suffix must start with `.` and contain at least one more `.`
+    if !suffix.starts_with('.') {
+        return None;
+    }
+
+    // Must have at least two dots total (e.g., .test.js has dots at positions 0 and 5)
+    let dot_count = suffix.chars().filter(|c| *c == '.').count();
+    if dot_count < 2 {
+        return None;
+    }
+
+    // Suffix must not contain magic characters
+    if has_magic_in_pattern(suffix, false, false) {
+        return None;
+    }
+
+    // Suffix must not contain path separators
+    if suffix.contains('/') || suffix.contains('\\') {
+        return None;
+    }
+
+    // Suffix must not contain braces
+    if suffix.contains('{') || suffix.contains('}') {
+        return None;
+    }
+
+    Some(suffix.to_string())
+}
+
+/// Parse a pattern like `foo*` or `test-*` and return the prefix.
+/// Returns `Some("foo")` if the pattern is `prefix*`, otherwise `None`.
+///
+/// This handles patterns where:
+/// - Pattern ends with `*`
+/// - Only single `*` at the end (not `**`)
+/// - No other magic characters in the prefix
+///
+/// Examples:
+/// - `foo*` -> Some("foo")
+/// - `test-*` -> Some("test-")
+/// - `lib_*` -> Some("lib_")
+/// - `**` -> None (globstar)
+/// - `*foo` -> None (star not at end)
+/// - `foo*bar` -> None (star not at end)
+fn parse_prefix_pattern(pattern: &str) -> Option<String> {
+    // Pattern must end with `*` but not `**`
+    if !pattern.ends_with('*') || pattern.ends_with("**") {
+        return None;
+    }
+
+    // Get the part before the final `*`
+    let prefix = &pattern[..pattern.len() - 1];
+
+    // Prefix must not be empty
+    if prefix.is_empty() {
+        return None;
+    }
+
+    // Prefix must not contain magic characters
+    if has_magic_in_pattern(prefix, false, false) {
+        return None;
+    }
+
+    // Prefix must not contain path separators
+    if prefix.contains('/') || prefix.contains('\\') {
+        return None;
+    }
+
+    // Prefix must not contain braces
+    if prefix.contains('{') || prefix.contains('}') {
+        return None;
+    }
+
+    Some(prefix.to_string())
 }
 
 /// Expand brace expressions in a glob pattern.
@@ -3970,19 +4148,9 @@ mod test_fast_path {
     }
 
     #[test]
-    fn test_fast_path_is_fast() {
-        assert!(FastPath::ExtensionOnly("js".to_string()).is_fast());
-        assert!(FastPath::ExtensionSet(HashSet::new()).is_fast());
-        assert!(FastPath::LiteralName("foo".to_string()).is_fast());
-        assert!(FastPath::RecursiveExtension("js".to_string()).is_fast());
-        assert!(FastPath::RecursiveExtensionSet(HashSet::new()).is_fast());
-        assert!(!FastPath::None.is_fast());
-    }
-
-    #[test]
     fn test_pattern_double_dot_extension() {
-        // Pattern `**/*.test.ts` should NOT use fast-path extension matching
-        // because `.test.ts` is not a simple extension (contains multiple dots)
+        // Pattern `**/*.test.ts` should use SuffixMatch fast-path
+        // for patterns like .test.ts, .spec.ts, .config.js
         let pattern = Pattern::new("**/*.test.ts");
 
         // Should match files ending in .test.ts
@@ -3996,7 +4164,210 @@ mod test_fast_path {
         assert!(!pattern.matches("a.ts"));
         assert!(!pattern.matches("test.ts.bak"));
 
-        // fast_path should be None (not RecursiveExtension)
-        assert!(matches!(pattern.fast_path(), &FastPath::None));
+        // fast_path should be SuffixMatch for recursive pattern
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::SuffixMatch { suffix, recursive } if suffix == ".test.ts" && *recursive
+        ));
+    }
+
+    // Tests for SuffixMatch fast-path
+
+    #[test]
+    fn test_suffix_match_pattern_detection() {
+        // Recursive suffix patterns: **/*.suffix
+        let pattern = Pattern::new("**/*.test.ts");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::SuffixMatch { suffix, recursive } if suffix == ".test.ts" && *recursive
+        ));
+
+        let pattern = Pattern::new("**/*.spec.js");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::SuffixMatch { suffix, recursive } if suffix == ".spec.js" && *recursive
+        ));
+
+        let pattern = Pattern::new("**/*.config.json");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::SuffixMatch { suffix, recursive } if suffix == ".config.json" && *recursive
+        ));
+
+        // Non-recursive suffix patterns: *.suffix
+        let pattern = Pattern::new("*.test.ts");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::SuffixMatch { suffix, recursive } if suffix == ".test.ts" && !*recursive
+        ));
+    }
+
+    #[test]
+    fn test_suffix_match_matching() {
+        // Recursive suffix matching
+        let pattern = Pattern::new("**/*.test.ts");
+
+        assert_eq!(pattern.matches_fast("foo.test.ts"), Some(true));
+        assert_eq!(pattern.matches_fast("src/foo.test.ts"), Some(true));
+        assert_eq!(pattern.matches_fast("src/lib/deep/foo.test.ts"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.ts"), Some(false));
+        assert_eq!(pattern.matches_fast("foo.test.tsx"), Some(false));
+
+        // Non-recursive suffix matching
+        let pattern = Pattern::new("*.test.ts");
+
+        assert_eq!(pattern.matches_fast("foo.test.ts"), Some(true));
+        assert_eq!(pattern.matches_fast("bar.test.ts"), Some(true));
+        assert_eq!(pattern.matches_fast("src/foo.test.ts"), Some(false)); // path separator
+        assert_eq!(pattern.matches_fast("foo.ts"), Some(false));
+    }
+
+    #[test]
+    fn test_suffix_match_nocase() {
+        let pattern = Pattern::with_pattern_options(
+            "**/*.TEST.TS",
+            PatternOptions {
+                nocase: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(pattern.matches_fast("foo.test.ts"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.TEST.TS"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.Test.Ts"), Some(true));
+    }
+
+    // Tests for PrefixMatch fast-path
+
+    #[test]
+    fn test_prefix_match_pattern_detection() {
+        let pattern = Pattern::new("foo*");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::PrefixMatch(prefix) if prefix == "foo"
+        ));
+
+        let pattern = Pattern::new("test-*");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::PrefixMatch(prefix) if prefix == "test-"
+        ));
+
+        let pattern = Pattern::new("lib_*");
+        assert!(matches!(
+            pattern.fast_path(),
+            FastPath::PrefixMatch(prefix) if prefix == "lib_"
+        ));
+
+        // Should NOT be PrefixMatch
+        let pattern = Pattern::new("*"); // just star
+        assert!(!matches!(pattern.fast_path(), FastPath::PrefixMatch(_)));
+
+        let pattern = Pattern::new("**"); // globstar
+        assert!(!matches!(pattern.fast_path(), FastPath::PrefixMatch(_)));
+
+        let pattern = Pattern::new("*foo"); // star at start
+        assert!(!matches!(pattern.fast_path(), FastPath::PrefixMatch(_)));
+    }
+
+    #[test]
+    fn test_prefix_match_matching() {
+        let pattern = Pattern::new("foo*");
+
+        assert_eq!(pattern.matches_fast("foo"), Some(true));
+        assert_eq!(pattern.matches_fast("foobar"), Some(true));
+        assert_eq!(pattern.matches_fast("foo.txt"), Some(true));
+        assert_eq!(pattern.matches_fast("bar"), Some(false));
+        assert_eq!(pattern.matches_fast("barfoo"), Some(false));
+        assert_eq!(pattern.matches_fast("src/foo"), Some(false)); // path separator
+    }
+
+    #[test]
+    fn test_prefix_match_nocase() {
+        let pattern = Pattern::with_pattern_options(
+            "FOO*",
+            PatternOptions {
+                nocase: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(pattern.matches_fast("foo"), Some(true));
+        assert_eq!(pattern.matches_fast("FOO"), Some(true));
+        assert_eq!(pattern.matches_fast("Foo"), Some(true));
+        assert_eq!(pattern.matches_fast("foobar"), Some(true));
+    }
+
+    // Helper function tests for suffix and prefix parsing
+
+    #[test]
+    fn test_parse_suffix_pattern() {
+        // Valid suffix patterns
+        assert_eq!(
+            parse_suffix_pattern("*.test.ts"),
+            Some(".test.ts".to_string())
+        );
+        assert_eq!(
+            parse_suffix_pattern("*.spec.js"),
+            Some(".spec.js".to_string())
+        );
+        assert_eq!(
+            parse_suffix_pattern("*.config.json"),
+            Some(".config.json".to_string())
+        );
+        assert_eq!(parse_suffix_pattern("*.d.ts"), Some(".d.ts".to_string()));
+
+        // Invalid patterns - not enough dots
+        assert_eq!(parse_suffix_pattern("*.ts"), None); // single extension
+        assert_eq!(parse_suffix_pattern("*ts"), None); // no dot at all
+        assert_eq!(parse_suffix_pattern("foo"), None); // no star
+
+        // Invalid patterns - has magic
+        assert_eq!(parse_suffix_pattern("*.test.*"), None);
+        assert_eq!(parse_suffix_pattern("*.test.?s"), None);
+
+        // Invalid patterns - has braces
+        assert_eq!(parse_suffix_pattern("*.test.{ts,js}"), None);
+    }
+
+    #[test]
+    fn test_parse_prefix_pattern() {
+        // Valid prefix patterns
+        assert_eq!(parse_prefix_pattern("foo*"), Some("foo".to_string()));
+        assert_eq!(parse_prefix_pattern("test-*"), Some("test-".to_string()));
+        assert_eq!(parse_prefix_pattern("lib_*"), Some("lib_".to_string()));
+        assert_eq!(
+            parse_prefix_pattern("my.file.*"),
+            Some("my.file.".to_string())
+        );
+
+        // Invalid patterns
+        assert_eq!(parse_prefix_pattern("*"), None); // empty prefix
+        assert_eq!(parse_prefix_pattern("**"), None); // globstar
+        assert_eq!(parse_prefix_pattern("*foo"), None); // star at start
+        assert_eq!(parse_prefix_pattern("foo*bar"), None); // star in middle
+
+        // Invalid patterns - has magic in prefix
+        assert_eq!(parse_prefix_pattern("f?o*"), None);
+        assert_eq!(parse_prefix_pattern("fo[o]*"), None);
+
+        // Invalid patterns - has path separator
+        assert_eq!(parse_prefix_pattern("src/foo*"), None);
+    }
+
+    #[test]
+    fn test_fast_path_is_fast_with_new_variants() {
+        assert!(FastPath::ExtensionOnly("js".to_string()).is_fast());
+        assert!(FastPath::ExtensionSet(HashSet::new()).is_fast());
+        assert!(FastPath::LiteralName("foo".to_string()).is_fast());
+        assert!(FastPath::RecursiveExtension("js".to_string()).is_fast());
+        assert!(FastPath::RecursiveExtensionSet(HashSet::new()).is_fast());
+        assert!(FastPath::SuffixMatch {
+            suffix: ".test.ts".to_string(),
+            recursive: true,
+        }
+        .is_fast());
+        assert!(FastPath::PrefixMatch("foo".to_string()).is_fast());
+        assert!(!FastPath::None.is_fast());
     }
 }
