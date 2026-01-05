@@ -983,9 +983,44 @@ fn segment_to_regex(segment: &str, noext: bool, nocase: bool) -> Regex {
 /// - `+(`, `@(` are magic when extglob is enabled (noext=false)
 /// - `!(` is NOT magic (glob treats it as a special case)
 /// - `*(`, `?(` have the `*`/`?` as magic regardless of extglob
+///
+/// Special handling for Windows UNC/device paths:
+/// - `//?/` and `//./` prefixes contain `?` and `.` which are NOT magic
+/// - `//server/share/` UNC roots are not magic
 pub fn has_magic_in_pattern(pattern: &str, noext: bool, windows_paths_no_escape: bool) -> bool {
     let chars: Vec<char> = pattern.chars().collect();
     let mut i = 0;
+
+    // Skip UNC/device path prefix on Windows
+    // These patterns start with // and may contain ? or . in the root
+    // Format: //server/share/ or //?/C:/ or //./device/
+    if chars.len() >= 4 && chars[0] == '/' && chars[1] == '/' {
+        // Check for device path: //?/ or //./
+        if (chars[2] == '?' || chars[2] == '.') && chars[3] == '/' {
+            // Device path: //?/C:/ or //./device/
+            // Skip past //?/ prefix (4 chars), then find end of device name
+            i = 4;
+            // Find the next / after the device/drive
+            while i < chars.len() && chars[i] != '/' {
+                i += 1;
+            }
+            // Skip the trailing / if present
+            if i < chars.len() && chars[i] == '/' {
+                i += 1;
+            }
+        } else if !chars[2].is_whitespace() && chars[2] != '/' {
+            // UNC path: //server/share/
+            // Skip past //server/share/
+            // Find end of server name
+            let mut slashes_found = 0;
+            while i < chars.len() && slashes_found < 4 {
+                if chars[i] == '/' {
+                    slashes_found += 1;
+                }
+                i += 1;
+            }
+        }
+    }
 
     while i < chars.len() {
         let c = chars[i];
@@ -3255,6 +3290,73 @@ mod tests {
         assert!(pattern.is_absolute());
         assert!(pattern.is_unc());
         assert_eq!(pattern.root(), "//?/C:/");
+    }
+
+    #[test]
+    fn test_has_magic_unc_device_paths() {
+        // Device path //?/C:/foo.txt should NOT have magic
+        // The ? in //?/ is part of the device path prefix, not a wildcard
+        assert!(
+            !has_magic_in_pattern("//?/C:/foo.txt", false, false),
+            "//?/C:/foo.txt should not have magic"
+        );
+
+        // Device path //?/C:/* SHOULD have magic (the * is a wildcard)
+        assert!(
+            has_magic_in_pattern("//?/C:/*", false, false),
+            "//?/C:/* should have magic"
+        );
+
+        // Device path //./COM1 should NOT have magic
+        assert!(
+            !has_magic_in_pattern("//./COM1", false, false),
+            "//./COM1 should not have magic"
+        );
+
+        // Device path //./COM1/* SHOULD have magic
+        assert!(
+            has_magic_in_pattern("//./COM1/*", false, false),
+            "//./COM1/* should have magic"
+        );
+
+        // UNC path //server/share/foo.txt should NOT have magic
+        assert!(
+            !has_magic_in_pattern("//server/share/foo.txt", false, false),
+            "//server/share/foo.txt should not have magic"
+        );
+
+        // UNC path //server/share/* SHOULD have magic
+        assert!(
+            has_magic_in_pattern("//server/share/*", false, false),
+            "//server/share/* should have magic"
+        );
+
+        // UNC path //server/share/**/*.txt SHOULD have magic
+        assert!(
+            has_magic_in_pattern("//server/share/**/*.txt", false, false),
+            "//server/share/**/*.txt should have magic"
+        );
+    }
+
+    #[test]
+    fn test_has_magic_non_unc_paths() {
+        // Regular paths with ? should still be magic
+        assert!(
+            has_magic_in_pattern("file?.txt", false, false),
+            "file?.txt should have magic"
+        );
+
+        // Path starting with single / should still check for magic
+        assert!(
+            has_magic_in_pattern("/?/foo", false, false),
+            "/?/foo should have magic (not a device path)"
+        );
+
+        // Double slash not at start should not be treated as UNC
+        assert!(
+            has_magic_in_pattern("foo//bar/*", false, false),
+            "foo//bar/* should have magic"
+        );
     }
 }
 
