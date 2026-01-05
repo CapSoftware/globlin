@@ -26,13 +26,10 @@ fn bench_walkdir(c: &mut Criterion) {
     let mut group = c.benchmark_group("walkdir");
 
     for (size, sample_size) in [("small", 100), ("medium", 30), ("large", 10)] {
-        let fixture = PathBuf::from(format!("benches/fixtures/{}", size));
+        let fixture = PathBuf::from(format!("benches/fixtures/{size}"));
 
         if !fixture.exists() {
-            eprintln!(
-                "Skipping {} - fixtures not found. Run: node benches/setup-fixtures.js",
-                size
-            );
+            eprintln!("Skipping {size} - fixtures not found. Run: node benches/setup-fixtures.js");
             continue;
         }
 
@@ -102,7 +99,7 @@ fn bench_jwalk(c: &mut Criterion) {
     let mut group = c.benchmark_group("jwalk");
 
     for (size, sample_size) in [("small", 100), ("medium", 30), ("large", 10)] {
-        let fixture = PathBuf::from(format!("benches/fixtures/{}", size));
+        let fixture = PathBuf::from(format!("benches/fixtures/{size}"));
 
         if !fixture.exists() {
             continue;
@@ -216,7 +213,7 @@ fn bench_ignore(c: &mut Criterion) {
     let mut group = c.benchmark_group("ignore");
 
     for (size, sample_size) in [("small", 100), ("medium", 30), ("large", 10)] {
-        let fixture = PathBuf::from(format!("benches/fixtures/{}", size));
+        let fixture = PathBuf::from(format!("benches/fixtures/{size}"));
 
         if !fixture.exists() {
             continue;

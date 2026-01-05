@@ -35,7 +35,6 @@ pub fn join_path(base: &str, path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_is_dot_file() {

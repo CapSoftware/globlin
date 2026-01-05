@@ -23,13 +23,10 @@ fn bench_walkdir_raw(c: &mut Criterion) {
     let mut group = c.benchmark_group("walkdir_raw");
 
     for (size, sample_size) in [("small", 100), ("medium", 50), ("large", 20)] {
-        let fixture = PathBuf::from(format!("benches/fixtures/{}", size));
+        let fixture = PathBuf::from(format!("benches/fixtures/{size}"));
 
         if !fixture.exists() {
-            eprintln!(
-                "Skipping {} - fixtures not found. Run: node benches/setup-fixtures.js",
-                size
-            );
+            eprintln!("Skipping {size} - fixtures not found. Run: node benches/setup-fixtures.js");
             continue;
         }
 

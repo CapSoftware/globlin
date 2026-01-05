@@ -523,8 +523,7 @@ mod tests {
         for result in &results {
             assert!(
                 std::path::Path::new(result).is_absolute(),
-                "Path should be absolute: {}",
-                result
+                "Path should be absolute: {result}"
             );
         }
     }
@@ -667,8 +666,7 @@ mod tests {
         for result in &results {
             assert!(
                 !result.contains('\\'),
-                "Path should use forward slashes: {}",
-                result
+                "Path should use forward slashes: {result}"
             );
         }
     }

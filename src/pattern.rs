@@ -448,19 +448,19 @@ impl Pattern {
     /// Check if the first part is a literal string.
     #[allow(dead_code)]
     pub fn is_string(&self) -> bool {
-        self.parts.first().map_or(false, |p| p.is_string())
+        self.parts.first().is_some_and(|p| p.is_string())
     }
 
     /// Check if the first part is a globstar.
     #[allow(dead_code)]
     pub fn is_globstar(&self) -> bool {
-        self.parts.first().map_or(false, |p| p.is_globstar())
+        self.parts.first().is_some_and(|p| p.is_globstar())
     }
 
     /// Check if the first part is a regex (magic pattern).
     #[allow(dead_code)]
     pub fn is_regexp(&self) -> bool {
-        self.parts.first().map_or(false, |p| p.is_regexp())
+        self.parts.first().is_some_and(|p| p.is_regexp())
     }
 
     /// Get the glob string representation.
@@ -491,7 +491,7 @@ impl Pattern {
             Self::with_pattern_options(pattern, options)
         } else {
             // No path separators - prepend **/ for basename matching
-            let new_pattern = format!("**/{}", pattern);
+            let new_pattern = format!("**/{pattern}");
             Self::with_pattern_options(&new_pattern, options)
         }
     }
@@ -853,12 +853,12 @@ fn parse_pattern_parts(
         }
         // Check for Windows drive letter: C:/ or c:/
         else if is_windows
-            && glob_parts.len() >= 1
+            && !glob_parts.is_empty()
             && glob_parts[0].len() == 2
             && glob_parts[0]
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_ascii_alphabetic())
+                .is_some_and(|c| c.is_ascii_alphabetic())
             && glob_parts[0].chars().nth(1) == Some(':')
         {
             is_drive = true;
@@ -1188,19 +1188,19 @@ fn parse_extglob(chars: &[char], start: usize, noext: bool) -> Option<(String, u
     let regex_part = match ext_type {
         '+' => {
             // +(pattern) - one or more
-            format!("(?:{})+", alt_regex)
+            format!("(?:{alt_regex})+")
         }
         '*' => {
             // *(pattern) - zero or more
-            format!("(?:{})*", alt_regex)
+            format!("(?:{alt_regex})*")
         }
         '?' => {
             // ?(pattern) - zero or one
-            format!("(?:{})?", alt_regex)
+            format!("(?:{alt_regex})?")
         }
         '@' => {
             // @(pattern) - exactly one
-            format!("(?:{})", alt_regex)
+            format!("(?:{alt_regex})")
         }
         '!' => {
             // !(pattern) - negation (match anything that doesn't match the pattern)
@@ -1212,7 +1212,7 @@ fn parse_extglob(chars: &[char], start: usize, noext: bool) -> Option<(String, u
                 // Match any path segment that doesn't match the alternatives
                 // The negative lookahead checks if the next segment (up to / or end) matches
                 // (?:$|/) ensures we're checking a complete segment
-                format!("(?!(?:{})(?:$|/))[^/]+", alt_regex)
+                format!("(?!(?:{alt_regex})(?:$|/))[^/]+")
             }
         }
         _ => return None,
@@ -1367,7 +1367,7 @@ fn find_posix_class_end(chars: &[char], start: usize) -> Option<usize> {
 /// Escape special characters for use inside a bracket expression
 fn escape_for_bracket(c: char) -> String {
     match c {
-        '[' | ']' | '\\' | '-' | '^' => format!("\\{}", c),
+        '[' | ']' | '\\' | '-' | '^' => format!("\\{c}"),
         _ => c.to_string(),
     }
 }
@@ -1406,7 +1406,7 @@ fn build_character_class_regex(ranges: &str, negs: &str, negate: bool) -> String
 
     // Combine ranges and negs
     if !ranges.is_empty() && !negs.is_empty() {
-        format!("({}|{})", sranges, snegs)
+        format!("({sranges}|{snegs})")
     } else if !ranges.is_empty() {
         sranges
     } else {
@@ -1418,7 +1418,7 @@ fn build_character_class_regex(ranges: &str, negs: &str, negate: bool) -> String
 fn escape_regex_char(c: char) -> String {
     match c {
         '.' | '+' | '^' | '$' | '(' | ')' | '{' | '}' | '[' | ']' | '|' | '\\' | '*' | '?' => {
-            format!("\\{}", c)
+            format!("\\{c}")
         }
         _ => c.to_string(),
     }
@@ -1768,8 +1768,8 @@ pub fn expand_braces(pattern: &str) -> Vec<String> {
     }
 
     // Handle leading {} (bash quirk - preserve it)
-    let pattern = if pattern.starts_with("{}") {
-        format!("\\{{\\}}{}", &pattern[2..])
+    let pattern = if let Some(rest) = pattern.strip_prefix("{}") {
+        format!("\\{{\\}}{rest}")
     } else {
         pattern.to_string()
     };
@@ -1967,7 +1967,7 @@ fn generate_sequence(parts: &[&str], is_alpha: bool) -> Vec<String> {
                     if i < 0 {
                         s = format!("-{}{}", zeros, &s[1..]);
                     } else {
-                        s = format!("{}{}", zeros, s);
+                        s = format!("{zeros}{s}");
                     }
                 }
             }
@@ -2006,7 +2006,7 @@ fn expand_internal(s: &str, is_top: bool) -> Vec<String> {
     if pre.ends_with('$') {
         return post_expansions
             .iter()
-            .map(|p| format!("{}{{{}}}{}", pre, body, p))
+            .map(|p| format!("{pre}{{{body}}}{p}"))
             .collect();
     }
 
@@ -2020,7 +2020,7 @@ fn expand_internal(s: &str, is_top: bool) -> Vec<String> {
     if !is_sequence && !is_options {
         // Check for {a},b} case - look for comma followed by } in post
         if post.contains(',') && post.contains('}') {
-            let new_str = format!("{}{{{}{}{}", pre, body, ESC_CLOSE, post);
+            let new_str = format!("{pre}{{{body}{ESC_CLOSE}{post}");
             return expand_internal(&new_str, is_top);
         }
         return vec![s.to_string()];
@@ -2036,7 +2036,7 @@ fn expand_internal(s: &str, is_top: bool) -> Vec<String> {
         if comma_parts.len() == 1 {
             // Single item - might be nested braces: x{{a,b}}y
             let expanded = expand_internal(&comma_parts[0], false);
-            let embraced: Vec<String> = expanded.iter().map(|e| format!("{{{}}}", e)).collect();
+            let embraced: Vec<String> = expanded.iter().map(|e| format!("{{{e}}}")).collect();
             if embraced.len() == 1 {
                 return post_expansions
                     .iter()
@@ -2057,7 +2057,7 @@ fn expand_internal(s: &str, is_top: bool) -> Vec<String> {
     let mut result = Vec::new();
     for part in &parts {
         for post_exp in &post_expansions {
-            let expansion = format!("{}{}{}", pre, part, post_exp);
+            let expansion = format!("{pre}{part}{post_exp}");
             if !is_top || is_sequence || !expansion.is_empty() {
                 result.push(expansion);
             }
@@ -3014,14 +3014,14 @@ mod tests {
         for p in &patterns {
             let escaped = escape_pattern(p, false);
             let unescaped = unescape_pattern(&escaped, false);
-            assert_eq!(unescaped, *p, "Roundtrip failed for pattern: {}", p);
+            assert_eq!(unescaped, *p, "Roundtrip failed for pattern: {p}");
         }
 
         // Windows style roundtrip
         for p in &patterns {
             let escaped = escape_pattern(p, true);
             let unescaped = unescape_pattern(&escaped, true);
-            assert_eq!(unescaped, *p, "Windows roundtrip failed for pattern: {}", p);
+            assert_eq!(unescaped, *p, "Windows roundtrip failed for pattern: {p}");
         }
     }
 
@@ -3033,9 +3033,7 @@ mod tests {
             let escaped = escape_pattern(p, false);
             assert!(
                 !has_magic_in_pattern(&escaped, false, false),
-                "Escaped pattern still has magic: {} -> {}",
-                p,
-                escaped
+                "Escaped pattern still has magic: {p} -> {escaped}"
             );
         }
     }
@@ -3733,7 +3731,7 @@ mod test_fast_path {
                 assert!(exts.contains("ts"), "Should contain ts");
                 assert_eq!(exts.len(), 2, "Should have exactly 2 extensions");
             }
-            other => panic!("Expected ExtensionSet, got {:?}", other),
+            other => panic!("Expected ExtensionSet, got {other:?}"),
         }
 
         let pattern = Pattern::new("*.{json,yaml,yml}");
@@ -3744,7 +3742,7 @@ mod test_fast_path {
                 assert!(exts.contains("yml"));
                 assert_eq!(exts.len(), 3);
             }
-            other => panic!("Expected ExtensionSet, got {:?}", other),
+            other => panic!("Expected ExtensionSet, got {other:?}"),
         }
     }
 
@@ -3792,7 +3790,7 @@ mod test_fast_path {
                 assert!(exts.contains("ts"));
                 assert_eq!(exts.len(), 2);
             }
-            other => panic!("Expected RecursiveExtensionSet, got {:?}", other),
+            other => panic!("Expected RecursiveExtensionSet, got {other:?}"),
         }
     }
 

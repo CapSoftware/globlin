@@ -115,7 +115,7 @@ impl IgnoreFilter {
         } else if rel_normalized.ends_with('/') {
             rel_normalized.clone()
         } else {
-            format!("{}/", rel_normalized)
+            format!("{rel_normalized}/")
         };
 
         // Check relative patterns
@@ -131,7 +131,7 @@ impl IgnoreFilter {
         let abs_with_slash = if abs_str.ends_with('/') {
             abs_str.clone()
         } else {
-            format!("{}/", abs_str)
+            format!("{abs_str}/")
         };
 
         for pattern in &self.absolute {
@@ -154,7 +154,7 @@ impl IgnoreFilter {
         } else if rel_normalized.ends_with('/') {
             rel_normalized.clone()
         } else {
-            format!("{}/", rel_normalized)
+            format!("{rel_normalized}/")
         };
 
         // Check relative children patterns
@@ -169,7 +169,7 @@ impl IgnoreFilter {
         let abs_with_slash = if abs_str.ends_with('/') {
             abs_str.clone()
         } else {
-            format!("{}/", abs_str)
+            format!("{abs_str}/")
         };
 
         for pattern in &self.absolute_children {

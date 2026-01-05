@@ -1,23 +1,22 @@
 #![deny(clippy::all)]
+#![allow(dead_code)]
 
 #[macro_use]
 extern crate napi_derive;
 
 // Module declarations
 mod glob;
-mod pattern;
-mod walker;
-mod processor;
 mod ignore;
 mod options;
+mod pattern;
+mod processor;
 mod util;
+mod walker;
 
 // Re-exports
+pub use glob::PathData;
 pub use glob::*;
 pub use options::GlobOptions;
-pub use glob::PathData;
-
-use napi::bindgen_prelude::*;
 
 /// Escape magic glob characters in a pattern.
 /// After escaping, the pattern will match literally (no globbing).
@@ -48,8 +47,16 @@ pub fn unescape(pattern: String, windows_paths_no_escape: Option<bool>) -> Strin
 /// @param options - Options affecting magic detection
 /// @returns True if the pattern has magic (unescaped) glob characters
 #[napi]
-pub fn has_magic(pattern: String, noext: Option<bool>, windows_paths_no_escape: Option<bool>) -> bool {
-    pattern::has_magic_in_pattern(&pattern, noext.unwrap_or(false), windows_paths_no_escape.unwrap_or(false))
+pub fn has_magic(
+    pattern: String,
+    noext: Option<bool>,
+    windows_paths_no_escape: Option<bool>,
+) -> bool {
+    pattern::has_magic_in_pattern(
+        &pattern,
+        noext.unwrap_or(false),
+        windows_paths_no_escape.unwrap_or(false),
+    )
 }
 
 #[cfg(test)]

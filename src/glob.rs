@@ -67,33 +67,39 @@ pub struct Glob {
 }
 
 #[napi]
-pub fn glob_sync(pattern: Either<String, Vec<String>>, options: Option<GlobOptions>) -> Result<Vec<String>> {
+pub fn glob_sync(
+    pattern: Either<String, Vec<String>>,
+    options: Option<GlobOptions>,
+) -> Result<Vec<String>> {
     let opts = options.unwrap_or_default();
-    
+
     // Validate options using the centralized validation
     validate_options(&opts)?;
-    
+
     let patterns = match pattern {
         Either::A(s) => vec![s],
         Either::B(v) => v,
     };
-    
+
     let glob = Glob::new_multi(patterns, opts.clone());
     Ok(glob.walk_sync())
 }
 
 #[napi]
-pub async fn glob(pattern: Either<String, Vec<String>>, options: Option<GlobOptions>) -> Result<Vec<String>> {
+pub async fn glob(
+    pattern: Either<String, Vec<String>>,
+    options: Option<GlobOptions>,
+) -> Result<Vec<String>> {
     let opts = options.unwrap_or_default();
-    
+
     // Validate options using the centralized validation
     validate_options(&opts)?;
-    
+
     let patterns = match pattern {
         Either::A(s) => vec![s],
         Either::B(v) => v,
     };
-    
+
     let glob = Glob::new_multi(patterns, opts.clone());
     Ok(glob.walk_sync())
 }
@@ -101,17 +107,20 @@ pub async fn glob(pattern: Either<String, Vec<String>>, options: Option<GlobOpti
 /// Synchronous glob pattern matching with file type information.
 /// Returns PathData objects instead of strings.
 #[napi]
-pub fn glob_sync_with_file_types(pattern: Either<String, Vec<String>>, options: Option<GlobOptions>) -> Result<Vec<PathData>> {
+pub fn glob_sync_with_file_types(
+    pattern: Either<String, Vec<String>>,
+    options: Option<GlobOptions>,
+) -> Result<Vec<PathData>> {
     let opts = options.unwrap_or_default();
-    
+
     // Validate options using the centralized validation
     validate_options(&opts)?;
-    
+
     let patterns = match pattern {
         Either::A(s) => vec![s],
         Either::B(v) => v,
     };
-    
+
     let glob = Glob::new_multi(patterns, opts.clone());
     Ok(glob.walk_sync_with_file_types())
 }
@@ -119,17 +128,20 @@ pub fn glob_sync_with_file_types(pattern: Either<String, Vec<String>>, options: 
 /// Asynchronous glob pattern matching with file type information.
 /// Returns PathData objects instead of strings.
 #[napi]
-pub async fn glob_with_file_types(pattern: Either<String, Vec<String>>, options: Option<GlobOptions>) -> Result<Vec<PathData>> {
+pub async fn glob_with_file_types(
+    pattern: Either<String, Vec<String>>,
+    options: Option<GlobOptions>,
+) -> Result<Vec<PathData>> {
     let opts = options.unwrap_or_default();
-    
+
     // Validate options using the centralized validation
     validate_options(&opts)?;
-    
+
     let patterns = match pattern {
         Either::A(s) => vec![s],
         Either::B(v) => v,
     };
-    
+
     let glob = Glob::new_multi(patterns, opts.clone());
     Ok(glob.walk_sync_with_file_types())
 }
@@ -139,7 +151,7 @@ impl Glob {
     pub fn new(pattern_str: String, options: GlobOptions) -> Self {
         Self::new_multi(vec![pattern_str], options)
     }
-    
+
     /// Create a new Glob from multiple pattern strings
     pub fn new_multi(pattern_strs: Vec<String>, options: GlobOptions) -> Self {
         let cwd = options
@@ -178,21 +190,25 @@ impl Glob {
         // Use a HashSet to track already-seen pattern strings for deduplication
         let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut patterns: Vec<Pattern> = Vec::new();
-        
+
         for pattern_str in &pattern_strs {
             // Check if the ORIGINAL pattern has path separators BEFORE brace expansion
             // This is important because matchBase should only apply if the entire original
             // pattern has no separators. If {a,b/c} is used, neither a nor b/c gets matchBase.
             let original_has_slash = pattern_str.contains('/') || pattern_str.contains('\\');
-            
+
             // Helper function to apply matchBase transformation to a pattern
             // Only applies if:
             // 1. matchBase is true
             // 2. The ORIGINAL pattern (before brace expansion) has no path separators
             // 3. The expanded pattern has no path separators
             let apply_match_base = |pattern: &str| -> String {
-                if match_base && !original_has_slash && !pattern.contains('/') && !pattern.contains('\\') {
-                    format!("**/{}", pattern)
+                if match_base
+                    && !original_has_slash
+                    && !pattern.contains('/')
+                    && !pattern.contains('\\')
+                {
+                    format!("**/{pattern}")
                 } else {
                     pattern.to_string()
                 }
@@ -203,27 +219,36 @@ impl Glob {
                 let transformed = apply_match_base(pattern_str);
                 // Deduplicate: only add if we haven't seen this pattern before
                 if seen_patterns.insert(transformed.clone()) {
-                    patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                    patterns.push(Pattern::with_pattern_options(
+                        &transformed,
+                        pattern_opts.clone(),
+                    ));
                 }
             } else {
                 let expanded = expand_braces(pattern_str);
                 if expanded.is_empty() {
                     let transformed = apply_match_base(pattern_str);
                     if seen_patterns.insert(transformed.clone()) {
-                        patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                        patterns.push(Pattern::with_pattern_options(
+                            &transformed,
+                            pattern_opts.clone(),
+                        ));
                     }
                 } else {
                     for p in expanded {
                         let transformed = apply_match_base(&p);
                         // Deduplicate: skip duplicate expanded patterns
                         if seen_patterns.insert(transformed.clone()) {
-                            patterns.push(Pattern::with_pattern_options(&transformed, pattern_opts.clone()));
+                            patterns.push(Pattern::with_pattern_options(
+                                &transformed,
+                                pattern_opts.clone(),
+                            ));
                         }
                     }
                 }
             }
         }
-        
+
         // Optimization: Sort patterns so fast-path patterns come first.
         // This allows early exit when using .any() since fast patterns are checked first.
         // Patterns with fast-path matching are much quicker to evaluate.
@@ -240,14 +265,20 @@ impl Glob {
 
         // Create ignore filter if ignore patterns provided
         let ignore_filter = match &options.ignore {
-            Some(Either::A(pattern)) => {
-                Some(IgnoreFilter::new(vec![pattern.clone()], noext, windows_paths_no_escape))
-            }
+            Some(Either::A(pattern)) => Some(IgnoreFilter::new(
+                vec![pattern.clone()],
+                noext,
+                windows_paths_no_escape,
+            )),
             Some(Either::B(patterns)) => {
                 if patterns.is_empty() {
                     None
                 } else {
-                    Some(IgnoreFilter::new(patterns.clone(), noext, windows_paths_no_escape))
+                    Some(IgnoreFilter::new(
+                        patterns.clone(),
+                        noext,
+                        windows_paths_no_escape,
+                    ))
                 }
             }
             None => None,
@@ -257,19 +288,26 @@ impl Glob {
         // Note: We always walk with dot=true in the walker, and handle dot filtering
         // at the pattern matching level. This allows patterns with explicit dots
         // (like ".hidden" or "**/.config") to match even when dot:false.
-        
+
         // Calculate effective max depth from patterns for optimization.
         // If all patterns have a bounded depth (no **), we can limit the walker
         // to avoid traversing deeper than necessary.
         // Use the maximum depth required by any pattern.
-        let pattern_max_depth = patterns.iter().fold(Some(0usize), |acc, p| {
-            match (acc, p.max_depth()) {
-                (None, _) => None,           // Already unlimited
-                (_, None) => None,           // This pattern is unlimited
-                (Some(a), Some(b)) => Some(a.max(b)), // Take max of bounded depths
+        let pattern_max_depth = {
+            let mut max_depth: Option<usize> = Some(0);
+            for p in &patterns {
+                match (max_depth, p.max_depth()) {
+                    (None, _) => break, // Already unlimited
+                    (_, None) => {
+                        max_depth = None;
+                        break;
+                    } // This pattern is unlimited
+                    (Some(a), Some(b)) => max_depth = Some(a.max(b)), // Take max of bounded depths
+                }
             }
-        });
-        
+            max_depth
+        };
+
         // Combine user-provided max_depth with pattern-derived depth.
         // User max_depth takes precedence (it's an explicit limit), but if user
         // didn't specify one, use pattern-derived depth for optimization.
@@ -287,7 +325,7 @@ impl Glob {
 
         // Pre-compute: check if any pattern requires directory matching (ends with /)
         let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());
-        
+
         // Pre-compute: count patterns with fast-path matching for optimization decisions
         let fast_pattern_count = patterns.iter().filter(|p| p.fast_path().is_fast()).count();
 
@@ -332,9 +370,10 @@ impl Glob {
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs = std::collections::HashSet::new();
-        
+
         // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut matched_parents: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         // Check if any pattern matches the cwd itself ("**" or ".").
         // Cache this check since preprocess_pattern is called for each pattern.
@@ -348,16 +387,13 @@ impl Glob {
         });
 
         // Get the absolute cwd path, canonicalized
-        let abs_cwd = self
-            .cwd
-            .canonicalize()
-            .unwrap_or_else(|_| self.cwd.clone());
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
 
         // Calculate the walk root based on literal prefixes of all patterns.
         // If all patterns share a common literal prefix, we can start walking from there
         // instead of the cwd, which can significantly reduce the number of files traversed.
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
-        
+
         // Adjust walk options for prefix-based walking
         // If we have a prefix, the user's max_depth is relative to cwd, but the walker
         // is relative to walk_root. We need to reduce max_depth by the prefix depth.
@@ -366,11 +402,13 @@ impl Glob {
             if let Some(max_d) = self.walk_options.max_depth {
                 // User specified max_depth, adjust for prefix
                 if max_d <= prefix_depth {
-                    // If max_depth is less than or equal to prefix depth, 
+                    // If max_depth is less than or equal to prefix depth,
                     // we should only include the prefix directory itself
                     self.walk_options.clone().max_depth(Some(0))
                 } else {
-                    self.walk_options.clone().max_depth(Some(max_d - prefix_depth))
+                    self.walk_options
+                        .clone()
+                        .max_depth(Some(max_d - prefix_depth))
                 }
             } else {
                 self.walk_options.clone()
@@ -378,32 +416,34 @@ impl Glob {
         } else {
             self.walk_options.clone()
         };
-        
+
         // Create a directory pruning filter using the patterns' could_match_in_dir method.
         // This allows us to skip entire directory subtrees that can't possibly contain matches.
-        // 
+        //
         // The filter receives the path relative to walk_root, but the patterns expect paths
         // relative to cwd. When we have a prefix_to_strip, we need to prepend it.
         let patterns_for_filter: Vec<Pattern> = self.patterns.clone();
         let prefix_for_filter = prefix_to_strip.clone();
-        
+
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
             // Construct the path relative to cwd for pattern matching
             let path_from_cwd = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
                     prefix.clone()
                 } else {
-                    format!("{}/{}", prefix, dir_path)
+                    format!("{prefix}/{dir_path}")
                 }
             } else {
                 dir_path.to_string()
             };
-            
+
             // Check if ANY pattern could potentially match files in this directory.
             // If no pattern can match, we can safely skip this directory.
-            patterns_for_filter.iter().any(|p| p.could_match_in_dir(&path_from_cwd))
+            patterns_for_filter
+                .iter()
+                .any(|p| p.could_match_in_dir(&path_from_cwd))
         });
-        
+
         // Create walker with the optimized walk root, adjusted options, and pruning filter
         let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
             .with_dir_prune_filter(prune_filter);
@@ -418,10 +458,10 @@ impl Glob {
                 Err(_) => continue, // Skip if can't strip prefix
             };
             let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
-            
+
             // Cache whether this is the walk root (empty relative path)
             let is_walk_root = rel_str_from_walk_root.is_empty();
-            
+
             // Construct the path relative to cwd by prepending the stripped prefix.
             // Optimization: Avoid allocation when no backslashes present (common on Unix).
             let normalized: String = if let Some(ref prefix) = prefix_to_strip {
@@ -430,7 +470,7 @@ impl Glob {
                 } else if rel_str_from_walk_root.contains('\\') {
                     format!("{}/{}", prefix, rel_str_from_walk_root.replace('\\', "/"))
                 } else {
-                    format!("{}/{}", prefix, rel_str_from_walk_root)
+                    format!("{prefix}/{rel_str_from_walk_root}")
                 }
             } else if rel_str_from_walk_root.contains('\\') {
                 rel_str_from_walk_root.replace('\\', "/")
@@ -438,7 +478,7 @@ impl Glob {
                 // No backslashes and no prefix - convert to owned string
                 rel_str_from_walk_root.into_owned()
             };
-            
+
             // For operations that need the actual relative path from cwd
             let rel_path = if prefix_to_strip.is_some() {
                 std::path::PathBuf::from(&normalized)
@@ -452,9 +492,9 @@ impl Glob {
                 let normalized_bytes = normalized.as_bytes();
                 let is_in_ignored = ignored_dirs.iter().any(|ignored_dir: &String| {
                     let ignored_bytes = ignored_dir.as_bytes();
-                    normalized_bytes.starts_with(ignored_bytes) && 
-                    (normalized_bytes.len() == ignored_bytes.len() || 
-                     normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
+                    normalized_bytes.starts_with(ignored_bytes)
+                        && (normalized_bytes.len() == ignored_bytes.len()
+                            || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
                 });
                 if is_in_ignored {
                     continue;
@@ -464,7 +504,7 @@ impl Glob {
             // Check ignore patterns
             if let Some(ref ignore_filter) = self.ignore_filter {
                 let abs_path = abs_cwd.join(&rel_path);
-                
+
                 // Check if this specific path should be ignored
                 if ignore_filter.should_ignore(&normalized, &abs_path) {
                     // If children are also ignored, mark this directory
@@ -473,7 +513,7 @@ impl Glob {
                     }
                     continue;
                 }
-                
+
                 // Also check if this is a directory whose children should be ignored
                 // (for optimization - skip traversing)
                 if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
@@ -493,7 +533,7 @@ impl Glob {
                             continue;
                         }
                     }
-                    
+
                     let result = if self.absolute {
                         let mut path = self.format_path(&abs_cwd);
                         if self.mark {
@@ -532,15 +572,15 @@ impl Glob {
             if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
                 continue;
             }
-            
+
             // When includeChildMatches is false, skip paths that are children of already-matched paths
             if !self.include_child_matches && !matched_parents.is_empty() {
                 let normalized_bytes = normalized.as_bytes();
                 let is_child_of_matched = matched_parents.iter().any(|matched_path: &String| {
                     let matched_bytes = matched_path.as_bytes();
-                    normalized_bytes.starts_with(matched_bytes) && 
-                    normalized_bytes.len() > matched_bytes.len() &&
-                    normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+                    normalized_bytes.starts_with(matched_bytes)
+                        && normalized_bytes.len() > matched_bytes.len()
+                        && normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
                 });
                 if is_child_of_matched {
                     continue;
@@ -551,18 +591,18 @@ impl Glob {
             // For patterns that end with /, only match if entry is a directory
             let is_dir = entry.is_dir();
             let is_symlink = entry.is_symlink();
-            
+
             // Optimization: Use specialized matching based on pattern characteristics.
             // Patterns are already sorted with fast-path patterns first (in new_multi),
             // so .any() will try fast patterns before falling back to regex patterns.
             let matches = if !self.any_pattern_requires_dir {
                 // Fast path: no patterns require directory matching
-                self.patterns.iter().any(|p| {
-                    match p.matches_fast(&normalized) {
+                self.patterns
+                    .iter()
+                    .any(|p| match p.matches_fast(&normalized) {
                         Some(result) => result,
                         None => p.matches(&normalized),
-                    }
-                })
+                    })
             } else {
                 // Standard path: some patterns require directory matching
                 self.patterns.iter().any(|p| {
@@ -577,7 +617,7 @@ impl Glob {
                     }
                 })
             };
-            
+
             if matches {
                 // Save the normalized path for tracking before constructing the result
                 // (since normalized may be moved into result)
@@ -586,11 +626,11 @@ impl Glob {
                 } else {
                     None
                 };
-                
+
                 // When mark:true, add trailing slash to directories but NOT to symlinks
                 // (even when they point to directories). This matches glob's behavior.
                 let should_mark_as_dir = is_dir && !is_symlink;
-                
+
                 let result = if self.absolute {
                     // Return absolute path
                     let abs_path = abs_cwd.join(&rel_path);
@@ -603,10 +643,10 @@ impl Glob {
                     // Apply dotRelative: prepend "./" to relative paths
                     // But not for patterns starting with "../"
                     let mut path = if self.dot_relative && !normalized.starts_with("../") {
-                        format!("./{}", normalized)
-                } else {
-                    normalized
-                };
+                        format!("./{normalized}")
+                    } else {
+                        normalized
+                    };
                     if self.mark && should_mark_as_dir {
                         path = self.ensure_trailing_slash(&path);
                     }
@@ -616,7 +656,7 @@ impl Glob {
                 // Deduplicate results (important for overlapping brace expansions)
                 if seen.insert(result.clone()) {
                     results.push(result);
-                    
+
                     // When includeChildMatches is false, track this path to exclude its children
                     if let Some(tracking_path) = path_for_tracking {
                         matched_parents.insert(tracking_path);
@@ -643,9 +683,10 @@ impl Glob {
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs = std::collections::HashSet::new();
-        
+
         // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut matched_parents: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         // Check if any pattern matches the cwd itself ("**" or ".").
         let include_cwd = self.patterns.iter().any(|p| {
@@ -657,14 +698,11 @@ impl Glob {
         });
 
         // Get the absolute cwd path, canonicalized
-        let abs_cwd = self
-            .cwd
-            .canonicalize()
-            .unwrap_or_else(|_| self.cwd.clone());
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
 
         // Calculate the walk root based on literal prefixes
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
-        
+
         // Adjust walk options for prefix-based walking
         let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
             let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
@@ -672,7 +710,9 @@ impl Glob {
                 if max_d <= prefix_depth {
                     self.walk_options.clone().max_depth(Some(0))
                 } else {
-                    self.walk_options.clone().max_depth(Some(max_d - prefix_depth))
+                    self.walk_options
+                        .clone()
+                        .max_depth(Some(max_d - prefix_depth))
                 }
             } else {
                 self.walk_options.clone()
@@ -680,25 +720,27 @@ impl Glob {
         } else {
             self.walk_options.clone()
         };
-        
+
         // Create directory pruning filter
         let patterns_for_filter: Vec<Pattern> = self.patterns.clone();
         let prefix_for_filter = prefix_to_strip.clone();
-        
+
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
             let path_from_cwd = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
                     prefix.clone()
                 } else {
-                    format!("{}/{}", prefix, dir_path)
+                    format!("{prefix}/{dir_path}")
                 }
             } else {
                 dir_path.to_string()
             };
-            
-            patterns_for_filter.iter().any(|p| p.could_match_in_dir(&path_from_cwd))
+
+            patterns_for_filter
+                .iter()
+                .any(|p| p.could_match_in_dir(&path_from_cwd))
         });
-        
+
         // Create walker
         let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
             .with_dir_prune_filter(prune_filter);
@@ -711,23 +753,23 @@ impl Glob {
                 Err(_) => continue,
             };
             let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
-            
+
             let is_walk_root = rel_str_from_walk_root.is_empty();
-            
+
             let normalized: String = if let Some(ref prefix) = prefix_to_strip {
                 if is_walk_root {
                     prefix.clone()
                 } else if rel_str_from_walk_root.contains('\\') {
                     format!("{}/{}", prefix, rel_str_from_walk_root.replace('\\', "/"))
                 } else {
-                    format!("{}/{}", prefix, rel_str_from_walk_root)
+                    format!("{prefix}/{rel_str_from_walk_root}")
                 }
             } else if rel_str_from_walk_root.contains('\\') {
                 rel_str_from_walk_root.replace('\\', "/")
             } else {
                 rel_str_from_walk_root.into_owned()
             };
-            
+
             let rel_path = if prefix_to_strip.is_some() {
                 std::path::PathBuf::from(&normalized)
             } else {
@@ -739,9 +781,9 @@ impl Glob {
                 let normalized_bytes = normalized.as_bytes();
                 let is_in_ignored = ignored_dirs.iter().any(|ignored_dir: &String| {
                     let ignored_bytes = ignored_dir.as_bytes();
-                    normalized_bytes.starts_with(ignored_bytes) && 
-                    (normalized_bytes.len() == ignored_bytes.len() || 
-                     normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
+                    normalized_bytes.starts_with(ignored_bytes)
+                        && (normalized_bytes.len() == ignored_bytes.len()
+                            || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
                 });
                 if is_in_ignored {
                     continue;
@@ -751,14 +793,14 @@ impl Glob {
             // Check ignore patterns
             if let Some(ref ignore_filter) = self.ignore_filter {
                 let abs_path = abs_cwd.join(&rel_path);
-                
+
                 if ignore_filter.should_ignore(&normalized, &abs_path) {
                     if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
                         ignored_dirs.insert(normalized.to_string());
                     }
                     continue;
                 }
-                
+
                 if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
                     ignored_dirs.insert(normalized.to_string());
                 }
@@ -772,7 +814,7 @@ impl Glob {
                             continue;
                         }
                     }
-                    
+
                     let result_path = ".".to_string();
                     if seen.insert(result_path.clone()) {
                         results.push(PathData {
@@ -799,15 +841,15 @@ impl Glob {
             if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
                 continue;
             }
-            
+
             // When includeChildMatches is false, skip paths that are children of already-matched paths
             if !self.include_child_matches && !matched_parents.is_empty() {
                 let normalized_bytes = normalized.as_bytes();
                 let is_child_of_matched = matched_parents.iter().any(|matched_path: &String| {
                     let matched_bytes = matched_path.as_bytes();
-                    normalized_bytes.starts_with(matched_bytes) && 
-                    normalized_bytes.len() > matched_bytes.len() &&
-                    normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+                    normalized_bytes.starts_with(matched_bytes)
+                        && normalized_bytes.len() > matched_bytes.len()
+                        && normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
                 });
                 if is_child_of_matched {
                     continue;
@@ -816,14 +858,14 @@ impl Glob {
 
             // Check if any pattern matches
             let is_dir = entry.is_dir();
-            
+
             let matches = if !self.any_pattern_requires_dir {
-                self.patterns.iter().any(|p| {
-                    match p.matches_fast(&normalized) {
+                self.patterns
+                    .iter()
+                    .any(|p| match p.matches_fast(&normalized) {
                         Some(result) => result,
                         None => p.matches(&normalized),
-                    }
-                })
+                    })
             } else {
                 self.patterns.iter().any(|p| {
                     let path_matches = match p.matches_fast(&normalized) {
@@ -837,7 +879,7 @@ impl Glob {
                     }
                 })
             };
-            
+
             if matches {
                 // For withFileTypes, we return the relative path (no dotRelative/mark modifications)
                 // The JavaScript wrapper handles path formatting via PathScurry
@@ -846,7 +888,7 @@ impl Glob {
                     if !self.include_child_matches {
                         matched_parents.insert(normalized.clone());
                     }
-                    
+
                     results.push(PathData {
                         path: normalized,
                         is_directory: is_dir,
@@ -861,7 +903,7 @@ impl Glob {
     }
 
     /// Format a path according to options (posix, etc.)
-    fn format_path(&self, path: &PathBuf) -> String {
+    fn format_path(&self, path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy().to_string();
         if self.posix {
             // Convert to POSIX-style paths (forward slashes)
@@ -876,10 +918,10 @@ impl Glob {
         if path.ends_with('/') || path.ends_with('\\') {
             path.to_string()
         } else if self.posix || !cfg!(windows) {
-            format!("{}/", path)
+            format!("{path}/")
         } else {
             // On Windows without posix option, use the native separator
-            format!("{}/", path)
+            format!("{path}/")
         }
     }
 
@@ -890,9 +932,9 @@ impl Glob {
     /// - Any pattern explicitly allows the dotfile segments in this path
     fn path_allowed_by_dot_rules(&self, path: &str) -> bool {
         // Check if path contains any dotfile segments
-        let has_dotfile = path.split('/').any(|segment| {
-            segment.starts_with('.') && segment != "." && segment != ".."
-        });
+        let has_dotfile = path
+            .split('/')
+            .any(|segment| segment.starts_with('.') && segment != "." && segment != "..");
 
         if !has_dotfile {
             return true;
@@ -903,7 +945,7 @@ impl Glob {
     }
 
     /// Estimate the capacity for the result vector based on pattern characteristics.
-    /// 
+    ///
     /// This helps reduce reallocations during result collection. The estimate is
     /// based on pattern depth and whether the pattern is recursive:
     /// - Simple root patterns (*.txt): ~16 results expected
@@ -911,33 +953,31 @@ impl Glob {
     /// - Recursive patterns (**/*.js): ~256 results expected
     fn estimate_result_capacity(&self) -> usize {
         // Find the maximum depth across all patterns
-        let max_pattern_depth = self.patterns.iter()
-            .filter_map(|p| p.max_depth())
-            .max();
-        
+        let max_pattern_depth = self.patterns.iter().filter_map(|p| p.max_depth()).max();
+
         match max_pattern_depth {
-            Some(0) => 16,      // Root-level patterns: few files expected
-            Some(1) => 64,      // One directory level: moderate number
-            Some(2) => 128,     // Two levels deep
-            Some(_) => 256,     // Deeper patterns
-            None => 256,        // Recursive patterns (**): could be many files
+            Some(0) => 16,  // Root-level patterns: few files expected
+            Some(1) => 64,  // One directory level: moderate number
+            Some(2) => 128, // Two levels deep
+            Some(_) => 256, // Deeper patterns
+            None => 256,    // Recursive patterns (**): could be many files
         }
     }
 
     /// Calculate the optimal walk root based on literal prefixes of patterns.
-    /// 
+    ///
     /// Returns a tuple of (walk_root, prefix_to_strip, is_absolute_pattern):
     /// - walk_root: The directory to start walking from (cwd, cwd/prefix, or absolute root)
     /// - prefix_to_strip: If Some, this prefix was extracted and should be prepended
     ///   to relative paths from walk_root to get the path relative to cwd
     /// - is_absolute_pattern: True if we're walking from an absolute pattern root
-    /// 
+    ///
     /// For patterns like `src/**/*.ts`, instead of walking from cwd and visiting
     /// all directories, we can walk from `cwd/src` which is much faster.
-    /// 
+    ///
     /// For absolute patterns like `C:/foo/**/*.ts` or `/usr/local/**`, we walk from
     /// that absolute path directly.
-    /// 
+    ///
     /// When patterns have different prefixes (e.g., `src/**` and `test/**`),
     /// we find the longest common prefix, or fall back to cwd if there's no
     /// common prefix.
@@ -950,26 +990,26 @@ impl Glob {
         // Check if any pattern is absolute (has a root like C:/, /, or //server/share/)
         // If we have absolute patterns, we need to handle them specially
         let has_absolute_pattern = self.patterns.iter().any(|p| p.is_absolute());
-        
+
         if has_absolute_pattern {
             // For absolute patterns, we need to check if ALL patterns are absolute
             // and share a common root. If not, we can't optimize.
             let all_absolute = self.patterns.iter().all(|p| p.is_absolute());
-            
+
             if all_absolute && self.patterns.len() == 1 {
                 // Single absolute pattern - walk from its root + literal prefix
                 let pattern = &self.patterns[0];
                 let root = pattern.root();
-                
+
                 // Get the literal prefix (directories before any glob magic)
                 if let Some(prefix) = pattern.literal_prefix() {
                     // Walk from root + prefix
                     let walk_root = PathBuf::from(&root).join(&prefix);
                     // The prefix to strip is the root + prefix
                     let full_prefix = if root.ends_with('/') {
-                        format!("{}{}", root, prefix)
+                        format!("{root}{prefix}")
                     } else {
-                        format!("{}/{}", root, prefix)
+                        format!("{root}/{prefix}")
                     };
                     return (walk_root, Some(full_prefix));
                 } else {
@@ -979,42 +1019,42 @@ impl Glob {
             } else if all_absolute {
                 // Multiple absolute patterns - find common root
                 let roots: Vec<&str> = self.patterns.iter().map(|p| p.root()).collect();
-                
+
                 // Check if all roots are the same
                 if !roots.is_empty() && roots.iter().all(|r| *r == roots[0]) {
                     let common_root = roots[0];
-                    
+
                     // Get literal prefixes after the root
-                    let prefixes: Vec<Option<String>> = self.patterns.iter()
-                        .map(|p| p.literal_prefix())
-                        .collect();
-                    
+                    let prefixes: Vec<Option<String>> =
+                        self.patterns.iter().map(|p| p.literal_prefix()).collect();
+
                     // If any pattern has no prefix, walk from the root
                     if prefixes.iter().any(|p| p.is_none()) {
                         return (PathBuf::from(common_root), Some(common_root.to_string()));
                     }
-                    
+
                     // Find common prefix among all patterns
-                    let prefix_strs: Vec<&str> = prefixes.iter()
+                    let prefix_strs: Vec<&str> = prefixes
+                        .iter()
                         .filter_map(|p| p.as_ref().map(|s| s.as_str()))
                         .collect();
-                    
+
                     let common_prefix = Self::longest_common_prefix(&prefix_strs);
-                    
+
                     if common_prefix.is_empty() {
                         return (PathBuf::from(common_root), Some(common_root.to_string()));
                     }
-                    
+
                     let walk_root = PathBuf::from(common_root).join(&common_prefix);
                     let full_prefix = if common_root.ends_with('/') {
-                        format!("{}{}", common_root, common_prefix)
+                        format!("{common_root}{common_prefix}")
                     } else {
-                        format!("{}/{}", common_root, common_prefix)
+                        format!("{common_root}/{common_prefix}")
                     };
                     return (walk_root, Some(full_prefix));
                 }
             }
-            
+
             // Mixed absolute and relative patterns, or different roots
             // Fall back to walking from cwd for relative patterns
             // This is a limitation - we can't efficiently handle mixed patterns
@@ -1022,9 +1062,8 @@ impl Glob {
         }
 
         // Get literal prefixes from all patterns
-        let prefixes: Vec<Option<String>> = self.patterns.iter()
-            .map(|p| p.literal_prefix())
-            .collect();
+        let prefixes: Vec<Option<String>> =
+            self.patterns.iter().map(|p| p.literal_prefix()).collect();
 
         // If any pattern has no prefix (e.g., `**/*.js` or `*.txt`), we must walk from cwd
         if prefixes.iter().any(|p| p.is_none()) {
@@ -1032,7 +1071,8 @@ impl Glob {
         }
 
         // All patterns have prefixes - find the longest common prefix
-        let prefix_strs: Vec<&str> = prefixes.iter()
+        let prefix_strs: Vec<&str> = prefixes
+            .iter()
             .filter_map(|p| p.as_ref().map(|s| s.as_str()))
             .collect();
 
@@ -1061,7 +1101,7 @@ impl Glob {
     }
 
     /// Find the longest common prefix among a list of paths.
-    /// 
+    ///
     /// For example:
     /// - `["src/lib", "src/bin"]` -> `"src"`
     /// - `["src", "test"]` -> `""`
@@ -1076,15 +1116,11 @@ impl Glob {
         }
 
         // Split all paths into components
-        let path_components: Vec<Vec<&str>> = paths.iter()
-            .map(|p| p.split('/').collect())
-            .collect();
+        let path_components: Vec<Vec<&str>> =
+            paths.iter().map(|p| p.split('/').collect()).collect();
 
         // Find the minimum length
-        let min_len = path_components.iter()
-            .map(|c| c.len())
-            .min()
-            .unwrap_or(0);
+        let min_len = path_components.iter().map(|c| c.len()).min().unwrap_or(0);
 
         // Find common prefix components
         let mut common_components: Vec<&str> = Vec::new();
@@ -1281,8 +1317,7 @@ mod tests {
         for result in &results {
             assert!(
                 std::path::Path::new(result).is_absolute(),
-                "Path should be absolute: {}",
-                result
+                "Path should be absolute: {result}"
             );
         }
         assert_eq!(results.len(), 2); // foo.txt and bar.txt
@@ -1307,8 +1342,7 @@ mod tests {
         for result in &results {
             assert!(
                 !result.contains('\\'),
-                "Path should use forward slashes: {}",
-                result
+                "Path should use forward slashes: {result}"
             );
         }
         assert_eq!(results.len(), 2); // foo.txt and bar.txt
@@ -1495,10 +1529,7 @@ mod tests {
     #[test]
     fn test_default_dot_is_false() {
         let temp = create_test_fixture();
-        let glob = Glob::new(
-            "*".to_string(),
-            make_opts(&temp.path().to_string_lossy()),
-        );
+        let glob = Glob::new("*".to_string(), make_opts(&temp.path().to_string_lossy()));
         let results = glob.walk_sync();
 
         // Default should be dot:false - no dotfiles
@@ -1931,8 +1962,7 @@ mod tests {
         for result in &results {
             assert!(
                 result.starts_with("./"),
-                "Path should start with './': {}",
-                result
+                "Path should start with './': {result}"
             );
         }
         assert!(results.contains(&"./foo.txt".to_string()));
@@ -1954,8 +1984,7 @@ mod tests {
         for result in &results {
             assert!(
                 !result.starts_with("./"),
-                "Path should not start with './': {}",
-                result
+                "Path should not start with './': {result}"
             );
         }
     }
@@ -2059,10 +2088,7 @@ mod tests {
     #[test]
     fn test_mark_default_is_false() {
         let temp = create_test_fixture();
-        let glob = Glob::new(
-            "*".to_string(),
-            make_opts(&temp.path().to_string_lossy()),
-        );
+        let glob = Glob::new("*".to_string(), make_opts(&temp.path().to_string_lossy()));
         let results = glob.walk_sync();
 
         // Default should not have trailing slash on directories
@@ -2261,10 +2287,7 @@ mod tests {
     #[test]
     fn test_multiple_patterns_empty() {
         let temp = create_test_fixture();
-        let glob = Glob::new_multi(
-            Vec::new(),
-            make_opts(&temp.path().to_string_lossy()),
-        );
+        let glob = Glob::new_multi(Vec::new(), make_opts(&temp.path().to_string_lossy()));
         let results = glob.walk_sync();
 
         // Empty patterns array should match nothing
@@ -2290,7 +2313,7 @@ mod tests {
     }
 
     // Depth-limited walking optimization tests (Task 2.5.1.3)
-    
+
     #[test]
     fn test_depth_limited_simple_pattern() {
         // Simple patterns like *.txt should only traverse root directory
@@ -2481,7 +2504,7 @@ mod tests {
         // Multiple patterns with different prefixes - should walk from common prefix or root
         let temp = TempDir::new().unwrap();
         let base = temp.path();
-        
+
         fs::create_dir_all(base.join("dir1")).unwrap();
         fs::create_dir_all(base.join("dir2")).unwrap();
         File::create(base.join("dir1/file.js")).unwrap();
@@ -2524,7 +2547,10 @@ mod tests {
         // Test the longest_common_prefix helper
         assert_eq!(Glob::longest_common_prefix(&["src/lib", "src/bin"]), "src");
         assert_eq!(Glob::longest_common_prefix(&["src", "test"]), "");
-        assert_eq!(Glob::longest_common_prefix(&["packages/foo", "packages/bar"]), "packages");
+        assert_eq!(
+            Glob::longest_common_prefix(&["packages/foo", "packages/bar"]),
+            "packages"
+        );
         assert_eq!(Glob::longest_common_prefix(&["a/b/c", "a/b/d"]), "a/b");
         assert_eq!(Glob::longest_common_prefix(&["x"]), "x");
         assert_eq!(Glob::longest_common_prefix(&[]), "");
@@ -2657,10 +2683,10 @@ mod tests {
             "{*.txt,*.txt}".to_string(), // Brace expansion produces duplicates
             make_opts(&temp.path().to_string_lossy()),
         );
-        
+
         // Only 1 pattern should be stored (duplicates removed)
         assert_eq!(glob.patterns.len(), 1);
-        
+
         let results = glob.walk_sync();
         // foo.txt should only appear once
         let foo_count = results.iter().filter(|r| *r == "foo.txt").count();
@@ -2674,16 +2700,16 @@ mod tests {
         let glob = Glob::new_multi(
             vec![
                 "**/[a-z]*.js".to_string(), // Complex pattern (regex)
-                "*.txt".to_string(),         // Simple fast-path pattern
-                "**/*.ts".to_string(),       // Recursive fast-path pattern
+                "*.txt".to_string(),        // Simple fast-path pattern
+                "**/*.ts".to_string(),      // Recursive fast-path pattern
             ],
             make_opts(&temp.path().to_string_lossy()),
         );
-        
+
         // Check that patterns are reordered with fast-path first
         // First should be fast-path (*.txt or **/*.ts)
         assert!(glob.patterns[0].fast_path().is_fast() || glob.patterns[1].fast_path().is_fast());
-        
+
         let results = glob.walk_sync();
         // Should still find correct files
         assert!(results.contains(&"foo.txt".to_string()));
@@ -2697,15 +2723,15 @@ mod tests {
         let temp = create_test_fixture();
         let glob = Glob::new_multi(
             vec![
-                "*.{txt,js}".to_string(),  // Expands to *.txt, *.js
-                "*.txt".to_string(),        // Duplicate with above
+                "*.{txt,js}".to_string(), // Expands to *.txt, *.js
+                "*.txt".to_string(),      // Duplicate with above
             ],
             make_opts(&temp.path().to_string_lossy()),
         );
-        
+
         // Should have 2 unique patterns: *.txt, *.js (not 3)
         assert_eq!(glob.patterns.len(), 2);
-        
+
         let results = glob.walk_sync();
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"baz.js".to_string()));
@@ -2715,21 +2741,15 @@ mod tests {
     fn test_multi_pattern_any_requires_dir() {
         // Pre-computed field should correctly identify patterns requiring directories
         let temp = create_test_fixture();
-        
+
         // Pattern without trailing slash
-        let glob1 = Glob::new(
-            "*".to_string(),
-            make_opts(&temp.path().to_string_lossy()),
-        );
+        let glob1 = Glob::new("*".to_string(), make_opts(&temp.path().to_string_lossy()));
         assert!(!glob1.any_pattern_requires_dir);
-        
+
         // Pattern with trailing slash
-        let glob2 = Glob::new(
-            "*/".to_string(),
-            make_opts(&temp.path().to_string_lossy()),
-        );
+        let glob2 = Glob::new("*/".to_string(), make_opts(&temp.path().to_string_lossy()));
         assert!(glob2.any_pattern_requires_dir);
-        
+
         // Multiple patterns where only one requires dir
         let glob3 = Glob::new_multi(
             vec!["*.txt".to_string(), "src/".to_string()],
@@ -2742,14 +2762,14 @@ mod tests {
     fn test_multi_pattern_fast_pattern_count() {
         // Pre-computed fast pattern count
         let temp = create_test_fixture();
-        
+
         // All fast-path patterns
         let glob1 = Glob::new_multi(
             vec!["*.txt".to_string(), "*.js".to_string()],
             make_opts(&temp.path().to_string_lossy()),
         );
         assert_eq!(glob1.fast_pattern_count, 2);
-        
+
         // Mix of fast and slow patterns
         let glob2 = Glob::new_multi(
             vec!["*.txt".to_string(), "**/[a-z]*.js".to_string()],
@@ -2767,23 +2787,17 @@ mod tests {
 
         // Create files for each pattern
         for i in 0..10 {
-            File::create(base.join(format!("file{}.txt", i))).unwrap();
-            File::create(base.join(format!("file{}.js", i))).unwrap();
-            File::create(base.join(format!("file{}.ts", i))).unwrap();
+            File::create(base.join(format!("file{i}.txt"))).unwrap();
+            File::create(base.join(format!("file{i}.js"))).unwrap();
+            File::create(base.join(format!("file{i}.ts"))).unwrap();
         }
 
         // Create glob with many patterns
         let patterns: Vec<String> = (0..10)
-            .flat_map(|i| vec![
-                format!("file{}.txt", i),
-                format!("file{}.js", i),
-            ])
+            .flat_map(|i| vec![format!("file{}.txt", i), format!("file{}.js", i)])
             .collect();
 
-        let glob = Glob::new_multi(
-            patterns,
-            make_opts(&temp.path().to_string_lossy()),
-        );
+        let glob = Glob::new_multi(patterns, make_opts(&temp.path().to_string_lossy()));
 
         let results = glob.walk_sync();
         assert_eq!(results.len(), 20); // 10 txt + 10 js files
@@ -2804,7 +2818,7 @@ mod tests {
         );
 
         let results = glob.walk_sync();
-        
+
         // foo.txt should appear only once despite matching all patterns
         let foo_count = results.iter().filter(|r| *r == "foo.txt").count();
         assert_eq!(foo_count, 1);
@@ -2817,10 +2831,10 @@ mod tests {
         // Test absolute Unix path pattern
         let temp = create_test_fixture();
         let abs_path = temp.path().to_string_lossy().to_string();
-        
+
         // Create an absolute pattern
         let pattern = format!("{}/**/*.js", abs_path.replace('\\', "/"));
-        
+
         let glob = Glob::new(
             pattern,
             GlobOptions {
@@ -2828,14 +2842,16 @@ mod tests {
                 ..Default::default()
             },
         );
-        
+
         let results = glob.walk_sync();
-        
+
         // Should find js files in the temp directory
         // Results should be relative to the pattern root
         assert!(!results.is_empty());
         // Check that results contain the expected patterns
-        assert!(results.iter().any(|r| r.contains("main.js") || r.contains("baz.js")));
+        assert!(results
+            .iter()
+            .any(|r| r.contains("main.js") || r.contains("baz.js")));
     }
 
     #[test]
@@ -2845,9 +2861,9 @@ mod tests {
             "/nonexistent/path/**/*.txt".to_string(),
             GlobOptions::default(),
         );
-        
+
         let results = glob.walk_sync();
-        
+
         assert!(results.is_empty());
     }
 
@@ -2857,10 +2873,10 @@ mod tests {
         // Test Windows drive letter pattern
         let temp = create_test_fixture();
         let abs_path = temp.path().to_string_lossy().to_string();
-        
+
         // Convert to POSIX-style path
         let pattern = abs_path.replace('\\', "/");
-        
+
         let glob = Glob::new(
             format!("{}/**/*.txt", pattern),
             GlobOptions {
@@ -2868,12 +2884,14 @@ mod tests {
                 ..Default::default()
             },
         );
-        
+
         let results = glob.walk_sync();
-        
+
         // Should find txt files
         assert!(!results.is_empty());
-        assert!(results.iter().any(|r| r.contains("foo.txt") || r.contains("bar.txt")));
+        assert!(results
+            .iter()
+            .any(|r| r.contains("foo.txt") || r.contains("bar.txt")));
     }
 
     #[test]
@@ -2881,17 +2899,14 @@ mod tests {
         // Test that absolute patterns with literal prefixes work correctly
         let temp = create_test_fixture();
         let abs_path = temp.path().to_string_lossy().to_string().replace('\\', "/");
-        
+
         // Pattern with absolute root + literal prefix
-        let pattern = format!("{}/src/**/*.js", abs_path);
-        
-        let glob = Glob::new(
-            pattern,
-            GlobOptions::default(),
-        );
-        
+        let pattern = format!("{abs_path}/src/**/*.js");
+
+        let glob = Glob::new(pattern, GlobOptions::default());
+
         let results = glob.walk_sync();
-        
+
         // Should find js files under src
         assert!(results.iter().any(|r| r.contains("main.js")));
         assert!(results.iter().any(|r| r.contains("helper.js")));
@@ -2902,24 +2917,30 @@ mod tests {
     #[test]
     fn test_pattern_is_absolute() {
         use crate::pattern::{Pattern, PatternOptions};
-        
+
         // Unix absolute path
-        let unix_pattern = Pattern::with_pattern_options("/usr/local/**/*.txt", PatternOptions {
-            platform: Some("linux".to_string()),
-            ..Default::default()
-        });
+        let unix_pattern = Pattern::with_pattern_options(
+            "/usr/local/**/*.txt",
+            PatternOptions {
+                platform: Some("linux".to_string()),
+                ..Default::default()
+            },
+        );
         assert!(unix_pattern.is_absolute());
         assert_eq!(unix_pattern.root(), "/");
-        
+
         // Windows drive pattern
-        let win_pattern = Pattern::with_pattern_options("C:/Users/**/*.txt", PatternOptions {
-            platform: Some("win32".to_string()),
-            ..Default::default()
-        });
+        let win_pattern = Pattern::with_pattern_options(
+            "C:/Users/**/*.txt",
+            PatternOptions {
+                platform: Some("win32".to_string()),
+                ..Default::default()
+            },
+        );
         assert!(win_pattern.is_absolute());
         assert!(win_pattern.is_drive());
         assert_eq!(win_pattern.root(), "C:/");
-        
+
         // Relative pattern
         let rel_pattern = Pattern::with_pattern_options("src/**/*.txt", PatternOptions::default());
         assert!(!rel_pattern.is_absolute());
@@ -2929,12 +2950,15 @@ mod tests {
     #[test]
     fn test_unc_pattern_detection() {
         use crate::pattern::{Pattern, PatternOptions};
-        
+
         // UNC path
-        let unc_pattern = Pattern::with_pattern_options("//server/share/folder/**/*.txt", PatternOptions {
-            platform: Some("win32".to_string()),
-            ..Default::default()
-        });
+        let unc_pattern = Pattern::with_pattern_options(
+            "//server/share/folder/**/*.txt",
+            PatternOptions {
+                platform: Some("win32".to_string()),
+                ..Default::default()
+            },
+        );
         assert!(unc_pattern.is_absolute());
         assert!(unc_pattern.is_unc());
         assert!(unc_pattern.root().starts_with("//"));
@@ -2943,23 +2967,29 @@ mod tests {
     #[test]
     fn test_glob_double_dot_extension() {
         use crate::options::GlobOptions;
-        
+
         // Create a temporary directory with test files
         let temp_dir = tempfile::tempdir().unwrap();
         let temp_path = temp_dir.path();
-        
+
         // Create test/a.test.ts
         std::fs::create_dir_all(temp_path.join("test")).unwrap();
         std::fs::write(temp_path.join("test/a.test.ts"), "").unwrap();
         std::fs::write(temp_path.join("test/b.test.tsx"), "").unwrap();
-        
+
         let mut options = GlobOptions::default();
         options.cwd = Some(temp_path.to_string_lossy().to_string());
-        
+
         let glob = Glob::new_multi(vec!["**/*.test.ts".to_string()], options);
         let results = glob.walk_sync();
-        
-        assert!(results.contains(&"test/a.test.ts".to_string()), "Should contain test/a.test.ts");
-        assert!(!results.contains(&"test/b.test.tsx".to_string()), "Should not contain test/b.test.tsx");
+
+        assert!(
+            results.contains(&"test/a.test.ts".to_string()),
+            "Should contain test/a.test.ts"
+        );
+        assert!(
+            !results.contains(&"test/b.test.tsx".to_string()),
+            "Should not contain test/b.test.tsx"
+        );
     }
 }
