@@ -210,7 +210,8 @@ function toNativeOptions(options?: GlobOptions): NativeGlobOptions {
   }
 
   return {
-    cwd: rest.cwd ?? process.cwd(),
+    // Use process.cwd() if cwd is undefined, null, or empty string
+    cwd: rest.cwd || process.cwd(),
     ...rest,
     ignore: nativeIgnore,
   }

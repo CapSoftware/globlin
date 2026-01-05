@@ -1071,6 +1071,12 @@ pub fn preprocess_pattern(pattern: &str) -> String {
         result = result[2..].to_string();
     }
 
+    // If the pattern was just "./" (or ".//" etc), it becomes empty after stripping.
+    // Treat this as "." which matches the current directory.
+    if result.is_empty() && pattern.starts_with("./") {
+        return ".".to_string();
+    }
+
     result
 }
 
