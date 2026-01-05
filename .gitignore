@@ -28,3 +28,9 @@ Thumbs.db
 # Markdown files (except README)
 *.md
 !README.md
+
+# Coverage reports
+coverage/
+
+# Website (not part of core package)
+www/

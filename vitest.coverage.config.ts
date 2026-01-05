@@ -5,7 +5,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
-    exclude: ['**/node_modules/**', '**/vendor/**', '**/fixtures/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/vendor/**',
+      '**/fixtures/**',
+      'tests/benchmark.test.ts',
+      'tests/performance-regression.test.ts',
+    ],
     testTimeout: 30000,
     hookTimeout: 30000,
     coverage: {

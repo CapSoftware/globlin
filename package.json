@@ -42,6 +42,9 @@
     "prepublishOnly": "napi prepublish -t npm",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "coverage": "npm run test:coverage && npm run coverage:rust",
+    "coverage:rust": "cargo tarpaulin --out Html --output-dir coverage/rust --skip-clean --ignore-tests",
     "bench": "bash benches/benchmark.sh",
     "bench:small": "bash benches/benchmark.sh small",
     "bench:medium": "bash benches/benchmark.sh medium",
@@ -63,6 +66,7 @@
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0",
     "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
     "fast-check": "^4.5.3",
     "fast-glob": "^3.3.3",
     "glob": "^10.3.0",
