@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use ahash::AHashSet;
 use napi::bindgen_prelude::*;
 
 use crate::cache::get_or_compile_pattern;
@@ -28,7 +30,8 @@ pub struct Glob {
     #[allow(dead_code)]
     pattern_strs: Vec<String>,
     cwd: PathBuf,
-    patterns: Vec<Pattern>,
+    /// Patterns stored in Arc for cheap cloning into closures
+    patterns: Arc<[Pattern]>,
     absolute: bool,
     posix: bool,
     #[allow(dead_code)]
@@ -189,8 +192,8 @@ impl Glob {
         };
 
         // Process all input patterns and expand braces for each
-        // Use a HashSet to track already-seen pattern strings for deduplication
-        let mut seen_patterns: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Use AHashSet to track already-seen pattern strings for deduplication (faster hashing)
+        let mut seen_patterns: AHashSet<String> = AHashSet::new();
         let mut patterns: Vec<Pattern> = Vec::new();
 
         for pattern_str in &pattern_strs {
@@ -337,6 +340,9 @@ impl Glob {
         // Pre-compute: count patterns with fast-path matching for optimization decisions
         let fast_pattern_count = patterns.iter().filter(|p| p.fast_path().is_fast()).count();
 
+        // Convert to Arc<[Pattern]> for cheap cloning into closures
+        let patterns: Arc<[Pattern]> = patterns.into();
+
         Self {
             pattern_strs,
             cwd,
@@ -376,15 +382,15 @@ impl Glob {
         // This reduces reallocations during collection.
         let estimated_capacity = self.estimate_result_capacity();
         let mut results = Vec::with_capacity(estimated_capacity);
-        let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
-        let mut ignored_dirs: std::collections::HashSet<String> =
-            std::collections::HashSet::with_capacity(8); // Most globs have few ignored dirs
+        // Use AHashSet for faster hashing than std::collections::HashSet
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
+        let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8); // Most globs have few ignored dirs
 
         // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: std::collections::HashSet<String> = if self.include_child_matches {
-            std::collections::HashSet::new() // Empty, won't be used
+        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
+            AHashSet::new() // Empty, won't be used
         } else {
-            std::collections::HashSet::with_capacity(estimated_capacity / 4)
+            AHashSet::with_capacity(estimated_capacity / 4)
         };
 
         // Pre-allocate a reusable buffer for path formatting
@@ -437,19 +443,21 @@ impl Glob {
         //
         // The filter receives the path relative to walk_root, but the patterns expect paths
         // relative to cwd. When we have a prefix_to_strip, we need to prepend it.
-        let patterns_for_filter: Vec<Pattern> = self.patterns.clone();
+        // Use Arc::clone for cheap reference counting instead of deep cloning patterns.
+        let patterns_for_filter = Arc::clone(&self.patterns);
         let prefix_for_filter = prefix_to_strip.clone();
 
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
-            // Construct the path relative to cwd for pattern matching
-            let path_from_cwd = if let Some(ref prefix) = prefix_for_filter {
+            // Construct the path relative to cwd for pattern matching.
+            // Use Cow to avoid allocation when no prefix is needed.
+            let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
-                    prefix.clone()
+                    Cow::Borrowed(prefix.as_str())
                 } else {
-                    format!("{prefix}/{dir_path}")
+                    Cow::Owned(format!("{prefix}/{dir_path}"))
                 }
             } else {
-                dir_path.to_string()
+                Cow::Borrowed(dir_path)
             };
 
             // Check if ANY pattern could potentially match files in this directory.
@@ -655,15 +663,15 @@ impl Glob {
         // Pre-allocate result vector with estimated capacity
         let estimated_capacity = self.estimate_result_capacity();
         let mut results = Vec::with_capacity(estimated_capacity);
-        let mut seen = std::collections::HashSet::with_capacity(estimated_capacity);
-        let mut ignored_dirs: std::collections::HashSet<String> =
-            std::collections::HashSet::with_capacity(8);
+        // Use AHashSet for faster hashing
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
+        let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8);
 
         // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: std::collections::HashSet<String> = if self.include_child_matches {
-            std::collections::HashSet::new()
+        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
+            AHashSet::new()
         } else {
-            std::collections::HashSet::with_capacity(estimated_capacity / 4)
+            AHashSet::with_capacity(estimated_capacity / 4)
         };
 
         // Check if any pattern matches the cwd itself ("**" or ".").
@@ -699,19 +707,20 @@ impl Glob {
             self.walk_options.clone()
         };
 
-        // Create directory pruning filter
-        let patterns_for_filter: Vec<Pattern> = self.patterns.clone();
+        // Create directory pruning filter using Arc::clone for cheap reference counting
+        let patterns_for_filter = Arc::clone(&self.patterns);
         let prefix_for_filter = prefix_to_strip.clone();
 
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
-            let path_from_cwd = if let Some(ref prefix) = prefix_for_filter {
+            // Use Cow to avoid allocation when no prefix is needed
+            let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
-                    prefix.clone()
+                    Cow::Borrowed(prefix.as_str())
                 } else {
-                    format!("{prefix}/{dir_path}")
+                    Cow::Owned(format!("{prefix}/{dir_path}"))
                 }
             } else {
-                dir_path.to_string()
+                Cow::Borrowed(dir_path)
             };
 
             patterns_for_filter
@@ -1042,11 +1051,7 @@ impl Glob {
     /// Check if a path is inside any of the ignored directories.
     /// Uses byte-level comparison for performance.
     #[inline]
-    fn is_in_ignored_dir(
-        &self,
-        normalized: &str,
-        ignored_dirs: &std::collections::HashSet<String>,
-    ) -> bool {
+    fn is_in_ignored_dir(&self, normalized: &str, ignored_dirs: &AHashSet<String>) -> bool {
         if ignored_dirs.is_empty() {
             return false;
         }
@@ -1063,11 +1068,7 @@ impl Glob {
     /// Check if a path is a child of any matched parent.
     /// Used when includeChildMatches is false.
     #[inline]
-    fn is_child_of_matched(
-        &self,
-        normalized: &str,
-        matched_parents: &std::collections::HashSet<String>,
-    ) -> bool {
+    fn is_child_of_matched(&self, normalized: &str, matched_parents: &AHashSet<String>) -> bool {
         if matched_parents.is_empty() {
             return false;
         }

@@ -32,6 +32,10 @@ rayon = "1.8"
 once_cell = "1.19"
 thiserror = "1.0"
 lru = "0.16"
+bumpalo = "3.14"  # Arena allocator for temporary allocations
+compact_str = "0.8"  # Small string optimization
+smallvec = { version = "1.13", features = ["union"] }  # Stack-allocated small vectors
+ahash = "0.8"  # Faster hashing for HashSet/HashMap
 
 [build-dependencies]
 napi-build = "2.1"
