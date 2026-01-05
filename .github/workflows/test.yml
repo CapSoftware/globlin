@@ -1,6 +1,10 @@
 name: Test
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -18,7 +22,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-action@stable
 
-      - name: Cache cargo
+      - name: Cache cargo (Unix)
+        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
           path: |
@@ -27,6 +32,20 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache cargo (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\bin\
+            ~\.cargo\registry\index\
+            ~\.cargo\registry\cache\
+            ~\.cargo\git\db\
+            target\
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
@@ -61,6 +80,34 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-action@stable
 
+      - name: Cache cargo (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-node-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-node-
+
+      - name: Cache cargo (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\bin\
+            ~\.cargo\registry\index\
+            ~\.cargo\registry\cache\
+            ~\.cargo\git\db\
+            target\
+          key: ${{ runner.os }}-cargo-node-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-node-
+
       - name: Install dependencies
         run: npm ci
 
@@ -69,6 +116,15 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-${{ matrix.os }}-node${{ matrix.node }}
+          path: |
+            tests/fixtures/
+          retention-days: 7
 
   lint:
     name: Lint
