@@ -664,4 +664,162 @@ mod tests {
         // This is needed for correct `mark` option behavior
         assert!(symlink_entry.is_symlink());
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_permission_denied_skips_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure:
+        // readable/
+        //   file.txt
+        // unreadable/
+        //   secret.txt
+        fs::create_dir_all(base.join("readable")).unwrap();
+        File::create(base.join("readable/file.txt")).unwrap();
+        fs::create_dir_all(base.join("unreadable")).unwrap();
+        File::create(base.join("unreadable/secret.txt")).unwrap();
+
+        // Remove permissions from unreadable directory
+        let unreadable_path = base.join("unreadable");
+        fs::set_permissions(&unreadable_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        // Walker should not crash and should find readable files
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().dot(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Restore permissions for cleanup
+        fs::set_permissions(&unreadable_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Should find readable file
+        assert!(entries.iter().any(|e| e.path().ends_with("file.txt")));
+        // Should NOT find file in unreadable directory
+        assert!(!entries.iter().any(|e| e.path().ends_with("secret.txt")));
+        // Should not have crashed (test would fail if it did)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_permission_denied_continues_walking() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure:
+        // a/
+        //   a.txt
+        // b/ (unreadable)
+        //   b.txt
+        // c/
+        //   c.txt
+        fs::create_dir_all(base.join("a")).unwrap();
+        File::create(base.join("a/a.txt")).unwrap();
+        fs::create_dir_all(base.join("b")).unwrap();
+        File::create(base.join("b/b.txt")).unwrap();
+        fs::create_dir_all(base.join("c")).unwrap();
+        File::create(base.join("c/c.txt")).unwrap();
+
+        // Remove permissions from b/
+        let b_path = base.join("b");
+        fs::set_permissions(&b_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        // Walker should continue after permission error
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().dot(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Restore permissions for cleanup
+        fs::set_permissions(&b_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Should find files in a/ and c/
+        assert!(entries.iter().any(|e| e.path().ends_with("a.txt")));
+        assert!(entries.iter().any(|e| e.path().ends_with("c.txt")));
+        // Should NOT find file in b/ (no permission)
+        assert!(!entries.iter().any(|e| e.path().ends_with("b.txt")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_deeply_nested_permission_denied() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create structure:
+        // level1/
+        //   level2/
+        //     level3/ (unreadable)
+        //       secret.txt
+        //     visible.txt
+        fs::create_dir_all(base.join("level1/level2/level3")).unwrap();
+        File::create(base.join("level1/level2/level3/secret.txt")).unwrap();
+        File::create(base.join("level1/level2/visible.txt")).unwrap();
+
+        // Remove permissions from level3/
+        let level3_path = base.join("level1/level2/level3");
+        fs::set_permissions(&level3_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        // Walker should find visible.txt but not secret.txt
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().dot(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Restore permissions for cleanup
+        fs::set_permissions(&level3_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Should find visible file
+        assert!(entries.iter().any(|e| e.path().ends_with("visible.txt")));
+        // Should NOT find file in unreadable directory
+        assert!(!entries.iter().any(|e| e.path().ends_with("secret.txt")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_walker_multiple_permission_denied() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create multiple directories, some unreadable
+        fs::create_dir_all(base.join("ok1")).unwrap();
+        File::create(base.join("ok1/file.txt")).unwrap();
+        fs::create_dir_all(base.join("bad1")).unwrap();
+        File::create(base.join("bad1/secret.txt")).unwrap();
+        fs::create_dir_all(base.join("ok2")).unwrap();
+        File::create(base.join("ok2/file.txt")).unwrap();
+        fs::create_dir_all(base.join("bad2")).unwrap();
+        File::create(base.join("bad2/secret.txt")).unwrap();
+
+        // Remove permissions from bad1/ and bad2/
+        let bad1_path = base.join("bad1");
+        let bad2_path = base.join("bad2");
+        fs::set_permissions(&bad1_path, fs::Permissions::from_mode(0o000)).unwrap();
+        fs::set_permissions(&bad2_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        // Walker should find all accessible files
+        let walker = Walker::new(base.to_path_buf(), WalkOptions::new().dot(true));
+        let entries: Vec<_> = walker.walk_sync();
+
+        // Restore permissions for cleanup
+        fs::set_permissions(&bad1_path, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&bad2_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Should find files in ok1/ and ok2/
+        let files: Vec<_> = entries
+            .iter()
+            .filter(|e| e.path().ends_with("file.txt"))
+            .collect();
+        assert_eq!(files.len(), 2);
+
+        // Should NOT find files in bad1/ or bad2/
+        let secrets: Vec<_> = entries
+            .iter()
+            .filter(|e| e.path().ends_with("secret.txt"))
+            .collect();
+        assert!(secrets.is_empty());
+    }
 }
