@@ -4,14 +4,14 @@
 #[macro_use]
 extern crate napi_derive;
 
-// Module declarations
-mod glob;
-mod ignore;
-mod options;
-mod pattern;
-mod processor;
-mod util;
-mod walker;
+// Module declarations - made public for profiling binary
+pub mod glob;
+pub mod ignore;
+pub mod options;
+pub mod pattern;
+pub mod processor;
+pub mod util;
+pub mod walker;
 
 // Re-exports
 pub use glob::PathData;

@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/yourusername/globlin"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # NAPI-RS for Node.js bindings
@@ -46,6 +46,10 @@ harness = false
 [[bench]]
 name = "walker_comparison"
 harness = false
+
+[[bin]]
+name = "profile_glob"
+path = "src/bin/profile_glob.rs"
 
 [profile.release]
 lto = true

@@ -59,6 +59,8 @@
     "bench:node:all": "npx tsx benches/node_bench.ts --all",
     "bench:rust": "cargo bench",
     "bench:ci": "npx tsx benches/bench-ci.ts --output bench-results.json",
+    "bench:profile": "npx tsx benches/profile_node.ts",
+    "bench:boundary": "npx tsx benches/profile_boundary.ts",
     "bench:setup": "node benches/setup-fixtures.js",
     "universal": "napi universal",
     "version": "napi version"
