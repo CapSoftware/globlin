@@ -47,6 +47,10 @@ harness = false
 name = "walker_comparison"
 harness = false
 
+[[bench]]
+name = "component_bench"
+harness = false
+
 [[bin]]
 name = "profile_glob"
 path = "src/bin/profile_glob.rs"
