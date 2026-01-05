@@ -183,4 +183,140 @@ describe('includeChildMatches edge cases', () => {
     expect(globResults).toEqual([])
     expect(globlinResults).toEqual([])
   })
+
+  it('should match first occurrence only with simple patterns', async () => {
+    const pattern = 'a/**'
+    const options = {
+      cwd: fixturePath,
+      posix: true,
+      includeChildMatches: false,
+    }
+
+    const globlinResults = await globlin.glob(pattern, options)
+    const globResults = await globOriginal(pattern, options)
+
+    // Should only match 'a' itself, not 'a/b', 'a/b/c', etc.
+    expect(globResults).toEqual(['a'])
+    expect(globlinResults).toEqual(globResults)
+  })
+
+  it('should match first occurrence only with sync API', () => {
+    const pattern = 'a/**'
+    const options = {
+      cwd: fixturePath,
+      posix: true,
+      includeChildMatches: false,
+    }
+
+    const globlinResults = globlin.globSync(pattern, options)
+    const globResults = globSyncOriginal(pattern, options)
+
+    expect(globResults).toEqual(['a'])
+    expect(globlinResults).toEqual(globResults)
+  })
+})
+
+describe('includeChildMatches with custom ignore', () => {
+  // Note: glob v13 throws an error when using includeChildMatches: false with a
+  // custom ignore object that doesn't have an add() method. This is because glob
+  // internally adds matched paths to the ignore list.
+  //
+  // Globlin handles includeChildMatches differently - it tracks matched parents
+  // in a separate data structure, so it doesn't require the ignore's add() method.
+  // This is an intentional implementation difference that provides more flexibility.
+
+  it('should work with custom ignore object (globlin-specific behavior)', async () => {
+    // Create a fixture with more complex structure
+    const customFixture = await createTestFixture('custom-ignore-child-match', {
+      files: [
+        'a/b/c/d.txt',
+        'a/b/c/e.txt',
+        'a/skip/f.txt',
+        'a/x/y/z.txt',
+      ],
+    })
+
+    try {
+      const pattern = 'a/**'
+      const options = {
+        cwd: customFixture,
+        posix: true,
+        includeChildMatches: false,
+        ignore: {
+          // Custom ignore object: skip paths containing 'skip'
+          ignored: (path: { relative: () => string }) => path.relative().includes('skip'),
+        },
+      }
+
+      const globlinResults = await globlin.glob(pattern, options)
+
+      // globlin should work with custom ignore + includeChildMatches: false
+      // Should match 'a' (first match), and custom ignore filters 'skip' paths
+      expect(globlinResults).toEqual(['a'])
+    } finally {
+      await cleanupFixture(customFixture)
+    }
+  })
+
+  it('should work with custom ignore childrenIgnored + includeChildMatches', async () => {
+    // Create a fixture where includeChildMatches matters
+    const customFixture = await createTestFixture('children-ignored-include-child', {
+      files: [
+        'a/b/c.txt',
+        'a/b/c/d.txt',  // child of a/b/c.txt path prefix
+        'a/skip/f.txt',
+        'a/skip/g/h.txt',
+      ],
+    })
+
+    try {
+      const pattern = 'a/**'
+      const options = {
+        cwd: customFixture,
+        posix: true,
+        includeChildMatches: false,
+        ignore: {
+          // Skip children of 'skip' directory
+          childrenIgnored: (path: { relative: () => string }) => path.relative() === 'a/skip',
+        },
+      }
+
+      const globlinResults = await globlin.glob(pattern, options)
+
+      // includeChildMatches: false means only first match 'a'
+      // All children are excluded (a/b, a/b/c.txt, a/b/c, a/b/c/d.txt, a/skip, etc.)
+      expect(globlinResults).toEqual(['a'])
+    } finally {
+      await cleanupFixture(customFixture)
+    }
+  })
+})
+
+describe('includeChildMatches behavior differences', () => {
+  // Document the intentional differences between glob and globlin
+  
+  it('glob throws on custom ignore without add(), globlin works', async () => {
+    // This test verifies the behavioral difference
+    const customIgnoreNoAdd = {
+      ignored: () => false,
+      childrenIgnored: () => false,
+    }
+
+    // glob throws: "cannot ignore child matches, ignore lacks add() method."
+    await expect(
+      globOriginal('**', {
+        cwd: fixturePath,
+        ignore: customIgnoreNoAdd as any,
+        includeChildMatches: false,
+      })
+    ).rejects.toThrow('cannot ignore child matches, ignore lacks add() method')
+
+    // globlin works - it doesn't use ignore's add() method
+    const globlinResults = await globlin.glob('**', {
+      cwd: fixturePath,
+      ignore: customIgnoreNoAdd,
+      includeChildMatches: false,
+    })
+    expect(Array.isArray(globlinResults)).toBe(true)
+  })
 })
