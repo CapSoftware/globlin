@@ -125,6 +125,7 @@
     "bench:vs-fg": "npx tsx benches/vs_fast_glob_bench.ts",
     "bench:vs-fg:all": "npx tsx benches/vs_fast_glob_bench.ts --all",
     "bench:vs-fg:large": "npx tsx benches/vs_fast_glob_bench.ts --large",
+    "bench:api:sync": "npx tsx benches/api/sync_bench.ts",
     "bench:setup": "node benches/setup-fixtures.js",
     "bench:setup:huge": "node benches/setup-huge-fixture.js",
     "universal": "napi universal",
