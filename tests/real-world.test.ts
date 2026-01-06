@@ -1,13 +1,13 @@
 /**
  * Real-world scenario tests for globlin.
- * 
+ *
  * Tests actual project structures:
  * - Monorepo with multiple packages
  * - Build output directories
  * - Git repositories with .gitignore
  * - Large file counts
  * - Concurrent operations
- * 
+ *
  * All fixtures are REAL files on disk - no mocks or simulations.
  */
 
@@ -46,7 +46,7 @@ describe('Real-world scenarios', () => {
       fixture = await createMonorepoFixture({
         packages: 50,
         filesPerPackage: 100,
-        nodeModulesDepth: 3
+        nodeModulesDepth: 3,
       })
     }, 120000) // 2 minute timeout for fixture creation
 
@@ -60,7 +60,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/*/src/**/*.ts'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -72,10 +72,10 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/*/src/**/*.ts'
       const options = {
         cwd: fixture,
-        ignore: ['**/node_modules/**', '**/*.test.ts']
+        ignore: ['**/node_modules/**', '**/*.test.ts'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -87,7 +87,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/*/{src,test}/**/*.{ts,tsx}'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -112,7 +112,7 @@ describe('Real-world scenarios', () => {
       ]
 
       for (const pattern of patterns) {
-        const globResults = await globOriginal(pattern, { cwd: fixture }) as string[]
+        const globResults = (await globOriginal(pattern, { cwd: fixture })) as string[]
         const globlinResults = await globlin.glob(pattern, { cwd: fixture })
         expect(new Set(globlinResults)).toEqual(new Set(globResults))
       }
@@ -126,7 +126,7 @@ describe('Real-world scenarios', () => {
       fixture = await createBuildOutputFixture({
         sourceFiles: 1000,
         generateDts: true,
-        generateMaps: true
+        generateMaps: true,
       })
     }, 60000)
 
@@ -140,7 +140,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'dist/**/*.js'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -152,10 +152,10 @@ describe('Real-world scenarios', () => {
       const pattern = 'dist/**/*.js'
       const options = {
         cwd: fixture,
-        ignore: ['**/*.map']
+        ignore: ['**/*.map'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -166,7 +166,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'dist/**/*.d.ts'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -178,10 +178,10 @@ describe('Real-world scenarios', () => {
       const pattern = 'dist/**/*.{js,d.ts}'
       const options = {
         cwd: fixture,
-        ignore: ['**/*.map']
+        ignore: ['**/*.map'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -192,8 +192,8 @@ describe('Real-world scenarios', () => {
       const srcPattern = 'src/**/*.ts'
       const distPattern = 'dist/**/*.js'
 
-      const srcGlob = await globOriginal(srcPattern, { cwd: fixture }) as string[]
-      const distGlob = await globOriginal(distPattern, { cwd: fixture }) as string[]
+      const srcGlob = (await globOriginal(srcPattern, { cwd: fixture })) as string[]
+      const distGlob = (await globOriginal(distPattern, { cwd: fixture })) as string[]
       const srcGloblin = await globlin.glob(srcPattern, { cwd: fixture })
       const distGloblin = await globlin.glob(distPattern, { cwd: fixture })
 
@@ -209,7 +209,7 @@ describe('Real-world scenarios', () => {
     beforeAll(async () => {
       fixture = await createGitRepoFixture({
         trackedFiles: 500,
-        ignoredPatterns: ['node_modules', '*.log', 'dist/', '.env']
+        ignoredPatterns: ['node_modules', '*.log', 'dist/', '.env'],
       })
     }, 60000)
 
@@ -222,12 +222,7 @@ describe('Real-world scenarios', () => {
     it('should handle .gitignore-style patterns', async () => {
       // Use standard glob ignore patterns instead of reading gitignore
       // (gitignore has different syntax than glob)
-      const ignorePatterns = [
-        '**/node_modules/**',
-        '**/*.log',
-        '**/dist/**',
-        '**/.env',
-      ]
+      const ignorePatterns = ['**/node_modules/**', '**/*.log', '**/dist/**', '**/.env']
 
       const pattern = '**/*'
       const options = {
@@ -237,7 +232,7 @@ describe('Real-world scenarios', () => {
         nodir: true, // Only check files, not directories
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -249,10 +244,10 @@ describe('Real-world scenarios', () => {
       const pattern = '**/*.{ts,js,json,md}'
       const options = {
         cwd: fixture,
-        ignore: ['**/node_modules/**', '**/dist/**']
+        ignore: ['**/node_modules/**', '**/dist/**'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -263,13 +258,12 @@ describe('Real-world scenarios', () => {
       const pattern = '**/*'
       const options = { cwd: fixture, dot: true }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
-      const hiddenFiles = globlinResults.filter(r =>
-        path.basename(r).startsWith('.') ||
-        r.split('/').some(part => part.startsWith('.'))
+      const hiddenFiles = globlinResults.filter(
+        r => path.basename(r).startsWith('.') || r.split('/').some(part => part.startsWith('.'))
       )
       expect(hiddenFiles.length).toBeGreaterThan(0)
     })
@@ -279,10 +273,10 @@ describe('Real-world scenarios', () => {
       const options = {
         cwd: fixture,
         ignore: ['**/node_modules/**', '**/dist/**'],
-        nodir: true
+        nodir: true,
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -297,7 +291,7 @@ describe('Real-world scenarios', () => {
       fixture = await createLargeFixture(100000, {
         maxDepth: 7,
         extensions: ['js', 'ts', 'txt', 'json'],
-        name: 'real-world-large'
+        name: 'real-world-large',
       })
     }, 300000) // 5 minute timeout for 100k files
 
@@ -323,7 +317,7 @@ describe('Real-world scenarios', () => {
       const pattern = '**/*.js'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -331,16 +325,14 @@ describe('Real-world scenarios', () => {
     })
 
     it('should handle recursive patterns efficiently', async () => {
-      const { globTime, globlinTime, speedup } = await compareTiming(
-        '**/*.ts',
-        {},
-        fixture
-      )
+      const { globTime, globlinTime, speedup } = await compareTiming('**/*.ts', {}, fixture)
 
       // Should be faster than glob (or at least competitive)
       expect(speedup).toBeGreaterThan(0.5)
 
-      console.log(`Large fixture timing - glob: ${globTime.toFixed(2)}ms, globlin: ${globlinTime.toFixed(2)}ms, speedup: ${speedup.toFixed(2)}x`)
+      console.log(
+        `Large fixture timing - glob: ${globTime.toFixed(2)}ms, globlin: ${globlinTime.toFixed(2)}ms, speedup: ${speedup.toFixed(2)}x`
+      )
     })
 
     it('should handle sync API on large fixture', () => {
@@ -356,7 +348,7 @@ describe('Real-world scenarios', () => {
       const patterns = ['**/*.js', '**/*.ts']
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(patterns, options) as string[]
+      const globResults = (await globOriginal(patterns, options)) as string[]
       const globlinResults = await globlin.glob(patterns, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -370,7 +362,7 @@ describe('Real-world scenarios', () => {
       fixture = await createLargeFixture(10000, {
         maxDepth: 5,
         extensions: ['js', 'ts', 'txt', 'json', 'tsx'],
-        name: 'real-world-concurrent'
+        name: 'real-world-concurrent',
       })
     }, 120000)
 
@@ -381,19 +373,13 @@ describe('Real-world scenarios', () => {
     })
 
     it('should handle many concurrent globs safely', async () => {
-      const patterns = [
-        '**/*.js',
-        '**/*.ts',
-        '**/*.txt',
-        '**/*.json',
-        '**/*.tsx',
-      ]
+      const patterns = ['**/*.js', '**/*.ts', '**/*.txt', '**/*.json', '**/*.tsx']
 
       const results = await Promise.all(
         patterns.flatMap(pattern =>
-          Array(20).fill(0).map(() =>
-            globlin.glob(pattern, { cwd: fixture })
-          )
+          Array(20)
+            .fill(0)
+            .map(() => globlin.glob(pattern, { cwd: fixture }))
         )
       )
 
@@ -426,7 +412,7 @@ describe('Real-world scenarios', () => {
       expect(results.every(r => Array.isArray(r))).toBe(true)
 
       for (let i = 0; i < patterns.length; i++) {
-        const globResult = await globOriginal(patterns[i], { cwd: fixture }) as string[]
+        const globResult = (await globOriginal(patterns[i], { cwd: fixture })) as string[]
         expect(new Set(results[i])).toEqual(new Set(globResult))
       }
     })
@@ -439,7 +425,7 @@ describe('Real-world scenarios', () => {
       const syncResult = globlin.globSync(syncPattern, { cwd: fixture })
       const asyncResult = await asyncPromise
 
-      const asyncGlob = await globOriginal(asyncPattern, { cwd: fixture }) as string[]
+      const asyncGlob = (await globOriginal(asyncPattern, { cwd: fixture })) as string[]
       const syncGlob = globSyncOriginal(syncPattern, { cwd: fixture }) as string[]
 
       expect(new Set(asyncResult)).toEqual(new Set(asyncGlob))
@@ -469,7 +455,9 @@ describe('Real-world scenarios', () => {
       const options = { cwd: fixture }
 
       // Run 50 concurrent operations
-      const promises = Array(50).fill(0).map(() => globlin.glob(pattern, options))
+      const promises = Array(50)
+        .fill(0)
+        .map(() => globlin.glob(pattern, options))
       const results = await Promise.all(promises)
 
       // All should return same results
@@ -487,7 +475,7 @@ describe('Real-world scenarios', () => {
       fixture = await createMonorepoFixture({
         packages: 20,
         filesPerPackage: 50,
-        nodeModulesDepth: 2
+        nodeModulesDepth: 2,
       })
     }, 120000)
 
@@ -501,15 +489,10 @@ describe('Real-world scenarios', () => {
       const pattern = '**/*.{js,jsx,ts,tsx}'
       const options = {
         cwd: fixture,
-        ignore: [
-          '**/node_modules/**',
-          '**/dist/**',
-          '**/build/**',
-          '**/*.d.ts',
-        ]
+        ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/*.d.ts'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -520,10 +503,10 @@ describe('Real-world scenarios', () => {
       const pattern = '**/*.test.{ts,tsx}'
       const options = {
         cwd: fixture,
-        ignore: ['**/node_modules/**']
+        ignore: ['**/node_modules/**'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -534,7 +517,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/*/src/index.{ts,tsx,js,jsx}'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -544,10 +527,10 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/*/src/**/*'
       const options = {
         cwd: fixture,
-        nodir: true
+        nodir: true,
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -557,7 +540,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/*/package.json'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -568,10 +551,10 @@ describe('Real-world scenarios', () => {
       const pattern = 'packages/**/src/*.{ts,tsx}'
       const options = {
         cwd: fixture,
-        ignore: ['**/node_modules/**']
+        ignore: ['**/node_modules/**'],
       }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -633,7 +616,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'deep/**/*.ts'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -644,7 +627,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'flat/*.js'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -655,7 +638,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'mixed/index.*'
       const options = { cwd: fixture }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -666,7 +649,7 @@ describe('Real-world scenarios', () => {
       const pattern = '.hidden/**/*'
       const options = { cwd: fixture, dot: true }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -677,7 +660,7 @@ describe('Real-world scenarios', () => {
       const pattern = 'special/**/*'
       const options = { cwd: fixture, nodir: true }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -689,7 +672,7 @@ describe('Real-world scenarios', () => {
       const patternUpper = 'special/**/*.TS'
       const options = { cwd: fixture, nocase: true }
 
-      const globResults = await globOriginal(patternLower, options) as string[]
+      const globResults = (await globOriginal(patternLower, options)) as string[]
       const globlinResults = await globlin.glob(patternLower, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
@@ -699,7 +682,7 @@ describe('Real-world scenarios', () => {
       const pattern = '**/*.ts'
       const options = { cwd: fixture, maxDepth: 3 }
 
-      const globResults = await globOriginal(pattern, options) as string[]
+      const globResults = (await globOriginal(pattern, options)) as string[]
       const globlinResults = await globlin.glob(pattern, options)
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))

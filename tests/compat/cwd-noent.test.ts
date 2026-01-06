@@ -44,7 +44,7 @@ describe('cwd-noent - non-existent cwd behavior', () => {
       const s = g.streamSync()
       const results: string[] = []
       s.on('data', (p: string) => results.push(p))
-      return new Promise<void>((resolve) => {
+      return new Promise<void>(resolve => {
         s.on('end', () => {
           expect(results).toEqual([])
           resolve()

@@ -65,23 +65,21 @@ export interface PathLike {
 
 /**
  * Result type for glob operations based on options
- * 
+ *
  * @example
  * ```ts
  * type StringResult = GlobResult<{ withFileTypes: false }>  // string[]
  * type PathResult = GlobResult<{ withFileTypes: true }>     // Path[]
  * ```
  */
-export type GlobResult<O extends { withFileTypes?: boolean }> =
-  O extends { withFileTypes: true }
-    ? PathScurryPath[]
-    : string[]
+export type GlobResult<O extends { withFileTypes?: boolean }> = O extends { withFileTypes: true }
+  ? PathScurryPath[]
+  : string[]
 
 /**
  * Async result type for glob operations
  */
-export type GlobAsyncResult<O extends { withFileTypes?: boolean }> =
-  Promise<GlobResult<O>>
+export type GlobAsyncResult<O extends { withFileTypes?: boolean }> = Promise<GlobResult<O>>
 
 // ============================================================================
 // Options Subsets

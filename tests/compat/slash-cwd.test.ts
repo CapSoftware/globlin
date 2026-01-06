@@ -21,10 +21,10 @@ describe('slash-cwd - patterns ending with / only match directories', () => {
     // We'll create a structure where we can look for patterns that end with /
     fixturePath = await createTestFixture('slash-cwd', {
       files: [
-        'README.md',      // A file with .md extension
-        'CHANGELOG.md',   // Another file
-        'test/file.txt',  // A directory named test
-        'src/main.ts',    // Other files and dirs
+        'README.md', // A file with .md extension
+        'CHANGELOG.md', // Another file
+        'test/file.txt', // A directory named test
+        'src/main.ts', // Other files and dirs
       ],
     })
     globlin = await loadGloblin()

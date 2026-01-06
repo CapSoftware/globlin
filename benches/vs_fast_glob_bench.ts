@@ -1,12 +1,12 @@
 /**
  * Comprehensive Benchmark: Globlin vs Fast-Glob vs Glob
- * 
+ *
  * This benchmark compares globlin against fast-glob and glob on various
  * pattern types to validate Phase 5.10 optimizations:
  * - Static patterns (Task 5.10.1)
  * - Multi-base patterns (Task 5.10.2)
  * - Segment-based matching (Task 5.10.3)
- * 
+ *
  * Run with: npx tsx benches/vs_fast_glob_bench.ts
  */
 
@@ -48,38 +48,19 @@ const FIXTURES: FixtureConfig[] = [
 const PATTERN_CATEGORIES: { name: string; patterns: (string | string[])[] }[] = [
   {
     name: 'Static Patterns',
-    patterns: [
-      'package.json',
-      'README.md',
-      'level0/file0.js',
-      ['package.json', 'README.md'],
-    ],
+    patterns: ['package.json', 'README.md', 'level0/file0.js', ['package.json', 'README.md']],
   },
   {
     name: 'Simple Patterns',
-    patterns: [
-      '*.js',
-      '*.ts',
-      '*.json',
-      '*.md',
-    ],
+    patterns: ['*.js', '*.ts', '*.json', '*.md'],
   },
   {
     name: 'Recursive Patterns',
-    patterns: [
-      '**/*.js',
-      '**/*.ts',
-      '**/*',
-      '**/file*.js',
-    ],
+    patterns: ['**/*.js', '**/*.ts', '**/*', '**/file*.js'],
   },
   {
     name: 'Scoped Patterns',
-    patterns: [
-      'level0/**/*.js',
-      'level0/**/*.ts',
-      'level0/level1/**/*.js',
-    ],
+    patterns: ['level0/**/*.js', 'level0/**/*.ts', 'level0/level1/**/*.js'],
   },
   {
     name: 'Multi-Base Patterns',
@@ -90,19 +71,11 @@ const PATTERN_CATEGORIES: { name: string; patterns: (string | string[])[] }[] = 
   },
   {
     name: 'Brace Expansion',
-    patterns: [
-      '**/*.{js,ts}',
-      '*.{json,md,txt}',
-      'level{0,1}/**/*.js',
-    ],
+    patterns: ['**/*.{js,ts}', '*.{json,md,txt}', 'level{0,1}/**/*.js'],
   },
   {
     name: 'Complex Patterns',
-    patterns: [
-      'level0/**/level1/**/*.js',
-      '**/level*/**/*.ts',
-      '**/*[0-9].js',
-    ],
+    patterns: ['level0/**/level1/**/*.js', '**/level*/**/*.ts', '**/*[0-9].js'],
   },
 ]
 
@@ -118,14 +91,33 @@ async function runSingleBench(
   cwd: string,
   warmup: number = 3,
   iterations: number = 10
-): Promise<{ glob: number; fastGlob: number; globlin: number; globResults: string[]; globlinResults: string[]; fgResults: string[] }> {
+): Promise<{
+  glob: number
+  fastGlob: number
+  globlin: number
+  globResults: string[]
+  globlinResults: string[]
+  fgResults: string[]
+}> {
   const patterns = Array.isArray(pattern) ? pattern : [pattern]
 
   // Warmup
   for (let i = 0; i < warmup; i++) {
-    try { globSyncOriginal(patterns, { cwd }) } catch {}
-    try { fastGlob.sync(patterns, { cwd }) } catch {}
-    try { globSync(patterns, { cwd }) } catch {}
+    try {
+      globSyncOriginal(patterns, { cwd })
+    } catch {
+      // Ignore errors during warmup
+    }
+    try {
+      fastGlob.sync(patterns, { cwd })
+    } catch {
+      // Ignore errors during warmup
+    }
+    try {
+      globSync(patterns, { cwd })
+    } catch {
+      // Ignore errors during warmup
+    }
   }
 
   // Benchmark glob
@@ -213,7 +205,9 @@ async function runBenchmarks(fixture: FixtureConfig): Promise<BenchResult[]> {
             try {
               fs.mkdirSync(path.dirname(filePath), { recursive: true })
               fs.writeFileSync(filePath, `// ${p}`)
-            } catch {}
+            } catch {
+              // Ignore file creation errors
+            }
           }
         }
       }
@@ -263,25 +257,26 @@ function printResults(fixture: FixtureConfig, results: BenchResult[]) {
     console.log('|---------|---------|------|-----------|---------|-------|---------|-------|')
 
     for (const r of catResults) {
-      const patternCol = r.patternDisplay.length > 40 
-        ? r.patternDisplay.substring(0, 37) + '...' 
-        : r.patternDisplay
-      const vsGlob = r.speedupVsGlob >= 1 
-        ? `${r.speedupVsGlob.toFixed(2)}x` 
-        : `${(1/r.speedupVsGlob).toFixed(2)}x slower`
-      const vsFg = r.speedupVsFastGlob >= 1 
-        ? `${r.speedupVsFastGlob.toFixed(2)}x` 
-        : `${(1/r.speedupVsFastGlob).toFixed(2)}x slower`
-      
+      const patternCol =
+        r.patternDisplay.length > 40 ? r.patternDisplay.substring(0, 37) + '...' : r.patternDisplay
+      const vsGlob =
+        r.speedupVsGlob >= 1
+          ? `${r.speedupVsGlob.toFixed(2)}x`
+          : `${(1 / r.speedupVsGlob).toFixed(2)}x slower`
+      const vsFg =
+        r.speedupVsFastGlob >= 1
+          ? `${r.speedupVsFastGlob.toFixed(2)}x`
+          : `${(1 / r.speedupVsFastGlob).toFixed(2)}x slower`
+
       console.log(
         `| ${patternCol.padEnd(40)} | ` +
-        `${r.globlin.toFixed(2).padStart(7)}ms | ` +
-        `${r.glob.toFixed(2).padStart(7)}ms | ` +
-        `${r.fastGlob.toFixed(2).padStart(7)}ms | ` +
-        `${vsGlob.padStart(12)} | ` +
-        `${vsFg.padStart(12)} | ` +
-        `${r.resultCount.toString().padStart(7)} | ` +
-        `${r.resultsMatch ? 'Y' : 'N'}     |`
+          `${r.globlin.toFixed(2).padStart(7)}ms | ` +
+          `${r.glob.toFixed(2).padStart(7)}ms | ` +
+          `${r.fastGlob.toFixed(2).padStart(7)}ms | ` +
+          `${vsGlob.padStart(12)} | ` +
+          `${vsFg.padStart(12)} | ` +
+          `${r.resultCount.toString().padStart(7)} | ` +
+          `${r.resultsMatch ? 'Y' : 'N'}     |`
       )
     }
     console.log()
@@ -301,7 +296,7 @@ function printSummary(allResults: Map<string, BenchResult[]>) {
 
   for (const [fixtureName, results] of allResults) {
     fixtureAggregates.set(fixtureName, { vsGlob: [], vsFg: [] })
-    
+
     for (const r of results) {
       // By category
       if (!categoryAggregates.has(r.category)) {
@@ -309,7 +304,7 @@ function printSummary(allResults: Map<string, BenchResult[]>) {
       }
       categoryAggregates.get(r.category)!.vsGlob.push(r.speedupVsGlob)
       categoryAggregates.get(r.category)!.vsFg.push(r.speedupVsFastGlob)
-      
+
       // By fixture
       fixtureAggregates.get(fixtureName)!.vsGlob.push(r.speedupVsGlob)
       fixtureAggregates.get(fixtureName)!.vsFg.push(r.speedupVsFastGlob)
@@ -321,7 +316,7 @@ function printSummary(allResults: Map<string, BenchResult[]>) {
   console.log()
   console.log('| Fixture | Avg vs Glob | Avg vs Fast-Glob | Min | Max |')
   console.log('|---------|-------------|------------------|-----|-----|')
-  
+
   for (const [name, agg] of fixtureAggregates) {
     if (agg.vsGlob.length === 0) continue
     const avgVsGlob = agg.vsGlob.reduce((a, b) => a + b, 0) / agg.vsGlob.length
@@ -339,7 +334,7 @@ function printSummary(allResults: Map<string, BenchResult[]>) {
   console.log()
   console.log('| Category | Avg vs Glob | Avg vs Fast-Glob |')
   console.log('|----------|-------------|------------------|')
-  
+
   for (const [name, agg] of categoryAggregates) {
     if (agg.vsGlob.length === 0) continue
     const avgVsGlob = agg.vsGlob.reduce((a, b) => a + b, 0) / agg.vsGlob.length
@@ -374,8 +369,12 @@ function printSummary(allResults: Map<string, BenchResult[]>) {
     console.log(`- **Average speedup vs glob:** ${overallVsGlob.toFixed(2)}x`)
     console.log(`- **Average speedup vs fast-glob:** ${overallVsFg.toFixed(2)}x`)
     console.log(`- **Min/Max vs glob:** ${minVsGlob.toFixed(2)}x / ${maxVsGlob.toFixed(2)}x`)
-    console.log(`- **Patterns faster than glob:** ${patternsFaster}/${patternsTotal} (${(patternsFaster/patternsTotal*100).toFixed(0)}%)`)
-    console.log(`- **Patterns faster than fast-glob:** ${patternsFasterThanFg}/${patternsTotal} (${(patternsFasterThanFg/patternsTotal*100).toFixed(0)}%)`)
+    console.log(
+      `- **Patterns faster than glob:** ${patternsFaster}/${patternsTotal} (${((patternsFaster / patternsTotal) * 100).toFixed(0)}%)`
+    )
+    console.log(
+      `- **Patterns faster than fast-glob:** ${patternsFasterThanFg}/${patternsTotal} (${((patternsFasterThanFg / patternsTotal) * 100).toFixed(0)}%)`
+    )
     console.log()
 
     // Check target criteria
@@ -383,7 +382,9 @@ function printSummary(allResults: Map<string, BenchResult[]>) {
     console.log()
     const targetMet = overallVsFg >= 1
     console.log(`- Target: Equal to or faster than fast-glob on all patterns`)
-    console.log(`- Status: ${targetMet ? 'MET' : 'NOT MET'} (${(patternsFasterThanFg/patternsTotal*100).toFixed(0)}% of patterns)`)
+    console.log(
+      `- Status: ${targetMet ? 'MET' : 'NOT MET'} (${((patternsFasterThanFg / patternsTotal) * 100).toFixed(0)}% of patterns)`
+    )
     console.log()
   }
 

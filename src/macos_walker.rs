@@ -19,7 +19,8 @@
 // This module is only available on macOS (target_os = "macos").
 // On other platforms, the standard walkdir-based walker is used.
 
-#![cfg(target_os = "macos")]
+// Note: The #[cfg(target_os = "macos")] attribute is in lib.rs for this module.
+// Do not add a duplicate #![cfg(...)] attribute here.
 
 use std::collections::VecDeque;
 use std::ffi::{CStr, CString, OsString};

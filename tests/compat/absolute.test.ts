@@ -182,8 +182,7 @@ describe('absolute - absolute path output option', () => {
       }
 
       // Normalize both sets to compare (handle potential path differences)
-      const normalizeSet = (paths: string[]) =>
-        new Set(paths.map(p => p.replace(/\\/g, '/')))
+      const normalizeSet = (paths: string[]) => new Set(paths.map(p => p.replace(/\\/g, '/')))
 
       expect(normalizeSet(globlinResults)).toEqual(normalizeSet(globResults))
     })
@@ -193,8 +192,16 @@ describe('absolute - absolute path output option', () => {
         console.warn('Globlin not built, skipping')
         return
       }
-      const globResults = await globOriginal(pattern, { cwd: fixturePath, absolute: true, posix: true })
-      const globlinResults = await globlin.glob(pattern, { cwd: fixturePath, absolute: true, posix: true })
+      const globResults = await globOriginal(pattern, {
+        cwd: fixturePath,
+        absolute: true,
+        posix: true,
+      })
+      const globlinResults = await globlin.glob(pattern, {
+        cwd: fixturePath,
+        absolute: true,
+        posix: true,
+      })
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
     })

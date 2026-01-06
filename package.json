@@ -84,6 +84,14 @@
     "build:native": "napi build --platform --release",
     "clean": "rm -rf js/*.js js/*.mjs js/*.d.ts js/*.map",
     "prepublishOnly": "npm run clean && npm run build && napi prepublish -t npm",
+    "lint": "npm run lint:ts && npm run lint:rust",
+    "lint:ts": "eslint 'js/**/*.ts' 'tests/**/*.ts' 'benches/**/*.ts'",
+    "lint:rust": "cargo clippy -- -D warnings",
+    "lint:fix": "npm run lint:ts -- --fix",
+    "format": "npm run format:ts && npm run format:rust",
+    "format:ts": "prettier --write 'js/**/*.ts' 'tests/**/*.ts' 'benches/**/*.ts' 'benches/**/*.js'",
+    "format:rust": "cargo fmt",
+    "format:check": "prettier --check 'js/**/*.ts' 'tests/**/*.ts' 'benches/**/*.ts' && cargo fmt -- --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -123,15 +131,19 @@
     "version": "napi version"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@napi-rs/cli": "^2.18.0",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^1.0.0",
+    "eslint": "^9.39.2",
     "fast-check": "^4.5.3",
     "fast-glob": "^3.3.3",
     "glob": "^10.3.0",
+    "prettier": "^3.7.4",
     "tsd": "^0.33.0",
     "tsx": "^4.7.0",
     "typescript": "^5.0.0",
+    "typescript-eslint": "^8.52.0",
     "vitest": "^1.0.0"
   },
   "dependencies": {
@@ -140,15 +152,15 @@
     "path-scurry": "^2.0.0"
   },
   "optionalDependencies": {
-    "@globlin/linux-x64-gnu": "1.0.0",
-    "@globlin/linux-x64-musl": "1.0.0",
+    "@globlin/darwin-arm64": "1.0.0",
+    "@globlin/darwin-x64": "1.0.0",
     "@globlin/linux-arm64-gnu": "1.0.0",
     "@globlin/linux-arm64-musl": "1.0.0",
-    "@globlin/darwin-x64": "1.0.0",
-    "@globlin/darwin-arm64": "1.0.0",
-    "@globlin/win32-x64-msvc": "1.0.0",
+    "@globlin/linux-x64-gnu": "1.0.0",
+    "@globlin/linux-x64-musl": "1.0.0",
     "@globlin/win32-arm64-msvc": "1.0.0",
-    "@globlin/win32-ia32-msvc": "1.0.0"
+    "@globlin/win32-ia32-msvc": "1.0.0",
+    "@globlin/win32-x64-msvc": "1.0.0"
   },
   "tsd": {
     "directory": "tests",

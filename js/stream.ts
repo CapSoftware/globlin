@@ -37,7 +37,7 @@ export function createGlobStream(
 
   // TODO: Once native streaming is implemented, use it here
   // For now, we batch results
-  const _bufferSize = options?.bufferSize ?? 16
+  void (options?.bufferSize ?? 16) // _bufferSize reserved for future native streaming
 
   // Placeholder for native stream integration
   // The actual implementation will call into Rust
@@ -52,9 +52,7 @@ export function createGlobStream(
  * Utility function for testing and cases where
  * array output is preferred over streaming.
  */
-export async function streamToArray<T>(
-  stream: Minipass<T, T>
-): Promise<T[]> {
+export async function streamToArray<T>(stream: Minipass<T, T>): Promise<T[]> {
   const results: T[] = []
 
   return new Promise((resolve, reject) => {
@@ -99,9 +97,7 @@ export function pipeGlobResults<T>(
 /**
  * Merge multiple glob streams into one
  */
-export function mergeGlobStreams(
-  streams: Minipass<string, string>[]
-): Minipass<string, string> {
+export function mergeGlobStreams(streams: Minipass<string, string>[]): Minipass<string, string> {
   const output = new Minipass<string, string>({ objectMode: true })
   let remaining = streams.length
 

@@ -211,7 +211,7 @@ describe('custom ignore objects', () => {
   describe('comparison with glob package', () => {
     it('should match glob behavior for ignored() (sync)', () => {
       const ignore: IgnoreLike = {
-        ignored: (p) => p.name.length > 1,
+        ignored: p => p.name.length > 1,
       }
 
       const globResults = globSyncOriginal('**', { cwd: fixture, ignore })
@@ -230,7 +230,7 @@ describe('custom ignore objects', () => {
 
     it('should match glob behavior for ignored() (async)', async () => {
       const ignore: IgnoreLike = {
-        ignored: (p) => p.name.length > 1,
+        ignored: p => p.name.length > 1,
       }
 
       const globResults = (await globOriginal('**', { cwd: fixture, ignore }))
@@ -249,34 +249,36 @@ describe('custom ignore objects', () => {
 
     it('should match glob behavior for childrenIgnored() (sync)', () => {
       const ignore: IgnoreLike = {
-        childrenIgnored: (p) => p.name === 'abcdef',
+        childrenIgnored: p => p.name === 'abcdef',
       }
 
-      const globResults = globSyncOriginal('**', { cwd: fixture, ignore, nodir: true })
-        .sort()
+      const globResults = globSyncOriginal('**', { cwd: fixture, ignore, nodir: true }).sort()
 
       const globlinIgnore: IgnorePattern = {
         childrenIgnored: (p: Path) => p.name === 'abcdef',
       }
-      const globlinResults = globSync('**', { cwd: fixture, ignore: globlinIgnore, nodir: true })
-        .sort()
+      const globlinResults = globSync('**', {
+        cwd: fixture,
+        ignore: globlinIgnore,
+        nodir: true,
+      }).sort()
 
       expect(globlinResults).toEqual(globResults)
     })
 
     it('should match glob behavior for childrenIgnored() (async)', async () => {
       const ignore: IgnoreLike = {
-        childrenIgnored: (p) => p.name === 'abcdef',
+        childrenIgnored: p => p.name === 'abcdef',
       }
 
-      const globResults = (await globOriginal('**', { cwd: fixture, ignore, nodir: true }))
-        .sort()
+      const globResults = (await globOriginal('**', { cwd: fixture, ignore, nodir: true })).sort()
 
       const globlinIgnore: IgnorePattern = {
         childrenIgnored: (p: Path) => p.name === 'abcdef',
       }
-      const globlinResults = (await glob('**', { cwd: fixture, ignore: globlinIgnore, nodir: true }))
-        .sort()
+      const globlinResults = (
+        await glob('**', { cwd: fixture, ignore: globlinIgnore, nodir: true })
+      ).sort()
 
       expect(globlinResults).toEqual(globResults)
     })

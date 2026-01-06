@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
  * Phase 2 Performance Checkpoint Benchmark
- * 
+ *
  * Tests all pattern types from patterns.sh against glob, globlin, and fast-glob
  * to measure Phase 2 implementation performance.
  */
@@ -31,35 +31,35 @@ const patterns = [
   { pattern: '*.js', type: 'simple' },
   { pattern: '*.ts', type: 'simple' },
   { pattern: '*.txt', type: 'simple' },
-  
+
   // Recursive patterns
   { pattern: '**/*.js', type: 'recursive' },
   { pattern: '**/*.ts', type: 'recursive' },
   { pattern: '**/*.txt', type: 'recursive' },
-  
+
   // Scoped recursive
   { pattern: 'level0/**/*.js', type: 'scoped' },
   { pattern: '**/level1/**/*.ts', type: 'scoped' },
   { pattern: '**/*/**/*.js', type: 'nested' },
-  
+
   // Brace expansion
   { pattern: '**/*.{js,ts}', type: 'brace' },
   { pattern: 'level{0,1}/**/*.js', type: 'brace' },
-  
+
   // Character classes
   { pattern: '**/*[0-9].js', type: 'charclass' },
   { pattern: '**/file[0-9][0-9].ts', type: 'charclass' },
-  
+
   // Question mark
   { pattern: '**/file?.js', type: 'question' },
   { pattern: '**/level?/**/*.ts', type: 'question' },
-  
+
   // Globstar
   { pattern: '**', type: 'globstar' },
-  
+
   // Dot-relative
   { pattern: './**/*.txt', type: 'dotrelative' },
-  
+
   // Complex
   { pattern: '**/level*/**/*.js', type: 'complex' },
   { pattern: './**/level0/**/level1/**/*.js', type: 'complex' },
@@ -107,54 +107,47 @@ function countFiles(dir: string): number {
 function measureTime(fn: () => unknown[]): { time: number; count: number } {
   const times: number[] = []
   let results: unknown[] = []
-  
+
   // Warmup
   for (let i = 0; i < warmupRuns; i++) {
     fn()
   }
-  
+
   // Benchmark
   for (let i = 0; i < benchmarkRuns; i++) {
     const start = performance.now()
     results = fn()
     times.push(performance.now() - start)
   }
-  
+
   // Return median time
   times.sort((a, b) => a - b)
   const median = times[Math.floor(times.length / 2)]
-  
+
   return { time: median, count: results.length }
 }
 
 function runBenchmark(fixtureDir: string): BenchResult[] {
   const results: BenchResult[] = []
-  
+
   for (const { pattern, type } of patterns) {
     // Benchmark glob
-    const globResult = measureTime(() => 
-      globOriginal(pattern, { cwd: fixtureDir })
-    )
-    
+    const globResult = measureTime(() => globOriginal(pattern, { cwd: fixtureDir }))
+
     // Benchmark globlin
-    const globlinResult = measureTime(() =>
-      globSync(pattern, { cwd: fixtureDir })
-    )
-    
+    const globlinResult = measureTime(() => globSync(pattern, { cwd: fixtureDir }))
+
     // Benchmark fast-glob
-    const fastglobResult = measureTime(() =>
-      fg.sync(pattern, { cwd: fixtureDir })
-    )
-    
+    const fastglobResult = measureTime(() => fg.sync(pattern, { cwd: fixtureDir }))
+
     // Calculate speedup (glob/globlin)
     const speedup = globResult.time / globlinResult.time
-    
+
     // Check if results match (using sets for order-independent comparison)
     const globSet = new Set(globOriginal(pattern, { cwd: fixtureDir }))
     const globlinSet = new Set(globSync(pattern, { cwd: fixtureDir }))
-    const match = globSet.size === globlinSet.size && 
-      [...globSet].every(r => globlinSet.has(r))
-    
+    const match = globSet.size === globlinSet.size && [...globSet].every(r => globlinSet.has(r))
+
     results.push({
       pattern,
       type,
@@ -162,10 +155,10 @@ function runBenchmark(fixtureDir: string): BenchResult[] {
       globlin: globlinResult,
       fastglob: fastglobResult,
       speedup,
-      match
+      match,
     })
   }
-  
+
   return results
 }
 
@@ -181,50 +174,55 @@ function formatTime(ms: number): string {
 
 function printResults(fixtureResult: FixtureResult): void {
   console.log('\n' + '='.repeat(90))
-  console.log(`  PHASE 2 BENCHMARK - ${fixtureResult.fixture} fixture (${fixtureResult.fileCount.toLocaleString()} files)`)
+  console.log(
+    `  PHASE 2 BENCHMARK - ${fixtureResult.fixture} fixture (${fixtureResult.fileCount.toLocaleString()} files)`
+  )
   console.log('='.repeat(90))
-  
+
   // Print table header
   console.log('')
   console.log(
     '  ' +
-    'Pattern'.padEnd(35) +
-    'Type'.padEnd(12) +
-    'glob'.padStart(12) +
-    'globlin'.padStart(12) +
-    'fast-glob'.padStart(12) +
-    'Speedup'.padStart(10) +
-    'Match'.padStart(8)
+      'Pattern'.padEnd(35) +
+      'Type'.padEnd(12) +
+      'glob'.padStart(12) +
+      'globlin'.padStart(12) +
+      'fast-glob'.padStart(12) +
+      'Speedup'.padStart(10) +
+      'Match'.padStart(8)
   )
   console.log('  ' + '-'.repeat(99))
-  
+
   // Print each result
   for (const r of fixtureResult.results) {
-    const patternDisplay = r.pattern.length > 33 
-      ? r.pattern.slice(0, 31) + '..' 
-      : r.pattern
-    
-    const speedupStr = r.speedup >= 1
-      ? `${r.speedup.toFixed(1)}x`
-      : `${(1/r.speedup).toFixed(1)}x slower`
-    
-    const speedupColor = r.speedup >= 10 ? '\x1b[32m' : // green for 10x+
-                         r.speedup >= 5 ? '\x1b[33m' :  // yellow for 5x+
-                         r.speedup >= 1 ? '\x1b[0m' :   // normal for 1x+
-                         '\x1b[31m'                      // red for slower
-    
+    const patternDisplay = r.pattern.length > 33 ? r.pattern.slice(0, 31) + '..' : r.pattern
+
+    const speedupStr =
+      r.speedup >= 1 ? `${r.speedup.toFixed(1)}x` : `${(1 / r.speedup).toFixed(1)}x slower`
+
+    const speedupColor =
+      r.speedup >= 10
+        ? '\x1b[32m' // green for 10x+
+        : r.speedup >= 5
+          ? '\x1b[33m' // yellow for 5x+
+          : r.speedup >= 1
+            ? '\x1b[0m' // normal for 1x+
+            : '\x1b[31m' // red for slower
+
     console.log(
       '  ' +
-      patternDisplay.padEnd(35) +
-      r.type.padEnd(12) +
-      formatTime(r.glob.time).padStart(12) +
-      formatTime(r.globlin.time).padStart(12) +
-      formatTime(r.fastglob.time).padStart(12) +
-      speedupColor + speedupStr.padStart(10) + '\x1b[0m' +
-      (r.match ? '\x1b[32m  ok\x1b[0m' : '\x1b[31m  MISMATCH\x1b[0m')
+        patternDisplay.padEnd(35) +
+        r.type.padEnd(12) +
+        formatTime(r.glob.time).padStart(12) +
+        formatTime(r.globlin.time).padStart(12) +
+        formatTime(r.fastglob.time).padStart(12) +
+        speedupColor +
+        speedupStr.padStart(10) +
+        '\x1b[0m' +
+        (r.match ? '\x1b[32m  ok\x1b[0m' : '\x1b[31m  MISMATCH\x1b[0m')
     )
   }
-  
+
   // Print summary
   const s = fixtureResult.summary
   console.log('')
@@ -245,27 +243,25 @@ async function main() {
   console.log(`  Warmup runs: ${warmupRuns}`)
   console.log(`  Benchmark runs: ${benchmarkRuns}`)
   console.log(`  Patterns: ${patterns.length}`)
-  
-  const fixtures = fixtureSize === 'all' 
-    ? ['small', 'medium', 'large']
-    : [fixtureSize]
-  
+
+  const fixtures = fixtureSize === 'all' ? ['small', 'medium', 'large'] : [fixtureSize]
+
   const allResults: FixtureResult[] = []
-  
+
   for (const fixture of fixtures) {
     const fixtureDir = join(FIXTURES_DIR, fixture)
-    
+
     if (!existsSync(fixtureDir)) {
       console.error(`\n  ERROR: Fixture not found: ${fixtureDir}`)
       console.error(`  Run 'npm run bench:setup' first`)
       process.exit(1)
     }
-    
+
     const fileCount = countFiles(fixtureDir)
     console.log(`\n  Running ${fixture} fixture (${fileCount.toLocaleString()} files)...`)
-    
+
     const results = runBenchmark(fixtureDir)
-    
+
     // Calculate summary stats
     const speedups = results.map(r => r.speedup)
     const summary = {
@@ -277,27 +273,27 @@ async function main() {
       patternsFasterThanGlob: results.filter(r => r.speedup >= 1).length,
       patternsSlowerThanGlob: results.filter(r => r.speedup < 1).length,
     }
-    
+
     const fixtureResult: FixtureResult = {
       fixture,
       fileCount,
       results,
-      summary
+      summary,
     }
-    
+
     allResults.push(fixtureResult)
-    
+
     if (!jsonOutput) {
       printResults(fixtureResult)
     }
   }
-  
+
   // Print overall summary
   if (!jsonOutput && allResults.length > 0) {
     console.log('\n' + '='.repeat(90))
     console.log('  OVERALL PERFORMANCE SUMMARY')
     console.log('='.repeat(90))
-    
+
     // Group by pattern type
     const typeStats: Record<string, { speedups: number[]; count: number }> = {}
     for (const fr of allResults) {
@@ -309,23 +305,26 @@ async function main() {
         typeStats[r.type].count++
       }
     }
-    
+
     console.log('\n  Performance by pattern type:')
     console.log('  ' + '-'.repeat(50))
     for (const [type, stats] of Object.entries(typeStats)) {
       const avg = stats.speedups.reduce((a, b) => a + b, 0) / stats.speedups.length
       const min = Math.min(...stats.speedups)
       const max = Math.max(...stats.speedups)
-      console.log(`    ${type.padEnd(15)} avg: ${avg.toFixed(2)}x  (${min.toFixed(2)}x - ${max.toFixed(2)}x)`)
+      console.log(
+        `    ${type.padEnd(15)} avg: ${avg.toFixed(2)}x  (${min.toFixed(2)}x - ${max.toFixed(2)}x)`
+      )
     }
-    
+
     // Phase 2 target assessment
-    const totalAvgSpeedup = allResults.reduce((a, fr) => a + fr.summary.avgSpeedup, 0) / allResults.length
-    
+    const totalAvgSpeedup =
+      allResults.reduce((a, fr) => a + fr.summary.avgSpeedup, 0) / allResults.length
+
     console.log('\n  ' + '='.repeat(70))
     console.log('  Phase 2 Target: 10-15x faster than glob on most patterns')
     console.log(`  Current average: ${totalAvgSpeedup.toFixed(2)}x`)
-    
+
     if (totalAvgSpeedup >= 10) {
       console.log('  \x1b[32mSTATUS: TARGET MET\x1b[0m')
     } else if (totalAvgSpeedup >= 5) {
@@ -335,7 +334,7 @@ async function main() {
     }
     console.log('  ' + '='.repeat(70))
   }
-  
+
   if (jsonOutput) {
     console.log(JSON.stringify(allResults, null, 2))
   }

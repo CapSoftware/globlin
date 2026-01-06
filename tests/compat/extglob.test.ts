@@ -11,7 +11,7 @@ describe('Extglob Patterns', () => {
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create a fixture with specific files for extglob testing
     fixture = await createTestFixture('extglob', {
       files: [
@@ -123,10 +123,7 @@ describe('Extglob Patterns', () => {
     it('should work with directory patterns', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const results = await globlin.glob('src/+(lib|utils)/*.js', { cwd: fixture })
-      expect(results.sort()).toEqual([
-        'src/lib/helper.js',
-        'src/utils/tool.js',
-      ])
+      expect(results.sort()).toEqual(['src/lib/helper.js', 'src/utils/tool.js'])
     })
 
     it('should work with negation in paths', async () => {

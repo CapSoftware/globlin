@@ -216,12 +216,18 @@ async function runBenchmarks() {
   console.log('Summary')
   console.log('='.repeat(70))
   console.log('')
-  console.log('Cache reuse benefit (reuse vs no reuse):', 
-    formatSpeedup(noReuseTime.avg, reuseTime.avg))
-  console.log('Pattern cache benefit (same vs different patterns):',
-    formatSpeedup(diffPatternTime.avg, samePatternTime.avg))
-  console.log('Glob class vs original glob:',
-    formatSpeedup(originalGlobTime.avg, globlinGlobTime.avg))
+  console.log(
+    'Cache reuse benefit (reuse vs no reuse):',
+    formatSpeedup(noReuseTime.avg, reuseTime.avg)
+  )
+  console.log(
+    'Pattern cache benefit (same vs different patterns):',
+    formatSpeedup(diffPatternTime.avg, samePatternTime.avg)
+  )
+  console.log(
+    'Glob class vs original glob:',
+    formatSpeedup(originalGlobTime.avg, globlinGlobTime.avg)
+  )
   console.log('')
 }
 

@@ -20,10 +20,22 @@ import type { Minipass } from 'minipass'
 
 // Type for our glob module with all streaming APIs
 interface ExtendedGloblinModule extends GloblinModule {
-  globStream: (pattern: string | string[], options?: Record<string, unknown>) => Minipass<string, string>
-  globStreamSync: (pattern: string | string[], options?: Record<string, unknown>) => Minipass<string, string>
-  globIterate: (pattern: string | string[], options?: Record<string, unknown>) => AsyncGenerator<string, void, void>
-  globIterateSync: (pattern: string | string[], options?: Record<string, unknown>) => Generator<string, void, void>
+  globStream: (
+    pattern: string | string[],
+    options?: Record<string, unknown>
+  ) => Minipass<string, string>
+  globStreamSync: (
+    pattern: string | string[],
+    options?: Record<string, unknown>
+  ) => Minipass<string, string>
+  globIterate: (
+    pattern: string | string[],
+    options?: Record<string, unknown>
+  ) => AsyncGenerator<string, void, void>
+  globIterateSync: (
+    pattern: string | string[],
+    options?: Record<string, unknown>
+  ) => Generator<string, void, void>
 }
 
 let globlin: ExtendedGloblinModule
@@ -42,16 +54,7 @@ beforeAll(async () => {
 
   // Create fixture
   fixturePath = await createTestFixture('stream-test', {
-    files: [
-      'z',
-      'x',
-      'cb/e/f',
-      'c/d/c/b',
-      'bc/e/f',
-      'b/c/d',
-      'abcfed/g/h',
-      'abcdef/g/h',
-    ],
+    files: ['z', 'x', 'cb/e/f', 'c/d/c/b', 'bc/e/f', 'b/c/d', 'abcfed/g/h', 'abcdef/g/h'],
   })
 })
 
@@ -120,21 +123,25 @@ describe('globStream', () => {
     // so the stream should not have ended in the same tick
     let endedInSameTick = false
     const stream = globlin.globStream('./**', { cwd: fixturePath })
-    
+
     // Check if stream is already ended before yielding to event loop
     const readable = stream as unknown as { readable: boolean }
     endedInSameTick = !readable.readable && (stream as unknown as { ended: boolean }).ended
-    
+
     // Wait for stream to complete
     await collectStream(stream as unknown as NodeJS.ReadableStream)
-    
+
     // globStream uses setImmediate, so it should NOT end in same tick
     expect(endedInSameTick).toBe(false)
   })
 
   it('should match glob results', async () => {
-    const globlinResults = await collectStream(globlin.globStream('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream)
-    const originalResults = await collectStream(globStreamOriginal('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream)
+    const globlinResults = await collectStream(
+      globlin.globStream('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream
+    )
+    const originalResults = await collectStream(
+      globStreamOriginal('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream
+    )
 
     expect(new Set(globlinResults)).toEqual(new Set(originalResults))
   })
@@ -157,19 +164,23 @@ describe('globStreamSync', () => {
     // globStreamSync should write all data synchronously
     // so the stream should already have data immediately after creation
     const stream = globlin.globStreamSync('./**', { cwd: fixturePath })
-    
+
     // For a sync stream, all writes happen during construction
     // We can verify by checking if the stream has ended
-    const readable = stream as unknown as { readable: boolean, ended: boolean }
-    
+    const readable = stream as unknown as { readable: boolean; ended: boolean }
+
     // The stream should have all data written synchronously
     // and may already have ended or be ready to end
     expect(readable.readable || readable.ended).toBe(true)
   })
 
   it('should match glob results', async () => {
-    const globlinResults = await collectStream(globlin.globStreamSync('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream)
-    const originalResults = await collectStream(globStreamSyncOriginal('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream)
+    const globlinResults = await collectStream(
+      globlin.globStreamSync('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream
+    )
+    const originalResults = await collectStream(
+      globStreamSyncOriginal('./**', { cwd: fixturePath }) as unknown as NodeJS.ReadableStream
+    )
 
     expect(new Set(globlinResults)).toEqual(new Set(originalResults))
   })
@@ -254,8 +265,12 @@ describe('Glob class streaming', () => {
       const globlinG = new globlin.Glob('./**', { cwd: fixturePath })
       const originalG = new GlobOriginal('./**', { cwd: fixturePath })
 
-      const globlinResults = await collectStream(globlinG.stream() as unknown as NodeJS.ReadableStream)
-      const originalResults = await collectStream(originalG.stream() as unknown as NodeJS.ReadableStream)
+      const globlinResults = await collectStream(
+        globlinG.stream() as unknown as NodeJS.ReadableStream
+      )
+      const originalResults = await collectStream(
+        originalG.stream() as unknown as NodeJS.ReadableStream
+      )
 
       expect(new Set(globlinResults)).toEqual(new Set(originalResults))
     })
@@ -279,8 +294,12 @@ describe('Glob class streaming', () => {
       const globlinG = new globlin.Glob('./**', { cwd: fixturePath })
       const originalG = new GlobOriginal('./**', { cwd: fixturePath })
 
-      const globlinResults = await collectStream(globlinG.streamSync() as unknown as NodeJS.ReadableStream)
-      const originalResults = await collectStream(originalG.streamSync() as unknown as NodeJS.ReadableStream)
+      const globlinResults = await collectStream(
+        globlinG.streamSync() as unknown as NodeJS.ReadableStream
+      )
+      const originalResults = await collectStream(
+        originalG.streamSync() as unknown as NodeJS.ReadableStream
+      )
 
       expect(new Set(globlinResults)).toEqual(new Set(originalResults))
     })
@@ -420,20 +439,23 @@ describe('Stream with options', () => {
   it('should respect dot option', async () => {
     // Create fixture with dotfiles
     const dotFixture = await createTestFixture('dot-stream-test', {
-      files: [
-        '.hidden',
-        'visible',
-        '.hiddendir/file',
-      ],
+      files: ['.hidden', 'visible', '.hiddendir/file'],
     })
 
     try {
       // Without dot option
-      const withoutDot = await collectStream(globlin.globStream('**', { cwd: dotFixture, dot: false }) as unknown as NodeJS.ReadableStream)
+      const withoutDot = await collectStream(
+        globlin.globStream('**', {
+          cwd: dotFixture,
+          dot: false,
+        }) as unknown as NodeJS.ReadableStream
+      )
       expect(withoutDot.some(p => p.includes('.hidden'))).toBe(false)
 
       // With dot option
-      const withDot = await collectStream(globlin.globStream('**', { cwd: dotFixture, dot: true }) as unknown as NodeJS.ReadableStream)
+      const withDot = await collectStream(
+        globlin.globStream('**', { cwd: dotFixture, dot: true }) as unknown as NodeJS.ReadableStream
+      )
       expect(withDot.some(p => p.includes('.hidden'))).toBe(true)
     } finally {
       await cleanupFixture(dotFixture)
@@ -441,7 +463,12 @@ describe('Stream with options', () => {
   })
 
   it('should respect nodir option', async () => {
-    const results = await collectStream(globlin.globStream('./**', { cwd: fixturePath, nodir: true }) as unknown as NodeJS.ReadableStream)
+    const results = await collectStream(
+      globlin.globStream('./**', {
+        cwd: fixturePath,
+        nodir: true,
+      }) as unknown as NodeJS.ReadableStream
+    )
 
     // Should not include directories
     expect(results.includes('.')).toBe(false)
@@ -453,7 +480,12 @@ describe('Stream with options', () => {
   })
 
   it('should respect mark option', async () => {
-    const results = await collectStream(globlin.globStream('./**', { cwd: fixturePath, mark: true }) as unknown as NodeJS.ReadableStream)
+    const results = await collectStream(
+      globlin.globStream('./**', {
+        cwd: fixturePath,
+        mark: true,
+      }) as unknown as NodeJS.ReadableStream
+    )
 
     // Root should be marked
     const root = results.find(p => p === './' || p === '.')

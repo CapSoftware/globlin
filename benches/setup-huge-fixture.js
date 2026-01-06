@@ -39,12 +39,12 @@ async function createHugeFixture() {
   // We'll create directories at each level, then files at the deepest level
   // With 10 dirs per level and 8 levels, we get 10^7 = 10M potential leaf directories
   // We'll spread 1M files across them, ~100 files per 10k directories
-  
-  const dirsPerLevel = 7  // 7^8 = 5.7M directories is too many, we'll use 5 levels deep
+
+  const dirsPerLevel = 7 // 7^8 = 5.7M directories is too many, we'll use 5 levels deep
   const filesPerDir = Math.ceil(TARGET_FILES / Math.pow(dirsPerLevel, 5))
-  
+
   console.log(`  Strategy: ${dirsPerLevel} dirs per level, ~${filesPerDir} files per deepest dir`)
-  
+
   // Track progress
   let lastProgressTime = Date.now()
   let lastProgressFiles = 0
@@ -55,23 +55,24 @@ async function createHugeFixture() {
     if (depth >= 5) {
       // Create files at this leaf directory
       await fs.mkdir(currentPath, { recursive: true })
-      
+
       const filesToCreate = Math.min(filesPerDir, TARGET_FILES - filesCreated)
       for (let f = 0; f < filesToCreate && filesCreated < TARGET_FILES; f++) {
         const fileName = `file_${filesCreated}.js`
-        await fs.writeFile(
-          path.join(currentPath, fileName),
-          `// File ${filesCreated}\n`
-        )
+        await fs.writeFile(path.join(currentPath, fileName), `// File ${filesCreated}\n`)
         filesCreated++
 
         // Progress update every second
         const now = Date.now()
         if (now - lastProgressTime >= 1000) {
-          const rate = Math.round((filesCreated - lastProgressFiles) / ((now - lastProgressTime) / 1000))
+          const rate = Math.round(
+            (filesCreated - lastProgressFiles) / ((now - lastProgressTime) / 1000)
+          )
           const percent = Math.round((filesCreated / TARGET_FILES) * 100)
           const eta = Math.round((TARGET_FILES - filesCreated) / rate)
-          console.log(`  Progress: ${filesCreated.toLocaleString()} files (${percent}%) - ${rate}/s - ETA: ${eta}s`)
+          console.log(
+            `  Progress: ${filesCreated.toLocaleString()} files (${percent}%) - ${rate}/s - ETA: ${eta}s`
+          )
           lastProgressTime = now
           lastProgressFiles = filesCreated
         }
@@ -122,7 +123,7 @@ async function main() {
   await fs.mkdir(FIXTURES_DIR, { recursive: true })
 
   const hugeDir = await createHugeFixture()
-  
+
   console.log('\nVerifying...')
   const fileCount = await countFiles(hugeDir)
   console.log(`  Actual files: ${fileCount.toLocaleString()}`)

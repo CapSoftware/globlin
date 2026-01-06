@@ -359,34 +359,31 @@ impl Walker {
         // Apply pruning filter if set
         if let Some(ref prune_filter) = self.dir_prune_filter {
             let root = self.root.clone();
-            entries = entries
-                .into_iter()
-                .filter(|entry| {
-                    if let Ok(rel_path) = entry.path().strip_prefix(&root) {
-                        let rel_lossy = rel_path.to_string_lossy();
-                        let rel_str = normalize_path_str(&rel_lossy);
-                        // Root directory always passes
-                        if rel_str.is_empty() {
-                            return true;
-                        }
-                        // For directories, check if they should be included
-                        if entry.is_dir() && !prune_filter(&rel_str) {
-                            return false;
-                        }
-                        // For files, check if their parent directory passes the filter
-                        if !entry.is_dir() {
-                            if let Some(parent) = rel_path.parent() {
-                                let parent_lossy = parent.to_string_lossy();
-                                let parent_str = normalize_path_str(&parent_lossy);
-                                if !parent_str.is_empty() && !prune_filter(&parent_str) {
-                                    return false;
-                                }
+            entries.retain(|entry| {
+                if let Ok(rel_path) = entry.path().strip_prefix(&root) {
+                    let rel_lossy = rel_path.to_string_lossy();
+                    let rel_str = normalize_path_str(&rel_lossy);
+                    // Root directory always passes
+                    if rel_str.is_empty() {
+                        return true;
+                    }
+                    // For directories, check if they should be included
+                    if entry.is_dir() && !prune_filter(&rel_str) {
+                        return false;
+                    }
+                    // For files, check if their parent directory passes the filter
+                    if !entry.is_dir() {
+                        if let Some(parent) = rel_path.parent() {
+                            let parent_lossy = parent.to_string_lossy();
+                            let parent_str = normalize_path_str(&parent_lossy);
+                            if !parent_str.is_empty() && !prune_filter(&parent_str) {
+                                return false;
                             }
                         }
                     }
-                    true
-                })
-                .collect();
+                }
+                true
+            });
         }
 
         Box::new(entries.into_iter())
@@ -405,34 +402,31 @@ impl Walker {
         // Apply pruning filter if set
         if let Some(ref prune_filter) = self.dir_prune_filter {
             let root = self.root.clone();
-            entries = entries
-                .into_iter()
-                .filter(|entry| {
-                    if let Ok(rel_path) = entry.path().strip_prefix(&root) {
-                        let rel_lossy = rel_path.to_string_lossy();
-                        let rel_str = normalize_path_str(&rel_lossy);
-                        // Root directory always passes
-                        if rel_str.is_empty() {
-                            return true;
-                        }
-                        // For directories, check if they should be included
-                        if entry.is_dir() && !prune_filter(&rel_str) {
-                            return false;
-                        }
-                        // For files, check if their parent directory passes the filter
-                        if !entry.is_dir() {
-                            if let Some(parent) = rel_path.parent() {
-                                let parent_lossy = parent.to_string_lossy();
-                                let parent_str = normalize_path_str(&parent_lossy);
-                                if !parent_str.is_empty() && !prune_filter(&parent_str) {
-                                    return false;
-                                }
+            entries.retain(|entry| {
+                if let Ok(rel_path) = entry.path().strip_prefix(&root) {
+                    let rel_lossy = rel_path.to_string_lossy();
+                    let rel_str = normalize_path_str(&rel_lossy);
+                    // Root directory always passes
+                    if rel_str.is_empty() {
+                        return true;
+                    }
+                    // For directories, check if they should be included
+                    if entry.is_dir() && !prune_filter(&rel_str) {
+                        return false;
+                    }
+                    // For files, check if their parent directory passes the filter
+                    if !entry.is_dir() {
+                        if let Some(parent) = rel_path.parent() {
+                            let parent_lossy = parent.to_string_lossy();
+                            let parent_str = normalize_path_str(&parent_lossy);
+                            if !parent_str.is_empty() && !prune_filter(&parent_str) {
+                                return false;
                             }
                         }
                     }
-                    true
-                })
-                .collect();
+                }
+                true
+            });
         }
 
         Box::new(entries.into_iter())
@@ -795,6 +789,7 @@ impl Walker {
     }
 
     /// Recursive helper for cached walking.
+    #[allow(clippy::too_many_arguments)]
     fn walk_cached_recursive(
         &self,
         dir_path: &Path,

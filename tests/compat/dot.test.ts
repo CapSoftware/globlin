@@ -64,11 +64,7 @@ describe('Dot file handling', () => {
       // Should not include any dotfiles or files inside dot directories
       const hasDotFiles = (results: string[]) =>
         results.some(
-          (r) =>
-            r.includes('/.') ||
-            r.startsWith('.') ||
-            r.includes('.git') ||
-            r.includes('.config')
+          r => r.includes('/.') || r.startsWith('.') || r.includes('.git') || r.includes('.config')
         )
 
       expect(hasDotFiles(globResults)).toBe(false)

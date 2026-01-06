@@ -13,15 +13,15 @@ describe('nodir', () => {
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create a fixture directory with nested structure
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-nodir')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure similar to glob's test fixtures:
     // test-fixtures-nodir/
     //   a/
@@ -47,26 +47,26 @@ describe('nodir', () => {
     //   x.txt (file)
     //   y.js (file)
     //   subdir/ (directory)
-    
+
     // Create nested structure
     fs.mkdirSync(path.join(fixtureDir, 'a', 'abcdef', 'g'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'abcdef', 'g', 'h'), '')
-    
+
     fs.mkdirSync(path.join(fixtureDir, 'a', 'abcfed', 'g'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'abcfed', 'g', 'h'), '')
-    
+
     fs.mkdirSync(path.join(fixtureDir, 'a', 'b', 'c'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'b', 'c', 'd'), '')
-    
+
     fs.mkdirSync(path.join(fixtureDir, 'a', 'bc', 'e'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'bc', 'e', 'f'), '')
-    
+
     fs.mkdirSync(path.join(fixtureDir, 'a', 'c', 'd', 'c'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'c', 'd', 'c', 'b'), '')
-    
+
     fs.mkdirSync(path.join(fixtureDir, 'a', 'cb', 'e'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'cb', 'e', 'f'), '')
-    
+
     // Root level files and directory
     fs.writeFileSync(path.join(fixtureDir, 'x.txt'), '')
     fs.writeFileSync(path.join(fixtureDir, 'y.js'), '')
@@ -84,7 +84,9 @@ describe('nodir', () => {
 
   describe('nodir: true excludes directories', () => {
     it('glob: */** with nodir should only return files', async () => {
-      const results = sortResults(await glob.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true }))
+      const results = sortResults(
+        await glob.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      )
       // Should have files from nested directories
       expect(results).toContain('abcdef/g/h')
       expect(results).toContain('abcfed/g/h')
@@ -101,7 +103,9 @@ describe('nodir', () => {
     })
 
     it('globSync: */** with nodir should only return files', () => {
-      const results = sortResults(glob.globSync('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true }))
+      const results = sortResults(
+        glob.globSync('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      )
       // Check all results are files
       for (const r of results) {
         const fullPath = path.join(fixtureDir, 'a', r)
@@ -112,7 +116,9 @@ describe('nodir', () => {
 
     it('globlin: */** with nodir should only return files', async () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const results = sortResults(await globlin.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true }))
+      const results = sortResults(
+        await globlin.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      )
       expect(results).toContain('abcdef/g/h')
       expect(results).toContain('abcfed/g/h')
       expect(results).toContain('b/c/d')
@@ -129,7 +135,9 @@ describe('nodir', () => {
 
     it('globlin sync: */** with nodir should only return files', () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const results = sortResults(globlin.globSync('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true }))
+      const results = sortResults(
+        globlin.globSync('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      )
       for (const r of results) {
         const fullPath = path.join(fixtureDir, 'a', r)
         const stat = fs.statSync(fullPath)
@@ -266,15 +274,21 @@ describe('nodir', () => {
   describe('glob and globlin comparison', () => {
     it('should match for */** with nodir', async () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const globResults = new Set(await glob.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true }))
-      const globlinResults = new Set(await globlin.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true }))
+      const globResults = new Set(
+        await glob.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      )
+      const globlinResults = new Set(
+        await globlin.glob('*/**', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      )
       expect(globlinResults).toEqual(globResults)
     })
 
     it('should match for a/*b*/** with nodir', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = new Set(await glob.glob('a/*b*/**', { cwd: fixtureDir, nodir: true }))
-      const globlinResults = new Set(await globlin.glob('a/*b*/**', { cwd: fixtureDir, nodir: true }))
+      const globlinResults = new Set(
+        await globlin.glob('a/*b*/**', { cwd: fixtureDir, nodir: true })
+      )
       expect(globlinResults).toEqual(globResults)
     })
 
@@ -288,7 +302,10 @@ describe('nodir', () => {
     it('should match for */* with nodir', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = await glob.glob('*/*', { cwd: path.join(fixtureDir, 'a'), nodir: true })
-      const globlinResults = await globlin.glob('*/*', { cwd: path.join(fixtureDir, 'a'), nodir: true })
+      const globlinResults = await globlin.glob('*/*', {
+        cwd: path.join(fixtureDir, 'a'),
+        nodir: true,
+      })
       expect(globlinResults).toEqual(globResults)
     })
 

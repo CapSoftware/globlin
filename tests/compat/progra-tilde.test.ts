@@ -17,14 +17,10 @@ let supportsTilde = false
 
 beforeAll(async () => {
   globlin = await loadGloblin()
-  
+
   // Create fixture with "program files" directory (space in name triggers 8.3 name)
   fixturePath = await createTestFixture('progra-tilde-test', {
-    files: [
-      'program files/a',
-      'program files/b',
-      'program files/c',
-    ],
+    files: ['program files/a', 'program files/b', 'program files/c'],
   })
 
   // Check if this system supports tilde expansion
@@ -33,7 +29,7 @@ beforeAll(async () => {
     try {
       const longPath = `${fixturePath}/program files`
       const shortPath = `${fixturePath}/progra~1`
-      
+
       const longStats = fs.statSync(longPath)
       let shortStats
       try {
@@ -43,14 +39,13 @@ beforeAll(async () => {
         supportsTilde = false
         return
       }
-      
+
       // Check if they're the same directory
-      supportsTilde = (
+      supportsTilde =
         longStats.isDirectory() &&
         shortStats.isDirectory() &&
         longStats.dev === shortStats.dev &&
         longStats.ino === shortStats.ino
-      )
     } catch {
       supportsTilde = false
     }
@@ -66,17 +61,15 @@ afterAll(async () => {
 describe('Windows 8.3 tilde expansion', () => {
   it.skipIf(!supportsTilde)('should glob using progra~1 with windowsPathsNoEscape', () => {
     const pattern = 'progra~1\\*'
-    const options = { 
-      cwd: fixturePath, 
-      windowsPathsNoEscape: true 
+    const options = {
+      cwd: fixturePath,
+      windowsPathsNoEscape: true,
     }
 
-    const globlinResults = globlin.globSync(pattern, options).sort((a, b) =>
-      a.localeCompare(b, 'en')
-    )
-    const globResults = globSyncOriginal(pattern, options).sort((a, b) =>
-      a.localeCompare(b, 'en')
-    )
+    const globlinResults = globlin
+      .globSync(pattern, options)
+      .sort((a, b) => a.localeCompare(b, 'en'))
+    const globResults = globSyncOriginal(pattern, options).sort((a, b) => a.localeCompare(b, 'en'))
 
     expect(globResults).toEqual(['progra~1\\a', 'progra~1\\b', 'progra~1\\c'])
     expect(globlinResults).toEqual(globResults)

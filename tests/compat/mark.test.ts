@@ -10,8 +10,7 @@ import { glob as globOriginal, globSync as globSyncOriginal } from 'glob'
 import { createTestFixture, cleanupFixture, loadGloblin, DEFAULT_FIXTURE } from '../harness.js'
 
 const alphasort = (a: string, b: string) => a.localeCompare(b, 'en')
-const normalize = (paths: string[]) =>
-  paths.map(s => s.replace(/\\/g, '/')).sort(alphasort)
+const normalize = (paths: string[]) => paths.map(s => s.replace(/\\/g, '/')).sort(alphasort)
 
 describe('mark - append / to directories', () => {
   let fixturePath: string
@@ -227,7 +226,11 @@ describe('mark - append / to directories', () => {
         return
       }
       const pattern = '*'
-      const results = await globlin.glob(pattern, { mark: true, dotRelative: true, cwd: fixturePath })
+      const results = await globlin.glob(pattern, {
+        mark: true,
+        dotRelative: true,
+        cwd: fixturePath,
+      })
 
       // Directories should have both ./ prefix and / suffix
       const dirs = results.filter(r => r.endsWith('/'))

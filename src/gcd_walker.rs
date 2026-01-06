@@ -12,7 +12,8 @@
 //
 // This module is only available on macOS (target_os = "macos").
 
-#![cfg(target_os = "macos")]
+// Note: The #[cfg(target_os = "macos")] attribute is in lib.rs for this module.
+// Do not add a duplicate #![cfg(...)] attribute here.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};

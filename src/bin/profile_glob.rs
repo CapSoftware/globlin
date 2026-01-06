@@ -27,17 +27,17 @@ fn main() {
     let fixture_size = args.get(1).map(|s| s.as_str()).unwrap_or("medium");
     let iterations: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
 
-    let fixture_path = PathBuf::from(format!("benches/fixtures/{}", fixture_size));
+    let fixture_path = PathBuf::from(format!("benches/fixtures/{fixture_size}"));
 
     if !fixture_path.exists() {
-        eprintln!("Error: Fixture not found at {:?}", fixture_path);
+        eprintln!("Error: Fixture not found at {fixture_path:?}");
         eprintln!("Run: node benches/setup-fixtures.js");
         std::process::exit(1);
     }
 
     eprintln!("=== Globlin Profiling ===");
-    eprintln!("Fixture: {:?} ({})", fixture_path, fixture_size);
-    eprintln!("Iterations: {}", iterations);
+    eprintln!("Fixture: {fixture_path:?} ({fixture_size})");
+    eprintln!("Iterations: {iterations}");
     eprintln!();
 
     // Define test patterns - glob pattern and equivalent regex
@@ -59,7 +59,7 @@ fn main() {
     let mut total_time_ms = 0f64;
 
     for (glob_pattern, regex_pattern) in &patterns {
-        eprintln!("--- Pattern: {} ---", glob_pattern);
+        eprintln!("--- Pattern: {glob_pattern} ---");
 
         let regex = Regex::new(regex_pattern).expect("Invalid regex");
         let mut pattern_total_time = 0f64;
@@ -87,18 +87,20 @@ fn main() {
         }
 
         let avg_ms = pattern_total_time / iterations as f64;
-        eprintln!("  Average: {:.2}ms ({} files)", avg_ms, last_result_count);
+        eprintln!("  Average: {avg_ms:.2}ms ({last_result_count} files)");
         eprintln!();
 
         total_files += last_result_count;
         total_time_ms += pattern_total_time;
     }
 
+    let total_patterns = patterns.len();
+    let total_iterations = patterns.len() * iterations;
     eprintln!("=== Summary ===");
-    eprintln!("Total patterns: {}", patterns.len());
-    eprintln!("Total iterations: {}", patterns.len() * iterations);
-    eprintln!("Total files matched: {}", total_files);
-    eprintln!("Total time: {:.2}ms", total_time_ms);
+    eprintln!("Total patterns: {total_patterns}");
+    eprintln!("Total iterations: {total_iterations}");
+    eprintln!("Total files matched: {total_files}");
+    eprintln!("Total time: {total_time_ms:.2}ms");
     eprintln!(
         "Avg time per pattern-iteration: {:.2}ms",
         total_time_ms / (patterns.len() * iterations) as f64

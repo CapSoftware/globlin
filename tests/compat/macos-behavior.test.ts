@@ -1,6 +1,6 @@
 /**
  * macOS-specific behavior tests
- * 
+ *
  * Tests that verify correct behavior on macOS:
  * - Case-insensitive filesystem behavior
  * - Platform detection defaults
@@ -19,11 +19,7 @@ describe('macOS behavior', () => {
   beforeAll(async () => {
     // Create a fixture with files for testing
     fixturePath = await createTestFixture('macos-behavior', {
-      files: [
-        'file.txt',
-        'src/index.ts',
-        'README.md',
-      ]
+      files: ['file.txt', 'src/index.ts', 'README.md'],
     })
   })
 
@@ -177,14 +173,18 @@ describe('macOS behavior', () => {
     })
 
     it('sync and async produce same results with nocase option', async () => {
-      const asyncResult = (await globlin.glob('**/*.TXT', { 
-        cwd: fixturePath, 
-        nocase: true 
-      })).sort()
-      const syncResult = globlin.globSync('**/*.TXT', { 
-        cwd: fixturePath, 
-        nocase: true 
-      }).sort()
+      const asyncResult = (
+        await globlin.glob('**/*.TXT', {
+          cwd: fixturePath,
+          nocase: true,
+        })
+      ).sort()
+      const syncResult = globlin
+        .globSync('**/*.TXT', {
+          cwd: fixturePath,
+          nocase: true,
+        })
+        .sort()
       expect(asyncResult).toEqual(syncResult)
     })
   })

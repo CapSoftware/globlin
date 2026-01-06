@@ -24,10 +24,7 @@ describe('cwd-test - changing cwd and searching for **/d', () => {
     // - a/b/c/d
     // - a/c/d
     fixturePath = await createTestFixture('cwd-test', {
-      files: [
-        'a/b/c/d',
-        'a/c/d',
-      ],
+      files: ['a/b/c/d', 'a/c/d'],
     })
     globlin = await loadGloblin()
   })

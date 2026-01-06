@@ -15,7 +15,7 @@ let fixturePath: string
 
 beforeAll(async () => {
   globlin = await loadGloblin()
-  
+
   // Create fixture: a/b/c/d/e/f (deeply nested)
   fixturePath = await createTestFixture('include-child-matches-test', {
     files: ['a/b/c/d/e/f'],
@@ -40,7 +40,7 @@ describe('includeChildMatches: false', () => {
     const globlinResults = await globlin.glob(pattern, options)
     const globResults = await globOriginal(pattern, options)
 
-    // With includeChildMatches: false, should only match 'a/b/c' 
+    // With includeChildMatches: false, should only match 'a/b/c'
     // not 'a/b/c/d' or 'a/b/c/d/e' etc.
     expect(globResults).toEqual(['a/b/c'])
     expect(globlinResults).toEqual(globResults)
@@ -64,12 +64,12 @@ describe('includeChildMatches: false', () => {
   it.skip('should match multiple first occurrences with multi-pattern (the caveat)', async () => {
     // When using multiple patterns, each pattern finds its first match
     // This is the documented "caveat" behavior in glob v13
-    // 
+    //
     // NOTE: This test is skipped because globlin's includeChildMatches implementation
     // uses global tracking rather than per-pattern tracking. This means that when
     // multiple patterns are used, a child path excluded by one pattern will also be
     // excluded even if it would be matched by another pattern.
-    // 
+    //
     // This is a Phase 4 edge case that requires per-pattern child tracking to fix.
     const pattern = ['a/b/c/d/e/f', 'a/[bdf]/?/[a-z]/*']
     const options = {
@@ -228,12 +228,7 @@ describe('includeChildMatches with custom ignore', () => {
   it('should work with custom ignore object (globlin-specific behavior)', async () => {
     // Create a fixture with more complex structure
     const customFixture = await createTestFixture('custom-ignore-child-match', {
-      files: [
-        'a/b/c/d.txt',
-        'a/b/c/e.txt',
-        'a/skip/f.txt',
-        'a/x/y/z.txt',
-      ],
+      files: ['a/b/c/d.txt', 'a/b/c/e.txt', 'a/skip/f.txt', 'a/x/y/z.txt'],
     })
 
     try {
@@ -263,7 +258,7 @@ describe('includeChildMatches with custom ignore', () => {
     const customFixture = await createTestFixture('children-ignored-include-child', {
       files: [
         'a/b/c.txt',
-        'a/b/c/d.txt',  // child of a/b/c.txt path prefix
+        'a/b/c/d.txt', // child of a/b/c.txt path prefix
         'a/skip/f.txt',
         'a/skip/g/h.txt',
       ],
@@ -294,7 +289,7 @@ describe('includeChildMatches with custom ignore', () => {
 
 describe('includeChildMatches behavior differences', () => {
   // Document the intentional differences between glob and globlin
-  
+
   it('glob throws on custom ignore without add(), globlin works', async () => {
     // This test verifies the behavioral difference
     const customIgnoreNoAdd = {

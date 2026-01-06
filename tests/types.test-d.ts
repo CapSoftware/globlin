@@ -1,6 +1,6 @@
 /**
  * Type tests for globlin
- * 
+ *
  * This file validates TypeScript type definitions using tsd.
  * Run with: npx tsd
  */
@@ -138,7 +138,7 @@ const opts: GlobOptions = {
   // Path options
   cwd: '/path',
   root: '/root',
-  
+
   // Pattern options
   dot: true,
   nobrace: false,
@@ -146,12 +146,12 @@ const opts: GlobOptions = {
   noext: false,
   nocase: true,
   magicalBraces: false,
-  
+
   // Traversal options
   follow: true,
   maxDepth: 5,
   matchBase: false,
-  
+
   // Output options
   absolute: true,
   dotRelative: false,
@@ -159,22 +159,22 @@ const opts: GlobOptions = {
   nodir: false,
   posix: true,
   withFileTypes: false,
-  
+
   // Performance options
   stat: false,
   realpath: false,
-  
+
   // Filtering options
   ignore: ['node_modules/**'],
   includeChildMatches: true,
-  
+
   // Platform options
   platform: 'darwin',
   windowsPathsNoEscape: false,
-  
+
   // Control options
   signal: new AbortController().signal,
-  
+
   // Globlin-specific options
   parallel: false,
   cache: true,
@@ -265,7 +265,7 @@ async function testAsyncIteration() {
   for await (const file of globIterate('*.js')) {
     expectType<string>(file)
   }
-  
+
   // Can use for-await with Glob class
   for await (const file of new Glob('*.js')) {
     expectType<string>(file)
@@ -281,7 +281,7 @@ function testSyncIteration() {
   for (const file of globIterateSync('*.js')) {
     expectType<string>(file)
   }
-  
+
   // Can use for-of with Glob class
   for (const file of new Glob('*.js')) {
     expectType<string>(file)

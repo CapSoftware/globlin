@@ -21,15 +21,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Self-referencing', () => {
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create fixture directory with self-referencing symlink
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-self')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-self/
     //   dir/
@@ -37,12 +37,9 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Self-referencing', () => {
     //     self -> . (symlink to itself)
     fs.mkdirSync(path.join(fixtureDir, 'dir'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'dir', 'file.txt'), 'content')
-    
+
     // Create a symlink that points to current directory (self-reference)
-    fs.symlinkSync(
-      '.',
-      path.join(fixtureDir, 'dir', 'self')
-    )
+    fs.symlinkSync('.', path.join(fixtureDir, 'dir', 'self'))
   })
 
   afterAll(() => {
@@ -53,32 +50,32 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Self-referencing', () => {
 
   it('globlin: should handle self-referencing symlink without infinite loop', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     // Should complete within reasonable time (not hanging)
     expect(elapsed).toBeLessThan(5000)
-    
+
     // Should return finite results (walkdir's cycle detection stops traversal)
     expect(results.length).toBeLessThan(100)
     expect(results.length).toBeGreaterThan(0)
-    
+
     // Should find the actual file
     expect(results).toContain('dir/file.txt')
   })
 
   it('globlinSync: should handle self-referencing symlink without infinite loop', () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = globlin.globSync('**/*', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     // Should complete within reasonable time (not hanging)
     expect(elapsed).toBeLessThan(5000)
-    
+
     // Should return finite results
     expect(results.length).toBeLessThan(100)
     expect(results.length).toBeGreaterThan(0)
@@ -86,13 +83,13 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Self-referencing', () => {
 
   it('without follow option, symlinks are reported but not traversed', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const results = await globlin.glob('**/*', { cwd: fixtureDir, posix: true })
-    
+
     // Should find the file and symlink
     expect(results).toContain('dir/file.txt')
     expect(results).toContain('dir/self')
-    
+
     // Should NOT have any deeply nested paths
     expect(results.filter(r => r.includes('self/self'))).toHaveLength(0)
   })
@@ -104,15 +101,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Parent reference', () => {
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create fixture directory with symlink to parent
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-parent')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-parent/
     //   root.txt
@@ -122,12 +119,9 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Parent reference', () => {
     fs.mkdirSync(path.join(fixtureDir, 'child'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'root.txt'), 'root content')
     fs.writeFileSync(path.join(fixtureDir, 'child', 'child.txt'), 'child content')
-    
+
     // Create symlink to parent directory (creates cycle)
-    fs.symlinkSync(
-      '..',
-      path.join(fixtureDir, 'child', 'back')
-    )
+    fs.symlinkSync('..', path.join(fixtureDir, 'child', 'back'))
   })
 
   afterAll(() => {
@@ -138,18 +132,18 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Parent reference', () => {
 
   it('globlin: should handle parent symlink cycle without infinite loop', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     // Should complete within reasonable time
     expect(elapsed).toBeLessThan(5000)
-    
+
     // Should return finite results
     expect(results.length).toBeLessThan(100)
     expect(results.length).toBeGreaterThan(0)
-    
+
     // Should find actual files
     expect(results).toContain('root.txt')
     expect(results).toContain('child/child.txt')
@@ -157,9 +151,9 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Parent reference', () => {
 
   it('should not produce deeply nested paths from cycle', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
-    
+
     // walkdir detects cycle by inode, so should not produce repeated patterns
     // The cycle is detected at the inode level before it can cause repetition
     expect(results.filter(r => (r.match(/back/g) || []).length > 2)).toHaveLength(0)
@@ -172,15 +166,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Mutual reference (A -> B -> A)', (
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create fixture directory with mutual symlink cycle
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-mutual')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-mutual/
     //   a/
@@ -193,16 +187,10 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Mutual reference (A -> B -> A)', (
     fs.mkdirSync(path.join(fixtureDir, 'b'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'a', 'a.txt'), 'a content')
     fs.writeFileSync(path.join(fixtureDir, 'b', 'b.txt'), 'b content')
-    
+
     // Create mutual symlinks (A -> B -> A)
-    fs.symlinkSync(
-      '../b',
-      path.join(fixtureDir, 'a', 'to-b')
-    )
-    fs.symlinkSync(
-      '../a',
-      path.join(fixtureDir, 'b', 'to-a')
-    )
+    fs.symlinkSync('../b', path.join(fixtureDir, 'a', 'to-b'))
+    fs.symlinkSync('../a', path.join(fixtureDir, 'b', 'to-a'))
   })
 
   afterAll(() => {
@@ -213,18 +201,18 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Mutual reference (A -> B -> A)', (
 
   it('globlin: should handle mutual symlink cycle without infinite loop', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     // Should complete within reasonable time
     expect(elapsed).toBeLessThan(5000)
-    
+
     // Should return finite results
     expect(results.length).toBeLessThan(100)
     expect(results.length).toBeGreaterThan(0)
-    
+
     // Should find actual files
     expect(results).toContain('a/a.txt')
     expect(results).toContain('b/b.txt')
@@ -232,9 +220,9 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Mutual reference (A -> B -> A)', (
 
   it('should find files accessed through symlinks (one level)', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
-    
+
     // When following symlinks, walkdir may find files through symlink paths
     // But should stop at cycles
     expect(results).toContain('a/a.txt')
@@ -248,15 +236,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Deep nested cycle', () => {
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create fixture directory with deeply nested symlink cycle
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-deep')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-deep/
     //   level1/
@@ -266,12 +254,9 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Deep nested cycle', () => {
     //         back-to-top -> ../../.. (symlink to root, creates deep cycle)
     fs.mkdirSync(path.join(fixtureDir, 'level1', 'level2', 'level3'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'level1', 'level2', 'level3', 'file.txt'), 'content')
-    
+
     // Create symlink back to root
-    fs.symlinkSync(
-      '../../..',
-      path.join(fixtureDir, 'level1', 'level2', 'level3', 'back-to-top')
-    )
+    fs.symlinkSync('../../..', path.join(fixtureDir, 'level1', 'level2', 'level3', 'back-to-top'))
   })
 
   afterAll(() => {
@@ -282,27 +267,27 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Deep nested cycle', () => {
 
   it('globlin: should handle deep nested symlink cycle without infinite loop', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     // Should complete within reasonable time
     expect(elapsed).toBeLessThan(5000)
-    
+
     // Should return finite results
     expect(results.length).toBeLessThan(100)
     expect(results.length).toBeGreaterThan(0)
-    
+
     // Should find the actual file
     expect(results).toContain('level1/level2/level3/file.txt')
   })
 
   it('should find intermediate directories', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
-    
+
     expect(results).toContain('level1')
     expect(results).toContain('level1/level2')
     expect(results).toContain('level1/level2/level3')
@@ -315,15 +300,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Behavior comparison without follow
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Use the self-referencing fixture
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-default')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-default/
     //   dir/
@@ -342,27 +327,27 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Behavior comparison without follow
 
   it('without follow option, symlinks are not traversed (no cycle possible)', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     // Without follow:true, the symlink should be listed but not followed
     const results = await globlin.glob('**/*', { cwd: fixtureDir, posix: true })
-    
+
     // Should find the file and the symlink
     expect(results).toContain('dir/file.txt')
     expect(results).toContain('dir/self')
-    
+
     // Should NOT find infinite recursion results
     expect(results.filter(r => r.includes('self/self'))).toHaveLength(0)
   })
 
   it('with follow: false explicitly, symlinks are not traversed', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: false, posix: true })
-    
+
     // Should find the file and the symlink
     expect(results).toContain('dir/file.txt')
     expect(results).toContain('dir/self')
-    
+
     // Should NOT have infinite recursion
     expect(results.length).toBeLessThan(50)
   })
@@ -374,15 +359,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - inode-based cycle detection', () =
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create fixture to test inode-based detection
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-inode')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-inode/
     //   real-dir/
@@ -394,7 +379,7 @@ describe.skipIf(isWindows)('Cyclic Symlinks - inode-based cycle detection', () =
     fs.mkdirSync(path.join(fixtureDir, 'real-dir'), { recursive: true })
     fs.mkdirSync(path.join(fixtureDir, 'nested'), { recursive: true })
     fs.writeFileSync(path.join(fixtureDir, 'real-dir', 'file.txt'), 'content')
-    
+
     // Multiple symlinks to same target
     fs.symlinkSync('real-dir', path.join(fixtureDir, 'link1'))
     fs.symlinkSync('real-dir', path.join(fixtureDir, 'link2'))
@@ -409,17 +394,17 @@ describe.skipIf(isWindows)('Cyclic Symlinks - inode-based cycle detection', () =
 
   it('should detect same inode accessed via different paths', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = await globlin.glob('**/*', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     // Should complete quickly
     expect(elapsed).toBeLessThan(5000)
-    
+
     // Should find the file
     expect(results).toContain('real-dir/file.txt')
-    
+
     // The same directory accessed via different symlinks should be detected
     // and not cause exponential explosion in results
     expect(results.length).toBeLessThan(50)
@@ -427,9 +412,9 @@ describe.skipIf(isWindows)('Cyclic Symlinks - inode-based cycle detection', () =
 
   it('should return results for files accessed via symlinks', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const results = await globlin.glob('**/*.txt', { cwd: fixtureDir, follow: true, posix: true })
-    
+
     // Should find the file through at least one path
     expect(results.some(r => r.includes('file.txt'))).toBe(true)
   })
@@ -441,13 +426,13 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Specific patterns with cycles', ()
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-cyclic-patterns')
-    
+
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-cyclic-patterns/
     //   src/
@@ -469,11 +454,11 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Specific patterns with cycles', ()
 
   it('should handle **/*.js pattern with cycle', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
     const results = await globlin.glob('**/*.js', { cwd: fixtureDir, follow: true, posix: true })
     const elapsed = Date.now() - startTime
-    
+
     expect(elapsed).toBeLessThan(2000)
     expect(results).toContain('src/main.js')
     expect(results).toContain('src/lib/helper.js')
@@ -481,11 +466,15 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Specific patterns with cycles', ()
 
   it('should handle scoped pattern src/**/*.js with cycle', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
+
     const startTime = Date.now()
-    const results = await globlin.glob('src/**/*.js', { cwd: fixtureDir, follow: true, posix: true })
+    const results = await globlin.glob('src/**/*.js', {
+      cwd: fixtureDir,
+      follow: true,
+      posix: true,
+    })
     const elapsed = Date.now() - startTime
-    
+
     expect(elapsed).toBeLessThan(2000)
     expect(results).toContain('src/main.js')
     expect(results).toContain('src/lib/helper.js')
@@ -493,9 +482,13 @@ describe.skipIf(isWindows)('Cyclic Symlinks - Specific patterns with cycles', ()
 
   it('should handle specific file pattern with cycle in parent', async () => {
     if (!globlin) throw new Error('globlin not loaded')
-    
-    const results = await globlin.glob('src/lib/helper.js', { cwd: fixtureDir, follow: true, posix: true })
-    
+
+    const results = await globlin.glob('src/lib/helper.js', {
+      cwd: fixtureDir,
+      follow: true,
+      posix: true,
+    })
+
     expect(results).toContain('src/lib/helper.js')
     expect(results).toHaveLength(1)
   })

@@ -14,7 +14,7 @@ const testDir = path.join(process.cwd(), 'tests/fixtures/signal-test-' + Date.no
 beforeAll(async () => {
   // Create test fixture: a/b/c/d/e structure
   await fs.promises.mkdir(path.join(testDir, 'a/b/c/d/e'), { recursive: true })
-  
+
   // Create some files at various levels
   await fs.promises.writeFile(path.join(testDir, 'a/file1.txt'), 'test')
   await fs.promises.writeFile(path.join(testDir, 'a/b/file2.txt'), 'test')
@@ -35,9 +35,7 @@ describe('AbortSignal support', () => {
       const testError = new Error('test abort')
       ac.abort(testError)
 
-      await expect(
-        glob('./**', { cwd: testDir, signal: ac.signal })
-      ).rejects.toThrow(testError)
+      await expect(glob('./**', { cwd: testDir, signal: ac.signal })).rejects.toThrow(testError)
     })
 
     it('should reject if aborted mid-operation', async () => {
@@ -90,7 +88,7 @@ describe('AbortSignal support', () => {
 
       await new Promise<void>((resolve, reject) => {
         const stream = globStream('./**', { cwd: testDir, signal: ac.signal })
-        stream.on('error', (err) => {
+        stream.on('error', err => {
           try {
             expect(err).toBe(testError)
             resolve()
@@ -107,11 +105,11 @@ describe('AbortSignal support', () => {
       const ac = new AbortController()
       const testError = new Error('mid stream abort')
 
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         const stream = globStream('./**', { cwd: testDir, signal: ac.signal })
-        
+
         let errorReceived = false
-        stream.on('error', (err) => {
+        stream.on('error', err => {
           if (!errorReceived) {
             errorReceived = true
             expect(err).toBe(testError)
@@ -135,21 +133,21 @@ describe('AbortSignal support', () => {
 
     it('should work normally without signal', async () => {
       const results: string[] = []
-      
+
       await new Promise<void>((resolve, reject) => {
         const stream = globStream('./**/*.txt', { cwd: testDir })
-        
-        stream.on('data', (data) => {
+
+        stream.on('data', data => {
           results.push(data)
         })
-        
+
         stream.on('end', () => {
           resolve()
         })
 
         stream.on('error', reject)
       })
-      
+
       expect(results.length).toBeGreaterThan(0)
     })
   })
@@ -162,7 +160,7 @@ describe('AbortSignal support', () => {
 
       await new Promise<void>((resolve, reject) => {
         const stream = globStreamSync('./**', { cwd: testDir, signal: ac.signal })
-        stream.on('error', (err) => {
+        stream.on('error', err => {
           try {
             expect(err).toBe(testError)
             resolve()
@@ -178,12 +176,12 @@ describe('AbortSignal support', () => {
     it('should work normally without signal', () => {
       const results: string[] = []
       const stream = globStreamSync('./**/*.txt', { cwd: testDir })
-      
+
       // Sync stream should have all data immediately available
-      stream.on('data', (data) => {
+      stream.on('data', data => {
         results.push(data)
       })
-      
+
       // End event is synchronous for sync stream
       stream.on('end', () => {
         expect(results.length).toBeGreaterThan(0)

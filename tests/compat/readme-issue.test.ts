@@ -18,9 +18,9 @@ describe('readme-issue - README pattern with extglob', () => {
     fixturePath = await createTestFixture('readme-issue', {
       files: [
         'package.json',
-        'README',          // Note: no extension
-        'README.md',       // With extension
-        'README.txt',      // Different extension
+        'README', // Note: no extension
+        'README.md', // With extension
+        'README.txt', // Different extension
       ],
     })
     globlin = await loadGloblin()

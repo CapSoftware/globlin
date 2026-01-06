@@ -11,7 +11,13 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { Glob, globSync, escape, unescape, hasMagic } from '../../js/index.js'
-import { glob as originalGlob, Glob as OriginalGlobClass, escape as originalEscape, unescape as originalUnescape, hasMagic as originalHasMagic } from 'glob'
+import {
+  glob as originalGlob,
+  Glob as OriginalGlobClass,
+  escape as originalEscape,
+  unescape as originalUnescape,
+  hasMagic as originalHasMagic,
+} from 'glob'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { tmpdir } from 'os'
@@ -58,8 +64,9 @@ describe('windowsPathsNoEscape option', () => {
 
       // Both should return the same hasMagic result
       expect(hasMagic(pattern)).toBe(originalHasMagic(pattern))
-      expect(hasMagic(pattern, { windowsPathsNoEscape: true }))
-        .toBe(originalHasMagic(pattern, { windowsPathsNoEscape: true }))
+      expect(hasMagic(pattern, { windowsPathsNoEscape: true })).toBe(
+        originalHasMagic(pattern, { windowsPathsNoEscape: true })
+      )
     })
   })
 
@@ -76,12 +83,14 @@ describe('windowsPathsNoEscape option', () => {
 
     it('should match glob escape behavior', () => {
       expect(escape('*.txt')).toBe(originalEscape('*.txt'))
-      expect(escape('*.txt', { windowsPathsNoEscape: true }))
-        .toBe(originalEscape('*.txt', { windowsPathsNoEscape: true }))
+      expect(escape('*.txt', { windowsPathsNoEscape: true })).toBe(
+        originalEscape('*.txt', { windowsPathsNoEscape: true })
+      )
 
       expect(escape('file[1].txt')).toBe(originalEscape('file[1].txt'))
-      expect(escape('file[1].txt', { windowsPathsNoEscape: true }))
-        .toBe(originalEscape('file[1].txt', { windowsPathsNoEscape: true }))
+      expect(escape('file[1].txt', { windowsPathsNoEscape: true })).toBe(
+        originalEscape('file[1].txt', { windowsPathsNoEscape: true })
+      )
     })
   })
 
@@ -98,8 +107,9 @@ describe('windowsPathsNoEscape option', () => {
 
     it('should match glob unescape behavior', () => {
       expect(unescape('\\*.txt')).toBe(originalUnescape('\\*.txt'))
-      expect(unescape('[*].txt', { windowsPathsNoEscape: true }))
-        .toBe(originalUnescape('[*].txt', { windowsPathsNoEscape: true }))
+      expect(unescape('[*].txt', { windowsPathsNoEscape: true })).toBe(
+        originalUnescape('[*].txt', { windowsPathsNoEscape: true })
+      )
     })
   })
 

@@ -1,6 +1,6 @@
 /**
  * Tests for helpful error messages and pattern analysis
- * 
+ *
  * These tests verify that globlin provides helpful warnings and suggestions
  * for common pattern mistakes.
  */
@@ -102,7 +102,7 @@ describe('Helpful Error Messages', () => {
       it('does not warn with windowsPathsNoEscape enabled', () => {
         const warnings = analyzePattern('src\\lib\\*.js', {
           platform: 'win32',
-          windowsPathsNoEscape: true
+          windowsPathsNoEscape: true,
         })
         expect(warnings).toHaveLength(0)
       })
@@ -144,7 +144,7 @@ describe('Helpful Error Messages', () => {
     it('analyzes multiple patterns', () => {
       const warnings = analyzePatterns(['*.txt', '*.txt   ', ''])
       expect(warnings.length).toBeGreaterThan(0)
-      
+
       const types = warnings.map(w => w.warningType)
       expect(types).toContain('trailing_spaces')
       expect(types).toContain('empty_pattern')
@@ -157,12 +157,12 @@ describe('Helpful Error Messages', () => {
 
     it('combines warnings from all patterns', () => {
       // Create patterns with different issues
-      const pattern1 = '\\*.txt'  // escaped wildcard
-      const pattern2 = '*.js   '  // trailing spaces
-      
+      const pattern1 = '\\*.txt' // escaped wildcard
+      const pattern2 = '*.js   ' // trailing spaces
+
       const warnings = analyzePatterns([pattern1, pattern2])
       expect(warnings.length).toBe(2)
-      
+
       const types = warnings.map(w => w.warningType)
       expect(types).toContain('escaped_wildcard_at_start')
       expect(types).toContain('trailing_spaces')

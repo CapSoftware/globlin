@@ -151,7 +151,7 @@ describe('option validation', () => {
     it('sync functions accept platform option', () => {
       const resultDarwin = globlin.globSync('*.txt', { cwd: fixturePath, platform: 'darwin' })
       const resultLinux = globlin.globSync('*.txt', { cwd: fixturePath, platform: 'linux' })
-      
+
       expect(resultDarwin.length).toBeGreaterThan(0)
       expect(resultLinux.length).toBeGreaterThan(0)
     })

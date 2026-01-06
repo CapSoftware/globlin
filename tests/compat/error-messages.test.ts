@@ -1,6 +1,6 @@
 /**
  * Error message compatibility tests
- * 
+ *
  * This test file ensures globlin produces the same error messages as glob v13
  * for all known error conditions.
  */
@@ -274,7 +274,7 @@ describe('Error Messages', () => {
       // Test globlin
       const globlinStream = globStream('*.txt', { cwd: fixture, signal: controller.signal })
       let globlinError: unknown = null
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         globlinStream.on('error', (err: unknown) => {
           globlinError = err
           resolve()
@@ -294,21 +294,21 @@ describe('Error Messages', () => {
       const globlinStream = globStreamSync('*.txt', { cwd: fixture, signal: controller.signal })
       let globlinError: unknown = null
       let resolved = false
-      
-      await new Promise<void>((resolve) => {
+
+      await new Promise<void>(resolve => {
         const finish = () => {
           if (!resolved) {
             resolved = true
             resolve()
           }
         }
-        
+
         globlinStream.on('error', (err: unknown) => {
           globlinError = err
           finish()
         })
         globlinStream.on('end', finish)
-        
+
         // Give it a moment to emit
         setTimeout(finish, 100)
       })
@@ -321,7 +321,7 @@ describe('Error Messages', () => {
   describe('Non-existent Directory Handling', () => {
     it('glob returns empty array for non-existent cwd (no error)', async () => {
       const nonExistentPath = path.join(fixture, 'non-existent-directory')
-      
+
       // Both should return empty array, not throw
       const globlinResults = await glob('*.txt', { cwd: nonExistentPath })
       const globResults = await globOriginal('*.txt', { cwd: nonExistentPath })
@@ -332,7 +332,7 @@ describe('Error Messages', () => {
 
     it('globSync returns empty array for non-existent cwd (no error)', () => {
       const nonExistentPath = path.join(fixture, 'non-existent-directory')
-      
+
       // Both should return empty array, not throw
       const globlinResults = globSync('*.txt', { cwd: nonExistentPath })
       const globResults = globSyncOriginal('*.txt', { cwd: nonExistentPath })

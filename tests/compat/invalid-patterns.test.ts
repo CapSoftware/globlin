@@ -1,15 +1,15 @@
 /**
  * Tests for invalid pattern handling.
- * 
+ *
  * glob v13 is very permissive and doesn't throw errors for most "invalid" patterns.
  * Instead, it treats malformed patterns gracefully:
  * - Unclosed brackets/braces become literal characters
  * - Unclosed extglob patterns become literal characters
  * - Empty patterns return empty results
- * 
+ *
  * This matches bash's glob behavior where malformed patterns often
  * just match nothing rather than throwing errors.
- * 
+ *
  * We test that globlin matches this permissive behavior.
  */
 
@@ -27,12 +27,12 @@ describe('invalid-patterns - malformed patterns', () => {
       files: [
         'file.txt',
         'test.js',
-        'data[1].json',      // File with brackets in name
-        'config{a}.yaml',    // File with braces in name
-        '(test).md',         // File with parentheses in name
+        'data[1].json', // File with brackets in name
+        'config{a}.yaml', // File with braces in name
+        '(test).md', // File with parentheses in name
         'dir/nested.txt',
       ],
-      dirs: ['dir']
+      dirs: ['dir'],
     })
     globlin = await loadGloblin()
   })
@@ -42,16 +42,7 @@ describe('invalid-patterns - malformed patterns', () => {
   })
 
   describe('unclosed bracket expressions', () => {
-    const bracketPatterns = [
-      '[',
-      '[abc',
-      'file[',
-      'test.[',
-      '**[',
-      '**/[',
-      '[a-z',
-      'dir/[',
-    ]
+    const bracketPatterns = ['[', '[abc', 'file[', 'test.[', '**[', '**/[', '[a-z', 'dir/[']
 
     for (const pattern of bracketPatterns) {
       it(`glob handles unclosed bracket: ${JSON.stringify(pattern)}`, async () => {
@@ -142,11 +133,11 @@ describe('invalid-patterns - malformed patterns', () => {
 
   describe('empty extglob patterns', () => {
     const emptyExtglobs = [
-      '!()',    // Matches non-empty strings - KNOWN ISSUE: extglob negation
-      '+()',    // Matches nothing (one or more of nothing)
-      '*()',    // Matches empty strings
-      '?()',    // Matches empty strings
-      '@()',    // Matches nothing (exactly one of nothing)
+      '!()', // Matches non-empty strings - KNOWN ISSUE: extglob negation
+      '+()', // Matches nothing (one or more of nothing)
+      '*()', // Matches empty strings
+      '?()', // Matches empty strings
+      '@()', // Matches nothing (exactly one of nothing)
     ]
 
     for (const pattern of emptyExtglobs) {
@@ -161,11 +152,14 @@ describe('invalid-patterns - malformed patterns', () => {
       })
 
       // Skip !() - known issue with extglob negation (see Phase 4 notes)
-      it.skipIf(pattern === '!()')(`globlin matches glob for empty extglob: ${JSON.stringify(pattern)}`, async () => {
-        const globResult = await globOriginal(pattern, { cwd: fixturePath })
-        const globlinResult = await globlin.glob(pattern, { cwd: fixturePath })
-        expect(new Set(globlinResult)).toEqual(new Set(globResult))
-      })
+      it.skipIf(pattern === '!()')(
+        `globlin matches glob for empty extglob: ${JSON.stringify(pattern)}`,
+        async () => {
+          const globResult = await globOriginal(pattern, { cwd: fixturePath })
+          const globlinResult = await globlin.glob(pattern, { cwd: fixturePath })
+          expect(new Set(globlinResult)).toEqual(new Set(globResult))
+        }
+      )
     }
   })
 
@@ -192,13 +186,13 @@ describe('invalid-patterns - malformed patterns', () => {
 
   describe('escape sequences', () => {
     const escapePatterns = [
-      '\\[',        // Escaped bracket - should match literal [
-      '\\{',        // Escaped brace - should match literal {
-      '\\*',        // Escaped star - should match literal *
-      '\\?',        // Escaped question - should match literal ?
-      '\\(',        // Escaped paren - should match literal (
-      '\\\\',       // Double backslash
-      'test\\.js',  // Escaped dot
+      '\\[', // Escaped bracket - should match literal [
+      '\\{', // Escaped brace - should match literal {
+      '\\*', // Escaped star - should match literal *
+      '\\?', // Escaped question - should match literal ?
+      '\\(', // Escaped paren - should match literal (
+      '\\\\', // Double backslash
+      'test\\.js', // Escaped dot
     ]
 
     for (const pattern of escapePatterns) {
@@ -222,14 +216,14 @@ describe('invalid-patterns - malformed patterns', () => {
 
   describe('weird but valid patterns', () => {
     const weirdPatterns = [
-      '***',           // Multiple stars
+      '***', // Multiple stars
       '****/****.***', // Lots of stars
-      '?????',         // Just question marks
-      '...',           // Just dots
-      '---',           // Just dashes
-      '@#$%^&',        // Special characters
-      '   ',           // Just spaces
-      '\t\t\t',        // Just tabs
+      '?????', // Just question marks
+      '...', // Just dots
+      '---', // Just dashes
+      '@#$%^&', // Special characters
+      '   ', // Just spaces
+      '\t\t\t', // Just tabs
     ]
 
     for (const pattern of weirdPatterns) {
@@ -303,30 +297,26 @@ describe('invalid-patterns - malformed patterns', () => {
   })
 
   describe('pattern with nobrace option', () => {
-    const bracePatterns = [
-      '{a,b}',
-      '*.{js,ts}',
-      '{1..5}',
-    ]
+    const bracePatterns = ['{a,b}', '*.{js,ts}', '{1..5}']
 
     for (const pattern of bracePatterns) {
       it(`nobrace treats as literal: ${JSON.stringify(pattern)}`, async () => {
-        const noBraceResult = await globlin.glob(pattern, { 
-          cwd: fixturePath, 
-          nobrace: true 
+        const noBraceResult = await globlin.glob(pattern, {
+          cwd: fixturePath,
+          nobrace: true,
         })
         // With nobrace, braces are literal - won't match unless file has { in name
         expect(Array.isArray(noBraceResult)).toBe(true)
       })
 
       it(`nobrace matches glob behavior: ${JSON.stringify(pattern)}`, async () => {
-        const globResult = await globOriginal(pattern, { 
-          cwd: fixturePath, 
-          nobrace: true 
+        const globResult = await globOriginal(pattern, {
+          cwd: fixturePath,
+          nobrace: true,
         })
-        const globlinResult = await globlin.glob(pattern, { 
-          cwd: fixturePath, 
-          nobrace: true 
+        const globlinResult = await globlin.glob(pattern, {
+          cwd: fixturePath,
+          nobrace: true,
         })
         expect(new Set(globlinResult)).toEqual(new Set(globResult))
       })
@@ -334,32 +324,26 @@ describe('invalid-patterns - malformed patterns', () => {
   })
 
   describe('pattern with noext option', () => {
-    const extglobPatterns = [
-      '+(a|b)',
-      '!(foo)',
-      '?(test)',
-      '*(a)',
-      '@(x|y)',
-    ]
+    const extglobPatterns = ['+(a|b)', '!(foo)', '?(test)', '*(a)', '@(x|y)']
 
     for (const pattern of extglobPatterns) {
       it(`noext treats as literal: ${JSON.stringify(pattern)}`, async () => {
-        const noExtResult = await globlin.glob(pattern, { 
-          cwd: fixturePath, 
-          noext: true 
+        const noExtResult = await globlin.glob(pattern, {
+          cwd: fixturePath,
+          noext: true,
         })
         // With noext, extglob patterns are literal
         expect(Array.isArray(noExtResult)).toBe(true)
       })
 
       it(`noext matches glob behavior: ${JSON.stringify(pattern)}`, async () => {
-        const globResult = await globOriginal(pattern, { 
-          cwd: fixturePath, 
-          noext: true 
+        const globResult = await globOriginal(pattern, {
+          cwd: fixturePath,
+          noext: true,
         })
-        const globlinResult = await globlin.glob(pattern, { 
-          cwd: fixturePath, 
-          noext: true 
+        const globlinResult = await globlin.glob(pattern, {
+          cwd: fixturePath,
+          noext: true,
         })
         expect(new Set(globlinResult)).toEqual(new Set(globResult))
       })

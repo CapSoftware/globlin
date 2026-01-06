@@ -1,6 +1,6 @@
 /**
  * Test patterns starting with ./ - relative to cwd patterns
- * 
+ *
  * Behaviors tested:
  * - ./ prefix is stripped from patterns (transparent)
  * - ./* matches files/dirs in cwd
@@ -180,7 +180,7 @@ describe('./ prefix patterns', () => {
       const results = await globOriginal('./**/h', { cwd: fixturePath })
       for (const r of results) {
         // Results should not start with ./ (unless its the cwd itself which would be just ".")
-        expect(r).not.toMatch(/^\.\/(.)/)  // ./ followed by something
+        expect(r).not.toMatch(/^\.\/(.)/) // ./ followed by something
       }
     })
 
@@ -195,10 +195,7 @@ describe('./ prefix patterns', () => {
     it('./**/g pattern outputs without ./ prefix', async () => {
       // Create a specific fixture for this test
       const bashFixture = await createTestFixture('dot-slash-g-test', {
-        files: [
-          'a/abcdef/g/h',
-          'a/abcfed/g/h',
-        ],
+        files: ['a/abcdef/g/h', 'a/abcfed/g/h'],
       })
       try {
         const globResults = await globOriginal('./**/g', { cwd: bashFixture })
@@ -405,7 +402,7 @@ describe('./ prefix patterns', () => {
 
     it('./{a,x}/**/* brace expansion with ./', async () => {
       if (!globlin) return
-      // a and x are directories in DEFAULT_FIXTURE  
+      // a and x are directories in DEFAULT_FIXTURE
       const globResults = await globOriginal('./{a}/**/*', { cwd: fixturePath })
       const globlinResults = await globlin.glob('./{a}/**/*', { cwd: fixturePath })
       expect(new Set(globlinResults)).toEqual(new Set(globResults))

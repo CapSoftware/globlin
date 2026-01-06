@@ -120,8 +120,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
       const globlinResults = await globlin.glob(pattern, { cwd: fixturePath, dotRelative: true })
 
       // Normalize paths for comparison (handle different path separators)
-      const normalize = (paths: string[]) =>
-        new Set(paths.map(p => p.replace(/\\/g, '/')))
+      const normalize = (paths: string[]) => new Set(paths.map(p => p.replace(/\\/g, '/')))
 
       expect(normalize(globlinResults)).toEqual(normalize(globResults))
     })
@@ -166,7 +165,11 @@ describe('dot-relative - prepend ./ to relative paths', () => {
         return
       }
       // With absolute: true, paths should not get ./ prefix
-      const results = await globlin.glob(pattern, { cwd: fixturePath, absolute: true, dotRelative: true })
+      const results = await globlin.glob(pattern, {
+        cwd: fixturePath,
+        absolute: true,
+        dotRelative: true,
+      })
       for (const m of results) {
         // Absolute paths should not start with ./
         expect(m.startsWith('./')).toBe(false)

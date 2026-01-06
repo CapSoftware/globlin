@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { glob as nodeGlob } from 'glob';
-import { loadGloblin, createTestFixture, cleanupFixture, FixtureConfig } from '../harness';
-import * as path from 'path';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { glob as nodeGlob } from 'glob'
+import { loadGloblin, createTestFixture, cleanupFixture, FixtureConfig } from '../harness'
+import * as path from 'path'
 
 describe('ignore option compatibility', () => {
-  let globlin: Awaited<ReturnType<typeof loadGloblin>>;
-  let fixturePath: string;
+  let globlin: Awaited<ReturnType<typeof loadGloblin>>
+  let fixturePath: string
 
   beforeAll(async () => {
-    globlin = await loadGloblin();
+    globlin = await loadGloblin()
 
     // Create a fixture matching glob's test fixture structure
     // This is based on vendor/glob/test/00-setup.ts
@@ -26,26 +26,26 @@ describe('ignore option compatibility', () => {
         'a/.abcdef',
       ],
       symlinks: process.platform !== 'win32' ? [['a/symlink', 'b']] : [],
-    };
+    }
 
-    fixturePath = await createTestFixture('ignore-test', config);
-  });
+    fixturePath = await createTestFixture('ignore-test', config)
+  })
 
   afterAll(async () => {
     if (fixturePath) {
-      await cleanupFixture(fixturePath);
+      await cleanupFixture(fixturePath)
     }
-  });
+  })
 
   // Test cases adapted from vendor/glob/test/ignore.ts
   // [pattern, ignore, expected, cwd or options]
   const testCases: Array<{
-    pattern: string;
-    ignore: string | string[] | null;
-    expected: string[];
-    cwd?: string;
-    options?: Record<string, unknown>;
-    description?: string;
+    pattern: string
+    ignore: string | string[] | null
+    expected: string[]
+    cwd?: string
+    options?: Record<string, unknown>
+    description?: string
   }> = [
     // Basic ignore - single literal
     {
@@ -392,53 +392,53 @@ describe('ignore option compatibility', () => {
       ignore: 'a/x/**',
       expected: ['a/z/.y/b'],
     },
-  ];
+  ]
 
   // Filter test cases based on platform (skip symlink tests on Windows)
   const filteredCases =
     process.platform === 'win32'
-      ? testCases.filter((tc) => {
+      ? testCases.filter(tc => {
           // Exclude results with symlinks on Windows
-          tc.expected = tc.expected.filter((e) => !/\bsymlink\b/.test(e));
-          return true;
+          tc.expected = tc.expected.filter(e => !/\bsymlink\b/.test(e))
+          return true
         })
-      : testCases;
+      : testCases
 
   describe('globlin ignore behavior', () => {
     for (const tc of filteredCases) {
-      const name = `pattern="${tc.pattern}" ignore=${JSON.stringify(tc.ignore)} ${tc.cwd ? `cwd="${tc.cwd}"` : ''} ${tc.options ? JSON.stringify(tc.options) : ''}`;
+      const name = `pattern="${tc.pattern}" ignore=${JSON.stringify(tc.ignore)} ${tc.cwd ? `cwd="${tc.cwd}"` : ''} ${tc.options ? JSON.stringify(tc.options) : ''}`
 
       it(`async: ${name}`, async () => {
-        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath;
+        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath
         const options = {
           cwd,
           ...tc.options,
           ...(tc.ignore !== null ? { ignore: tc.ignore } : {}),
-        };
+        }
 
-        const results = await globlin.glob(tc.pattern, options);
-        const sorted = results.sort();
-        const expected = tc.expected.sort();
+        const results = await globlin.glob(tc.pattern, options)
+        const sorted = results.sort()
+        const expected = tc.expected.sort()
 
-        expect(sorted).toEqual(expected);
-      });
+        expect(sorted).toEqual(expected)
+      })
 
       it(`sync: ${name}`, () => {
-        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath;
+        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath
         const options = {
           cwd,
           ...tc.options,
           ...(tc.ignore !== null ? { ignore: tc.ignore } : {}),
-        };
+        }
 
-        const results = globlin.globSync(tc.pattern, options);
-        const sorted = results.sort();
-        const expected = tc.expected.sort();
+        const results = globlin.globSync(tc.pattern, options)
+        const sorted = results.sort()
+        const expected = tc.expected.sort()
 
-        expect(sorted).toEqual(expected);
-      });
+        expect(sorted).toEqual(expected)
+      })
     }
-  });
+  })
 
   describe('comparison with glob (node)', () => {
     // Test a subset of cases to compare with glob
@@ -473,82 +473,78 @@ describe('ignore option compatibility', () => {
         cwd: 'a',
         description: 'brace expansion in ignore',
       },
-    ];
+    ]
 
     for (const tc of comparisonCases) {
       it(`async comparison: ${tc.description}`, async () => {
-        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath;
+        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath
         const options = {
           cwd,
           ignore: tc.ignore,
-        };
+        }
 
         const [globResults, globlinResults] = await Promise.all([
           nodeGlob(tc.pattern, options),
           globlin.glob(tc.pattern, options),
-        ]);
+        ])
 
-        const globSorted = globResults.sort();
-        const globlinSorted = globlinResults.sort();
+        const globSorted = globResults.sort()
+        const globlinSorted = globlinResults.sort()
 
         // Filter out symlinks on Windows
         const filterSymlinks = (arr: string[]) =>
-          process.platform === 'win32'
-            ? arr.filter((e) => !/\bsymlink\b/.test(e))
-            : arr;
+          process.platform === 'win32' ? arr.filter(e => !/\bsymlink\b/.test(e)) : arr
 
-        expect(filterSymlinks(globlinSorted)).toEqual(filterSymlinks(globSorted));
-      });
+        expect(filterSymlinks(globlinSorted)).toEqual(filterSymlinks(globSorted))
+      })
 
       it(`sync comparison: ${tc.description}`, async () => {
-        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath;
+        const cwd = tc.cwd ? path.join(fixturePath, tc.cwd) : fixturePath
         const options = {
           cwd,
           ignore: tc.ignore,
-        };
+        }
 
-        const globResults = nodeGlob.sync(tc.pattern, options);
-        const globlinResults = globlin.globSync(tc.pattern, options);
+        const globResults = nodeGlob.sync(tc.pattern, options)
+        const globlinResults = globlin.globSync(tc.pattern, options)
 
-        const globSorted = globResults.sort();
-        const globlinSorted = globlinResults.sort();
+        const globSorted = globResults.sort()
+        const globlinSorted = globlinResults.sort()
 
         // Filter out symlinks on Windows
         const filterSymlinks = (arr: string[]) =>
-          process.platform === 'win32'
-            ? arr.filter((e) => !/\bsymlink\b/.test(e))
-            : arr;
+          process.platform === 'win32' ? arr.filter(e => !/\bsymlink\b/.test(e)) : arr
 
-        expect(filterSymlinks(globlinSorted)).toEqual(filterSymlinks(globSorted));
-      });
+        expect(filterSymlinks(globlinSorted)).toEqual(filterSymlinks(globSorted))
+      })
     }
-  });
+  })
 
   describe('ignore with no matches', () => {
     it('ignore string with no matches returns full results', async () => {
       const results = await globlin.glob('*', {
         cwd: path.join(fixturePath, 'a'),
         ignore: 'nonexistent',
-      });
+      })
 
-      expect(results.length).toBeGreaterThan(0);
-    });
+      expect(results.length).toBeGreaterThan(0)
+    })
 
     it('ignore array with no matches returns full results', () => {
       const results = globlin.globSync('*', {
         cwd: path.join(fixturePath, 'a'),
         ignore: ['nonexistent1', 'nonexistent2'],
-      });
+      })
 
-      expect(results.length).toBeGreaterThan(0);
-    });
+      expect(results.length).toBeGreaterThan(0)
+    })
 
     it('null ignore returns full results', async () => {
       const results = await globlin.glob('*', {
         cwd: path.join(fixturePath, 'a'),
-      });
+      })
 
-      expect(results.length).toBeGreaterThan(0);
-    });
-  });
-});
+      expect(results.length).toBeGreaterThan(0)
+    })
+  })
+})

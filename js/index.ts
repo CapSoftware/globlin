@@ -22,19 +22,40 @@ export interface PatternWarningInfo {
   suggestion?: string
 }
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const nativeBindings = require('../index.js') as {
   globSync: (pattern: string | string[], options?: NativeGlobOptions) => string[]
   glob: (pattern: string | string[], options?: NativeGlobOptions) => Promise<string[]>
-  globSyncWithFileTypes: (pattern: string | string[], options?: NativeGlobOptions) => NativePathData[]
-  globWithFileTypes: (pattern: string | string[], options?: NativeGlobOptions) => Promise<NativePathData[]>
-  globStream: (pattern: string | string[], options: NativeGlobOptions | undefined, callback: (result: string) => void) => void
-  globStreamWithFileTypes: (pattern: string | string[], options: NativeGlobOptions | undefined, callback: (result: NativePathData) => void) => void
+  globSyncWithFileTypes: (
+    pattern: string | string[],
+    options?: NativeGlobOptions
+  ) => NativePathData[]
+  globWithFileTypes: (
+    pattern: string | string[],
+    options?: NativeGlobOptions
+  ) => Promise<NativePathData[]>
+  globStream: (
+    pattern: string | string[],
+    options: NativeGlobOptions | undefined,
+    callback: (result: string) => void
+  ) => void
+  globStreamWithFileTypes: (
+    pattern: string | string[],
+    options: NativeGlobOptions | undefined,
+    callback: (result: NativePathData) => void
+  ) => void
   escape: (pattern: string, windowsPathsNoEscape?: boolean) => string
   unescape: (pattern: string, windowsPathsNoEscape?: boolean) => string
   hasMagic: (pattern: string, noext?: boolean, windowsPathsNoEscape?: boolean) => boolean
-  analyzePattern: (pattern: string, windowsPathsNoEscape?: boolean, platform?: string) => PatternWarningInfo[]
-  analyzePatterns: (patterns: string[], windowsPathsNoEscape?: boolean, platform?: string) => PatternWarningInfo[]
+  analyzePattern: (
+    pattern: string,
+    windowsPathsNoEscape?: boolean,
+    platform?: string
+  ) => PatternWarningInfo[]
+  analyzePatterns: (
+    patterns: string[],
+    windowsPathsNoEscape?: boolean,
+    platform?: string
+  ) => PatternWarningInfo[]
 }
 
 /**
@@ -52,14 +73,20 @@ const {
   glob: nativeGlob,
   globSyncWithFileTypes: nativeGlobSyncWithFileTypes,
   globWithFileTypes: nativeGlobWithFileTypes,
-  globStream: nativeGlobStream,
-  globStreamWithFileTypes: nativeGlobStreamWithFileTypes,
+  globStream: _nativeGlobStream,
+  globStreamWithFileTypes: _nativeGlobStreamWithFileTypes,
   escape: nativeEscape,
   unescape: nativeUnescape,
   hasMagic: nativeHasMagic,
   analyzePattern: nativeAnalyzePattern,
   analyzePatterns: nativeAnalyzePatterns,
 } = nativeBindings
+
+// Note: _nativeGlobStream and _nativeGlobStreamWithFileTypes are currently unused
+// because the streaming implementation uses setImmediate + sync collect instead.
+// They are available for future optimization when proper async callback handling is implemented.
+void _nativeGlobStream
+void _nativeGlobStreamWithFileTypes
 
 // Re-export path-scurry for API compatibility
 import { PathScurry, Path } from 'path-scurry'
@@ -152,96 +179,96 @@ export interface GlobOptions {
   // Performance options (globlin-specific)
   /**
    * Enable parallel directory walking using multiple threads.
-   * 
+   *
    * When `true`, uses parallel traversal which can be faster on:
    * - Spinning hard drives (HDDs)
    * - Network filesystems (NFS, CIFS)
    * - Very large directory trees (100k+ files)
-   * 
+   *
    * When `false` (default), uses serial traversal which is:
    * - Faster on SSDs for small to medium directories
    * - Deterministic result ordering
    * - Lower memory overhead
-   * 
+   *
    * **Note:** This is a globlin-specific option not present in the original glob package.
    * Results may be returned in a different order when `parallel: true`.
-   * 
+   *
    * @default false
    */
   parallel?: boolean
 
   /**
    * Enable directory caching for repeated glob operations.
-   * 
+   *
    * When `true`, caches directory listings in memory with a TTL-based invalidation
    * strategy. This provides significant speedup when:
    * - Running multiple glob operations on the same directories
    * - Using the Glob class with cache reuse (passing Glob as options)
    * - Patterns with overlapping directory prefixes
-   * 
+   *
    * When `false` (default), directories are read fresh each time, which is:
    * - More accurate if the filesystem is changing
    * - Lower memory usage (no cached directory listings)
    * - Slightly slower for repeated operations
-   * 
+   *
    * The cache has a 5-second TTL to balance freshness with performance.
    * Use `cache: false` when you expect filesystem changes during the operation.
-   * 
+   *
    * **Note:** This is a globlin-specific option not present in the original glob package.
-   * 
+   *
    * @default false
    */
   cache?: boolean
 
   /**
    * Use optimized native I/O operations on Linux and macOS.
-   * 
+   *
    * When `true`, uses platform-specific optimizations:
    * - Linux: `getdents64` syscall for faster directory reading (bypasses libc overhead)
    * - macOS: Low-level BSD directory APIs with d_type for early file type detection
-   * 
+   *
    * Performance characteristics:
    * - Linux: Expected 1.3-1.5x speedup on directory-heavy workloads
    * - macOS: May provide speedup on some filesystems; benchmark for your use case
-   * 
+   *
    * When `false` (default), uses the standard `walkdir` library which is:
    * - Cross-platform compatible
    * - Well-tested and stable
    * - Sufficient for most use cases
-   * 
+   *
    * On Windows, this option is ignored and the standard walker is used.
-   * 
+   *
    * **Note:** This is a globlin-specific option not present in the original glob package.
-   * 
+   *
    * @default false
    */
   useNativeIO?: boolean
 
   /**
    * Use Grand Central Dispatch (GCD) for parallel walking on macOS.
-   * 
+   *
    * When `true` on macOS, uses Apple's Grand Central Dispatch framework for
    * parallel directory traversal. This provides:
    * - Native macOS scheduler integration
    * - Automatic handling of efficiency vs performance cores on Apple Silicon
    * - Better power management than generic thread pools
    * - Lower overhead than rayon for I/O-bound workloads
-   * 
+   *
    * When `false` (default), uses the standard walker which is often faster
    * on modern SSDs due to reduced coordination overhead.
-   * 
+   *
    * **When to use:**
    * - Large directory trees (100k+ files) on Macs with many cores
    * - Network filesystems where I/O latency dominates
    * - When power efficiency matters (GCD respects system power state)
-   * 
+   *
    * **When NOT to use:**
    * - Small to medium directories on SSD
    * - When deterministic ordering is required
    * - On non-macOS platforms (option is ignored)
-   * 
+   *
    * **Note:** This is a globlin-specific option not present in the original glob package.
-   * 
+   *
    * @default false
    */
   useGcd?: boolean
@@ -256,7 +283,7 @@ function isGlobInstance(obj: unknown): obj is Glob {
 
 /**
  * Custom ignore pattern object. Compatible with glob v13's IgnoreLike interface.
- * 
+ *
  * Both methods receive Path objects from path-scurry, allowing for rich
  * filtering based on file properties (name, isDirectory, isFile, etc.)
  */
@@ -267,7 +294,7 @@ export interface IgnorePattern {
    * @returns true if the path should be ignored (excluded from results)
    */
   ignored?: (path: Path) => boolean
-  
+
   /**
    * Called for each directory to determine if its children should be ignored.
    * When this returns true, the directory's contents are not traversed.
@@ -283,18 +310,14 @@ export interface IgnorePattern {
  * An empty object is NOT considered an IgnorePattern.
  */
 function isIgnorePattern(ignore: unknown): ignore is IgnorePattern {
-  if (
-    typeof ignore !== 'object' ||
-    ignore === null ||
-    Array.isArray(ignore)
-  ) {
+  if (typeof ignore !== 'object' || ignore === null || Array.isArray(ignore)) {
     return false
   }
-  
+
   const maybePattern = ignore as IgnorePattern
   const hasIgnored = typeof maybePattern.ignored === 'function'
   const hasChildrenIgnored = typeof maybePattern.childrenIgnored === 'function'
-  
+
   // Must have at least one of the methods to be considered an IgnorePattern
   return hasIgnored || hasChildrenIgnored
 }
@@ -308,7 +331,8 @@ function toNativeOptions(options?: GlobOptions): NativeGlobOptions {
   }
 
   // Create native options, excluding JS-only fields (signal)
-  const { signal, ...rest } = options
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { signal: _signal, ...rest } = options
 
   // Determine what to pass as ignore to native code:
   // - If it's a custom IgnorePattern object with methods, don't pass it (handled in JS)
@@ -317,7 +341,7 @@ function toNativeOptions(options?: GlobOptions): NativeGlobOptions {
   // - If it's undefined/null, don't pass it
   let nativeIgnore: string | string[] | undefined
   const ignoreOpt = rest.ignore
-  
+
   if (ignoreOpt === undefined || ignoreOpt === null) {
     nativeIgnore = undefined
   } else if (typeof ignoreOpt === 'string') {
@@ -354,15 +378,15 @@ function applyCustomIgnoreFilter(
   }
 
   const scurry = new PathScurry(cwd)
-  
+
   // Build a set of ignored directories (for childrenIgnored)
   // We need to check all parent directories that might be childrenIgnored
   const ignoredDirPrefixes = new Set<string>()
-  
+
   // If we have childrenIgnored, we need to pre-check all unique parent directories
   if (ignorePattern.childrenIgnored) {
     const allParentDirs = new Set<string>()
-    
+
     // Collect all unique parent directories from the results
     for (const relPath of results) {
       const parts = relPath.split('/')
@@ -372,14 +396,14 @@ function applyCustomIgnoreFilter(
         allParentDirs.add(current)
       }
     }
-    
+
     // Sort by depth (shallow first) and check childrenIgnored on each
     const sortedDirs = [...allParentDirs].sort((a, b) => {
       const depthA = a.split('/').length
       const depthB = b.split('/').length
       return depthA - depthB
     })
-    
+
     for (const dir of sortedDirs) {
       // Skip if already under an ignored prefix
       let underIgnored = false
@@ -390,7 +414,7 @@ function applyCustomIgnoreFilter(
         }
       }
       if (underIgnored) continue
-      
+
       // Check if this directory's children should be ignored
       const pathObj = scurry.cwd.resolve(dir)
       if (ignorePattern.childrenIgnored(pathObj)) {
@@ -398,7 +422,7 @@ function applyCustomIgnoreFilter(
       }
     }
   }
-  
+
   // Now filter the results
   return results.filter(relPath => {
     // Check if path is under an ignored directory (childrenIgnored)
@@ -408,7 +432,7 @@ function applyCustomIgnoreFilter(
         return false
       }
     }
-    
+
     // Check if this specific path should be ignored
     if (ignorePattern.ignored) {
       const pathObj = scurry.cwd.resolve(relPath)
@@ -416,7 +440,7 @@ function applyCustomIgnoreFilter(
         return false
       }
     }
-    
+
     return true
   })
 }
@@ -425,21 +449,18 @@ function applyCustomIgnoreFilter(
  * Apply custom ignore filters to Path[] results.
  * This handles IgnorePattern objects with ignored() and/or childrenIgnored() methods.
  */
-function applyCustomIgnoreFilterForPaths(
-  pathObjs: Path[],
-  ignorePattern: IgnorePattern
-): Path[] {
+function applyCustomIgnoreFilterForPaths(pathObjs: Path[], ignorePattern: IgnorePattern): Path[] {
   if (!ignorePattern.ignored && !ignorePattern.childrenIgnored) {
     return pathObjs
   }
-  
+
   // Build a set of ignored directories (for childrenIgnored)
   const ignoredDirPrefixes = new Set<string>()
-  
+
   // If we have childrenIgnored, pre-check all unique parent directories
   if (ignorePattern.childrenIgnored) {
     const allParentDirs = new Map<string, Path>()
-    
+
     // Collect all unique parent directories from the results
     for (const pathObj of pathObjs) {
       let current = pathObj.parent
@@ -451,14 +472,14 @@ function applyCustomIgnoreFilterForPaths(
         current = current.parent
       }
     }
-    
+
     // Sort by depth (shallow first) and check childrenIgnored on each
     const sortedDirs = [...allParentDirs.entries()].sort((a, b) => {
       const depthA = a[0].split('/').length
       const depthB = b[0].split('/').length
       return depthA - depthB
     })
-    
+
     for (const [dir, pathObj] of sortedDirs) {
       // Skip if already under an ignored prefix
       let underIgnored = false
@@ -469,30 +490,30 @@ function applyCustomIgnoreFilterForPaths(
         }
       }
       if (underIgnored) continue
-      
+
       // Check if this directory's children should be ignored
       if (ignorePattern.childrenIgnored(pathObj)) {
         ignoredDirPrefixes.add(dir)
       }
     }
   }
-  
+
   // Now filter the results
   return pathObjs.filter(pathObj => {
     const relPath = pathObj.relative()
-    
+
     // Check if path is under an ignored directory (childrenIgnored)
     for (const prefix of ignoredDirPrefixes) {
       if (relPath.startsWith(prefix + '/')) {
         return false
       }
     }
-    
+
     // Check if this specific path should be ignored
     if (ignorePattern.ignored && ignorePattern.ignored(pathObj)) {
       return false
     }
-    
+
     return true
   })
 }
@@ -540,22 +561,13 @@ function convertToPathObjects(
  * @param options - Glob options
  * @returns Array of matching file paths (or Path objects if withFileTypes: true)
  */
-export function globSync(
-  pattern: string | string[],
-  options: GlobOptionsWithFileTypesTrue
-): Path[]
+export function globSync(pattern: string | string[], options: GlobOptionsWithFileTypesTrue): Path[]
 export function globSync(
   pattern: string | string[],
   options?: GlobOptionsWithFileTypesFalse
 ): string[]
-export function globSync(
-  pattern: string | string[],
-  options?: GlobOptions
-): string[] | Path[]
-export function globSync(
-  pattern: string | string[],
-  options?: GlobOptions
-): string[] | Path[] {
+export function globSync(pattern: string | string[], options?: GlobOptions): string[] | Path[]
+export function globSync(pattern: string | string[], options?: GlobOptions): string[] | Path[] {
   // Check if signal is already aborted before starting
   if (options?.signal?.aborted) {
     throw options.signal.reason ?? new Error('The operation was aborted')
@@ -570,23 +582,23 @@ export function globSync(
     const data = nativeGlobSyncWithFileTypes(pattern, opts)
     // Pass stat option to determine if we should call lstat
     let pathObjs = convertToPathObjects(data, cwd, options.stat)
-    
+
     // Apply custom ignore filter if present
     if (hasCustomIgnore) {
       pathObjs = applyCustomIgnoreFilterForPaths(pathObjs, options.ignore as IgnorePattern)
     }
-    
+
     return pathObjs
   }
 
   // Pass patterns directly to native implementation (supports both string and array)
   let results = nativeGlobSync(pattern, opts)
-  
+
   // Apply custom ignore filter if present
   if (hasCustomIgnore) {
     results = applyCustomIgnoreFilter(results, options.ignore as IgnorePattern, cwd)
   }
-  
+
   return results
 }
 
@@ -625,13 +637,13 @@ export async function glob(
   // Handle withFileTypes option
   if (options?.withFileTypes) {
     const promise = nativeGlobWithFileTypes(pattern, opts)
-    
+
     // Helper to apply custom ignore filter on Path[] results
     const applyPathIgnoreFilter = (pathObjs: Path[]): Path[] => {
       if (!hasCustomIgnore) return pathObjs
       return applyCustomIgnoreFilterForPaths(pathObjs, options.ignore as IgnorePattern)
     }
-    
+
     // If we have a signal, set up abort handling
     if (options?.signal) {
       return new Promise<Path[]>((resolve, reject) => {
@@ -640,7 +652,7 @@ export async function glob(
         }
         options.signal!.addEventListener('abort', onAbort, { once: true })
         promise
-          .then((data) => {
+          .then(data => {
             options.signal!.removeEventListener('abort', onAbort)
             if (options.signal!.aborted) {
               reject(options.signal!.reason ?? new Error('The operation was aborted'))
@@ -650,13 +662,13 @@ export async function glob(
               resolve(pathObjs)
             }
           })
-          .catch((err) => {
+          .catch(err => {
             options.signal!.removeEventListener('abort', onAbort)
             reject(err)
           })
       })
     }
-    
+
     const data = await promise
     let pathObjs = convertToPathObjects(data, cwd, options.stat)
     pathObjs = applyPathIgnoreFilter(pathObjs)
@@ -678,20 +690,20 @@ export async function glob(
       options.signal!.addEventListener('abort', onAbort, { once: true })
 
       promise
-        .then((results) => {
+        .then(results => {
           options.signal!.removeEventListener('abort', onAbort)
           // Check if aborted after completion
           if (options.signal!.aborted) {
             reject(options.signal!.reason ?? new Error('The operation was aborted'))
           } else {
             // Apply custom ignore filter if present
-            const finalResults = hasCustomIgnore 
+            const finalResults = hasCustomIgnore
               ? applyCustomIgnoreFilter(results, options.ignore as IgnorePattern, cwd)
               : results
             resolve(finalResults)
           }
         })
-        .catch((err) => {
+        .catch(err => {
           options.signal!.removeEventListener('abort', onAbort)
           reject(err)
         })
@@ -699,12 +711,12 @@ export async function glob(
   }
 
   let results = await promise
-  
+
   // Apply custom ignore filter if present
   if (hasCustomIgnore) {
     results = applyCustomIgnoreFilter(results, options.ignore as IgnorePattern, cwd)
   }
-  
+
   return results
 }
 
@@ -858,10 +870,7 @@ export function* globIterateSync(
  * @param options - Glob options
  * @returns True if the pattern has magic (unescaped) glob characters
  */
-export function hasMagic(
-  pattern: string | string[],
-  options?: GlobOptions
-): boolean {
+export function hasMagic(pattern: string | string[], options?: GlobOptions): boolean {
   const patterns = Array.isArray(pattern) ? pattern : [pattern]
   const noext = options?.noext ?? false
   const windowsPathsNoEscape = options?.windowsPathsNoEscape ?? false

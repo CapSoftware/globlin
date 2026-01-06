@@ -1,0 +1,25 @@
+# Build outputs
+dist/
+target/
+*.node
+index.js
+index.d.ts
+js/*.js
+js/*.d.ts
+
+# Dependencies
+node_modules/
+vendor/
+
+# Auto-generated
+*.tsbuildinfo
+
+# Fixtures
+benches/fixtures/
+
+# Documentation markdown (preserve as-is)
+docs/**/*.md
+*.md
+
+# npm platform packages
+npm/

@@ -41,7 +41,11 @@ interface ComparisonResult {
   count: number
 }
 
-function measureTimeSync<T>(fn: () => T, runs: number = RUNS, warmup: number = WARMUP_RUNS): BenchmarkResult {
+function measureTimeSync<T>(
+  fn: () => T,
+  runs: number = RUNS,
+  warmup: number = WARMUP_RUNS
+): BenchmarkResult {
   // Warmup runs
   for (let i = 0; i < warmup; i++) {
     fn()
@@ -92,15 +96,24 @@ function printTableHeader() {
   console.log('|----------|-------------------|-----------------|----------|-----------------|')
 }
 
-function printTableRow(scenario: string, noCache: BenchmarkResult, cached: BenchmarkResult, glob: BenchmarkResult) {
-  const cacheSpeedup = cached.avg < noCache.avg ? 
-    `${(noCache.avg / cached.avg).toFixed(2)}x faster` : 
-    `${(cached.avg / noCache.avg).toFixed(2)}x slower`
-  const globSpeedup = cached.avg < glob.avg ?
-    `${(glob.avg / cached.avg).toFixed(2)}x faster` :
-    `${(cached.avg / glob.avg).toFixed(2)}x slower`
-  
-  console.log(`| ${scenario.padEnd(8)} | ${formatMs(noCache.avg).padEnd(17)} | ${formatMs(cached.avg).padEnd(15)} | ${formatMs(glob.avg).padEnd(8)} | ${globSpeedup.padEnd(15)} |`)
+function printTableRow(
+  scenario: string,
+  noCache: BenchmarkResult,
+  cached: BenchmarkResult,
+  glob: BenchmarkResult
+) {
+  const cacheSpeedup =
+    cached.avg < noCache.avg
+      ? `${(noCache.avg / cached.avg).toFixed(2)}x faster`
+      : `${(cached.avg / noCache.avg).toFixed(2)}x slower`
+  const globSpeedup =
+    cached.avg < glob.avg
+      ? `${(glob.avg / cached.avg).toFixed(2)}x faster`
+      : `${(cached.avg / glob.avg).toFixed(2)}x slower`
+
+  console.log(
+    `| ${scenario.padEnd(8)} | ${formatMs(noCache.avg).padEnd(17)} | ${formatMs(cached.avg).padEnd(15)} | ${formatMs(glob.avg).padEnd(8)} | ${globSpeedup.padEnd(15)} |`
+  )
 }
 
 // Clear the internal cache between benchmarks
@@ -156,7 +169,7 @@ async function runBenchmarks() {
     console.log('-'.repeat(60))
     {
       const pattern = '**/*.js'
-      
+
       // glob v13
       const globResult = measureTimeSync(() => globOriginalSync(pattern, { cwd }))
       const globCount = globOriginalSync(pattern, { cwd }).length
@@ -172,7 +185,9 @@ async function runBenchmarks() {
       const cachedCount = globSync(pattern, { cwd, cache: true }).length
       printResult('globlin (cache)', cachedResult, globResult)
 
-      console.log(`   Result counts: glob=${globCount}, noCache=${noCacheCount}, cached=${cachedCount}`)
+      console.log(
+        `   Result counts: glob=${globCount}, noCache=${noCacheCount}, cached=${cachedCount}`
+      )
     }
     console.log('')
 
@@ -184,7 +199,7 @@ async function runBenchmarks() {
     {
       const pattern = '**/*.js'
       const iterations = 5
-      
+
       // glob v13 - repeated calls
       const globResult = measureTimeSync(() => {
         for (let i = 0; i < iterations; i++) {
@@ -300,50 +315,52 @@ async function runBenchmarks() {
     console.log('-'.repeat(60))
     {
       const pattern = '**/*.js'
-      
+
       // Measure first call (cold cache)
       // Note: We're running within a benchmark run, so cache may be warm from previous tests
       // To simulate cold cache, use unique patterns or wait for TTL
       const firstCallTimes: number[] = []
       const secondCallTimes: number[] = []
-      
+
       for (let run = 0; run < RUNS; run++) {
         // Use a unique pattern suffix to avoid pattern cache hits (simulate different directories)
         // Since we can't easily clear the readdir cache, we measure the pattern
         const start1 = performance.now()
         globSync(pattern, { cwd, cache: true })
         firstCallTimes.push(performance.now() - start1)
-        
+
         const start2 = performance.now()
         globSync(pattern, { cwd, cache: true })
         secondCallTimes.push(performance.now() - start2)
       }
-      
+
       const firstAvg = firstCallTimes.reduce((a, b) => a + b, 0) / firstCallTimes.length
       const secondAvg = secondCallTimes.reduce((a, b) => a + b, 0) / secondCallTimes.length
-      
+
       console.log(`   First call avg: ${formatMs(firstAvg)}`)
       console.log(`   Second call avg: ${formatMs(secondAvg)}`)
       console.log(`   Warmup benefit: ${(firstAvg / secondAvg).toFixed(2)}x faster on second call`)
-      
+
       // Compare with glob
       const globFirstTimes: number[] = []
       const globSecondTimes: number[] = []
-      
+
       for (let run = 0; run < RUNS; run++) {
         const start1 = performance.now()
         globOriginalSync(pattern, { cwd })
         globFirstTimes.push(performance.now() - start1)
-        
+
         const start2 = performance.now()
         globOriginalSync(pattern, { cwd })
         globSecondTimes.push(performance.now() - start2)
       }
-      
+
       const globFirstAvg = globFirstTimes.reduce((a, b) => a + b, 0) / globFirstTimes.length
       const globSecondAvg = globSecondTimes.reduce((a, b) => a + b, 0) / globSecondTimes.length
-      
-      console.log(`   glob first call: ${formatMs(globFirstAvg)}, second: ${formatMs(globSecondAvg)}`)
+
+      console.log(
+        `   glob first call: ${formatMs(globFirstAvg)}, second: ${formatMs(globSecondAvg)}`
+      )
       console.log(`   glob warmup benefit: ${(globFirstAvg / globSecondAvg).toFixed(2)}x`)
     }
     console.log('')
@@ -354,7 +371,7 @@ async function runBenchmarks() {
     console.log('Summary Table')
     console.log('-'.repeat(60))
     printTableHeader()
-    
+
     for (const pattern of patterns.slice(0, 4)) {
       const noCache = measureTimeSync(() => globSync(pattern, { cwd, cache: false }), 5, 2)
       const cached = measureTimeSync(() => globSync(pattern, { cwd, cache: true }), 5, 2)
@@ -378,7 +395,9 @@ async function runBenchmarks() {
   console.log('')
   console.log('Recommendations:')
   console.log('- Use cache: true when making multiple glob calls on the same directories')
-  console.log('- Default (cache: false) is fine for single calls or when directories change frequently')
+  console.log(
+    '- Default (cache: false) is fine for single calls or when directories change frequently'
+  )
   console.log('')
 }
 

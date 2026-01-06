@@ -70,9 +70,7 @@ function benchmark(
   // Check if results match
   const globSet = new Set(globResults)
   const globlinSet = new Set(globlinResults)
-  const match =
-    globSet.size === globlinSet.size &&
-    [...globSet].every((r) => globlinSet.has(r))
+  const match = globSet.size === globlinSet.size && [...globSet].every(r => globlinSet.has(r))
 
   return {
     pattern: patterns,
@@ -151,12 +149,8 @@ console.log()
 console.log('Summary')
 console.log('-------')
 console.log()
-console.log(
-  '| Pattern Type | Speedup | Globlin (ms) | Glob (ms) | Results | Match |'
-)
-console.log(
-  '|--------------|---------|--------------|-----------|---------|-------|'
-)
+console.log('| Pattern Type | Speedup | Globlin (ms) | Glob (ms) | Results | Match |')
+console.log('|--------------|---------|--------------|-----------|---------|-------|')
 
 for (let i = 0; i < results.length; i++) {
   const r = results[i]
@@ -168,19 +162,16 @@ for (let i = 0; i < results.length; i++) {
 
 // Calculate averages for multi-base patterns
 const multiBaseResults = results.filter(
-  (_, i) =>
-    testCases[i].name.includes('Multi-base') &&
-    !testCases[i].name.includes('mixed')
+  (_, i) => testCases[i].name.includes('Multi-base') && !testCases[i].name.includes('mixed')
 )
 const avgMultiBase =
-  multiBaseResults.reduce((sum, r) => sum + r.speedup, 0) /
-  multiBaseResults.length
+  multiBaseResults.reduce((sum, r) => sum + r.speedup, 0) / multiBaseResults.length
 
 console.log()
 console.log(`Average speedup for multi-base patterns: ${avgMultiBase.toFixed(2)}x`)
 
 // Check for correctness
-const mismatches = results.filter((r) => !r.match)
+const mismatches = results.filter(r => !r.match)
 if (mismatches.length > 0) {
   console.log()
   console.log('⚠️  Result mismatches detected:')

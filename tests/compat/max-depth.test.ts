@@ -13,16 +13,16 @@ describe('maxDepth', () => {
 
   beforeAll(async () => {
     globlin = await loadGloblin()
-    
+
     // Create a fixture directory with nested structure
     // Similar to what glob's tests expect
     fixtureDir = path.join(__dirname, '..', '..', 'test-fixtures-max-depth')
-    
+
     // Clean up if exists
     if (fs.existsSync(fixtureDir)) {
       fs.rmSync(fixtureDir, { recursive: true, force: true })
     }
-    
+
     // Create structure:
     // test-fixtures-max-depth/
     //   a/
@@ -145,7 +145,9 @@ describe('maxDepth', () => {
     it('glob and globlin should match for maxDepth: 1', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = new Set(await glob.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 1 }))
-      const globlinResults = new Set(await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 1 }))
+      const globlinResults = new Set(
+        await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 1 })
+      )
       expect(globlinResults).toEqual(globResults)
     })
   })
@@ -171,7 +173,9 @@ describe('maxDepth', () => {
     it('glob and globlin should match for maxDepth: 2', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = new Set(await glob.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 2 }))
-      const globlinResults = new Set(await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 2 }))
+      const globlinResults = new Set(
+        await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 2 })
+      )
       expect(globlinResults).toEqual(globResults)
     })
   })
@@ -199,7 +203,9 @@ describe('maxDepth', () => {
     it('glob and globlin should match for maxDepth: 3', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = new Set(await glob.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 3 }))
-      const globlinResults = new Set(await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 3 }))
+      const globlinResults = new Set(
+        await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 3 })
+      )
       expect(globlinResults).toEqual(globResults)
     })
   })
@@ -227,7 +233,9 @@ describe('maxDepth', () => {
     it('glob and globlin should match for maxDepth: 4', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = new Set(await glob.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 4 }))
-      const globlinResults = new Set(await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 4 }))
+      const globlinResults = new Set(
+        await globlin.glob('**/*.txt', { cwd: fixtureDir, maxDepth: 4 })
+      )
       expect(globlinResults).toEqual(globResults)
     })
   })
@@ -264,7 +272,9 @@ describe('maxDepth', () => {
 
     it('globlin: scoped pattern respects maxDepth', async () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const results = sortResults(await globlin.glob('a/**/*.txt', { cwd: fixtureDir, maxDepth: 2 }))
+      const results = sortResults(
+        await globlin.glob('a/**/*.txt', { cwd: fixtureDir, maxDepth: 2 })
+      )
       expect(results).toContain('a/b.txt')
       expect(results).not.toContain('a/b/c.txt')
     })
@@ -276,14 +286,18 @@ describe('maxDepth', () => {
     it.skip('glob and globlin should match for scoped pattern with maxDepth', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       const globResults = new Set(await glob.glob('a/**/*.txt', { cwd: fixtureDir, maxDepth: 2 }))
-      const globlinResults = new Set(await globlin.glob('a/**/*.txt', { cwd: fixtureDir, maxDepth: 2 }))
+      const globlinResults = new Set(
+        await globlin.glob('a/**/*.txt', { cwd: fixtureDir, maxDepth: 2 })
+      )
       expect(globlinResults).toEqual(globResults)
     })
   })
 
   describe('maxDepth with brace expansion', () => {
     it('glob: brace expansion respects maxDepth', async () => {
-      const results = sortResults(await glob.glob('**/*.{txt,js}', { cwd: fixtureDir, maxDepth: 2 }))
+      const results = sortResults(
+        await glob.glob('**/*.{txt,js}', { cwd: fixtureDir, maxDepth: 2 })
+      )
       expect(results).toContain('a.txt')
       expect(results).toContain('a/b.txt')
       expect(results).not.toContain('a/b/c.txt')
@@ -291,7 +305,9 @@ describe('maxDepth', () => {
 
     it('globlin: brace expansion respects maxDepth', async () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const results = sortResults(await globlin.glob('**/*.{txt,js}', { cwd: fixtureDir, maxDepth: 2 }))
+      const results = sortResults(
+        await globlin.glob('**/*.{txt,js}', { cwd: fixtureDir, maxDepth: 2 })
+      )
       expect(results).toContain('a.txt')
       expect(results).toContain('a/b.txt')
       expect(results).not.toContain('a/b/c.txt')

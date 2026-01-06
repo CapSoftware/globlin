@@ -1,12 +1,12 @@
 /**
  * Test patterns with ../** - parent directory navigation
- * 
+ *
  * Ported from vendor/glob/test/bash-results.ts and other sources
- * 
+ *
  * These patterns test glob's ability to navigate up the directory tree
  * and then back down with wildcards. This is a complex feature that
  * requires proper path normalization and matching.
- * 
+ *
  * KNOWN BEHAVIOR DIFFERENCE:
  * glob normalizes paths that navigate up and back down to the same directory.
  * For example, from cwd 'src/', the pattern '../src/main.ts' is normalized to 'main.ts'.
@@ -105,32 +105,33 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../**/*.ts', { cwd: srcCwd })
       // Files from ../test/ keep the ../ prefix, files from ../src/ are normalized
-      expect(results.sort()).toEqual([
-        '../test/main.test.ts',
-        '../test/utils/helpers.test.ts',
-        'main.ts',
-        'utils/helpers.ts',
-      ].sort())
+      expect(results.sort()).toEqual(
+        [
+          '../test/main.test.ts',
+          '../test/utils/helpers.test.ts',
+          'main.ts',
+          'utils/helpers.ts',
+        ].sort()
+      )
     })
 
     it('../**/*.ts from src directory finds all ts files (sync)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = globSyncOriginal('../**/*.ts', { cwd: srcCwd })
-      expect(results.sort()).toEqual([
-        '../test/main.test.ts',
-        '../test/utils/helpers.test.ts',
-        'main.ts',
-        'utils/helpers.ts',
-      ].sort())
+      expect(results.sort()).toEqual(
+        [
+          '../test/main.test.ts',
+          '../test/utils/helpers.test.ts',
+          'main.ts',
+          'utils/helpers.ts',
+        ].sort()
+      )
     })
 
     it('../**/*.js from src directory finds all js files (async)', async () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../**/*.js', { cwd: srcCwd })
-      expect(results.sort()).toEqual([
-        '../lib/core/api.js',
-        '../lib/index.js',
-      ].sort())
+      expect(results.sort()).toEqual(['../lib/core/api.js', '../lib/index.js'].sort())
     })
   })
 
@@ -138,12 +139,14 @@ describe('parent navigation patterns (../**)', () => {
     it('../{src,test}/**/*.ts from lib directory (async)', async () => {
       const libCwd = resolve(fixturePath, 'lib')
       const results = await globOriginal('../{src,test}/**/*.ts', { cwd: libCwd })
-      expect(results.sort()).toEqual([
-        '../src/main.ts',
-        '../src/utils/helpers.ts',
-        '../test/main.test.ts',
-        '../test/utils/helpers.test.ts',
-      ].sort())
+      expect(results.sort()).toEqual(
+        [
+          '../src/main.ts',
+          '../src/utils/helpers.ts',
+          '../test/main.test.ts',
+          '../test/utils/helpers.test.ts',
+        ].sort()
+      )
     })
 
     it('../*/../lib/*.js from src directory (async)', async () => {
@@ -167,9 +170,9 @@ describe('parent navigation patterns (../**)', () => {
     it('does not add ./ for patterns starting with ../', async () => {
       // From glob's dot-relative.ts test
       const srcCwd = resolve(fixturePath, 'src')
-      const results = await globOriginal('../test/**/*.ts', { 
-        cwd: srcCwd, 
-        dotRelative: true 
+      const results = await globOriginal('../test/**/*.ts', {
+        cwd: srcCwd,
+        dotRelative: true,
       })
       // Should NOT start with './../' - just '../'
       for (const r of results) {
@@ -180,9 +183,9 @@ describe('parent navigation patterns (../**)', () => {
 
     it('does not add ./ for patterns starting with ../ (sync)', () => {
       const srcCwd = resolve(fixturePath, 'src')
-      const results = globSyncOriginal('../test/**/*.ts', { 
-        cwd: srcCwd, 
-        dotRelative: true 
+      const results = globSyncOriginal('../test/**/*.ts', {
+        cwd: srcCwd,
+        dotRelative: true,
       })
       for (const r of results) {
         expect(r.startsWith('./')).toBe(false)
@@ -223,12 +226,14 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globlin.glob('../**/*.ts', { cwd: srcCwd })
       // Should match glob's normalized behavior
-      expect(results.sort()).toEqual([
-        '../test/main.test.ts',
-        '../test/utils/helpers.test.ts',
-        'main.ts',
-        'utils/helpers.ts',
-      ].sort())
+      expect(results.sort()).toEqual(
+        [
+          '../test/main.test.ts',
+          '../test/utils/helpers.test.ts',
+          'main.ts',
+          'utils/helpers.ts',
+        ].sort()
+      )
     })
 
     it('globlin: ../**/*.ts from src directory finds all files', async () => {
@@ -255,9 +260,9 @@ describe('parent navigation patterns (../**)', () => {
         return
       }
       const srcCwd = resolve(fixturePath, 'src')
-      const results = await globlin.glob('../test/**/*.ts', { 
-        cwd: srcCwd, 
-        dotRelative: true 
+      const results = await globlin.glob('../test/**/*.ts', {
+        cwd: srcCwd,
+        dotRelative: true,
       })
       for (const r of results) {
         expect(r.startsWith('./')).toBe(false)
@@ -341,10 +346,7 @@ describe('parent navigation patterns (../**)', () => {
     it('../../**/*.js from nested directory', async () => {
       const utilsCwd = resolve(fixturePath, 'src/utils')
       const results = await globOriginal('../../**/*.js', { cwd: utilsCwd })
-      expect(results.sort()).toEqual([
-        '../../lib/core/api.js',
-        '../../lib/index.js',
-      ].sort())
+      expect(results.sort()).toEqual(['../../lib/core/api.js', '../../lib/index.js'].sort())
     })
 
     it('globlin: ../../**/*.js from nested directory', async () => {
@@ -354,10 +356,7 @@ describe('parent navigation patterns (../**)', () => {
       }
       const utilsCwd = resolve(fixturePath, 'src/utils')
       const results = await globlin.glob('../../**/*.js', { cwd: utilsCwd })
-      expect(results.sort()).toEqual([
-        '../../lib/core/api.js',
-        '../../lib/index.js',
-      ].sort())
+      expect(results.sort()).toEqual(['../../lib/core/api.js', '../../lib/index.js'].sort())
     })
 
     it('pattern with .. in the middle: src/../test/*.ts', async () => {
@@ -429,12 +428,14 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = globlin.globSync('../**/*.ts', { cwd: srcCwd })
       // Should match glob's normalized behavior
-      expect(results.sort()).toEqual([
-        '../test/main.test.ts',
-        '../test/utils/helpers.test.ts',
-        'main.ts',
-        'utils/helpers.ts',
-      ].sort())
+      expect(results.sort()).toEqual(
+        [
+          '../test/main.test.ts',
+          '../test/utils/helpers.test.ts',
+          'main.ts',
+          'utils/helpers.ts',
+        ].sort()
+      )
     })
 
     it('globlin sync: ../**/*.ts finds all files', () => {

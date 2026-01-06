@@ -461,9 +461,10 @@ impl Pattern {
                         Some(exts.iter().any(|e| {
                             let e_bytes = e.as_bytes();
                             file_ext.len() == e_bytes.len()
-                                && file_ext.iter().zip(e_bytes.iter()).all(|(&a, &b)| {
-                                    a.to_ascii_lowercase() == b.to_ascii_lowercase()
-                                })
+                                && file_ext
+                                    .iter()
+                                    .zip(e_bytes.iter())
+                                    .all(|(&a, &b)| a.eq_ignore_ascii_case(&b))
                         }))
                     } else {
                         Some(
@@ -508,9 +509,10 @@ impl Pattern {
                         Some(exts.iter().any(|e| {
                             let e_bytes = e.as_bytes();
                             file_ext.len() == e_bytes.len()
-                                && file_ext.iter().zip(e_bytes.iter()).all(|(&a, &b)| {
-                                    a.to_ascii_lowercase() == b.to_ascii_lowercase()
-                                })
+                                && file_ext
+                                    .iter()
+                                    .zip(e_bytes.iter())
+                                    .all(|(&a, &b)| a.eq_ignore_ascii_case(&b))
                         }))
                     } else {
                         Some(
@@ -546,7 +548,7 @@ impl Pattern {
                             file_suffix
                                 .iter()
                                 .zip(suffix_bytes.iter())
-                                .all(|(&a, &b)| a.to_ascii_lowercase() == b.to_ascii_lowercase()),
+                                .all(|(&a, &b)| a.eq_ignore_ascii_case(&b)),
                         )
                     }
                 } else {
@@ -572,7 +574,7 @@ impl Pattern {
                             file_prefix
                                 .iter()
                                 .zip(prefix_bytes.iter())
-                                .all(|(&a, &b)| a.to_ascii_lowercase() == b.to_ascii_lowercase()),
+                                .all(|(&a, &b)| a.eq_ignore_ascii_case(&b)),
                         )
                     }
                 } else {
@@ -2668,8 +2670,7 @@ impl PatternWarning {
                 suggestion,
             } => {
                 format!(
-                    "Pattern `{}` starts with an escaped wildcard and won't match anything. Did you mean `{}`?",
-                    pattern, suggestion
+                    "Pattern `{pattern}` starts with an escaped wildcard and won't match anything. Did you mean `{suggestion}`?"
                 )
             }
             PatternWarning::DoubleEscaped {
@@ -2677,8 +2678,7 @@ impl PatternWarning {
                 suggestion,
             } => {
                 format!(
-                    "Pattern `{}` has double-escaped characters. Did you mean `{}`?",
-                    pattern, suggestion
+                    "Pattern `{pattern}` has double-escaped characters. Did you mean `{suggestion}`?"
                 )
             }
             PatternWarning::BackslashOnWindows {
@@ -2686,8 +2686,7 @@ impl PatternWarning {
                 suggestion,
             } => {
                 format!(
-                    "Pattern `{}` uses backslashes which are escape characters. For Windows paths, use forward slashes or set `windowsPathsNoEscape: true`. Did you mean `{}`?",
-                    pattern, suggestion
+                    "Pattern `{pattern}` uses backslashes which are escape characters. For Windows paths, use forward slashes or set `windowsPathsNoEscape: true`. Did you mean `{suggestion}`?"
                 )
             }
             PatternWarning::PerformanceWarning {
@@ -2695,19 +2694,13 @@ impl PatternWarning {
                 reason,
                 suggestion,
             } => {
-                format!(
-                    "Pattern `{}` may be slow: {}. Consider using `{}`.",
-                    pattern, reason, suggestion
-                )
+                format!("Pattern `{pattern}` may be slow: {reason}. Consider using `{suggestion}`.")
             }
             PatternWarning::TrailingSpaces {
                 pattern,
                 suggestion,
             } => {
-                format!(
-                    "Pattern `{}` has trailing spaces. Did you mean `{}`?",
-                    pattern, suggestion
-                )
+                format!("Pattern `{pattern}` has trailing spaces. Did you mean `{suggestion}`?")
             }
             PatternWarning::EmptyPattern => "Empty pattern will not match any files.".to_string(),
             PatternWarning::NullBytes { pattern } => {
@@ -2761,12 +2754,7 @@ pub fn analyze_pattern(
 
     // Check for escaped wildcards at start (common mistake)
     if !windows_paths_no_escape {
-        if pattern.starts_with("\\*") {
-            warnings.push(PatternWarning::EscapedWildcardAtStart {
-                pattern: pattern.to_string(),
-                suggestion: pattern.strip_prefix('\\').unwrap_or(pattern).to_string(),
-            });
-        } else if pattern.starts_with("\\?") {
+        if pattern.starts_with("\\*") || pattern.starts_with("\\?") {
             warnings.push(PatternWarning::EscapedWildcardAtStart {
                 pattern: pattern.to_string(),
                 suggestion: pattern.strip_prefix('\\').unwrap_or(pattern).to_string(),
@@ -2784,7 +2772,7 @@ pub fn analyze_pattern(
     }
 
     // Check for backslash paths on Windows without windowsPathsNoEscape
-    let is_windows = platform.map_or(false, |p| p == "win32");
+    let is_windows = platform == Some("win32");
     if is_windows && !windows_paths_no_escape {
         // Look for patterns that look like Windows paths (letter:\ or just \)
         if pattern.contains('\\') && !pattern.starts_with("\\\\") {
@@ -2811,7 +2799,7 @@ pub fn analyze_pattern(
     if globstar_count > 2 {
         warnings.push(PatternWarning::PerformanceWarning {
             pattern: pattern.to_string(),
-            reason: format!("Pattern has {} globstars which can be slow", globstar_count),
+            reason: format!("Pattern has {globstar_count} globstars which can be slow"),
             suggestion: if pattern.contains("**/**") {
                 pattern.replace("**/**", "**")
             } else {

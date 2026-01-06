@@ -1,11 +1,11 @@
 /**
  * matchBase option compatibility tests
  * Ported from vendor/glob/test/match-base.ts
- * 
+ *
  * matchBase: when true, if the pattern has no slashes, it is matched
  * against the basename of the path if it contains slashes.
  * For example, a*b would match the path /xyz/123/acb, but not /xyz/acb/123.
- * 
+ *
  * Internally, this prepends "**\/" to patterns without path separators.
  * Cannot be used with noglobstar: true.
  */
@@ -21,9 +21,9 @@ import type { GloblinModule } from '../harness'
 // differences due to the default follow:false behavior of globlin.
 const MATCH_BASE_FIXTURE = {
   files: [
-    // Root level file 
+    // Root level file
     'aroot',
-    // Nested files starting with 'a' 
+    // Nested files starting with 'a'
     'a/abcdef',
     'a/abcfed',
     'a/b/file.txt',
@@ -32,14 +32,7 @@ const MATCH_BASE_FIXTURE = {
     'a/b/c/a',
     'd/e/f',
   ],
-  dirs: [
-    'a',
-    'a/b',
-    'a/b/c',
-    'a/bc',
-    'd',
-    'd/e',
-  ],
+  dirs: ['a', 'a/b', 'a/b/c', 'a/bc', 'd', 'd/e'],
 }
 
 describe('matchBase option', () => {
@@ -138,12 +131,12 @@ describe('matchBase option', () => {
   describe('matchBase + noglobstar conflict', () => {
     it('throws error when both matchBase and noglobstar are true (async)', async () => {
       const pattern = 'a*'
-      
+
       // glob should reject
       await expect(
         globOriginal(pattern, { cwd: fixturePath, matchBase: true, noglobstar: true })
       ).rejects.toThrow()
-      
+
       // globlin should also reject
       await expect(
         globlin.glob(pattern, { cwd: fixturePath, matchBase: true, noglobstar: true })
@@ -152,26 +145,21 @@ describe('matchBase option', () => {
 
     it('throws error when both matchBase and noglobstar are true (sync)', () => {
       const pattern = 'a*'
-      
+
       // glob should throw
-      expect(() => 
+      expect(() =>
         globSyncOriginal(pattern, { cwd: fixturePath, matchBase: true, noglobstar: true })
       ).toThrow()
-      
+
       // globlin should also throw
-      expect(() => 
+      expect(() =>
         globlin.globSync(pattern, { cwd: fixturePath, matchBase: true, noglobstar: true })
       ).toThrow()
     })
   })
 
   describe('comparison tests', () => {
-    const patterns = [
-      'a*',
-      'b*',
-      '*.txt',
-      'file*',
-    ]
+    const patterns = ['a*', 'b*', '*.txt', 'file*']
 
     for (const pattern of patterns) {
       it(`glob vs globlin match for '${pattern}' with matchBase:true`, async () => {

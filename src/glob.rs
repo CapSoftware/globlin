@@ -1988,18 +1988,18 @@ impl Glob {
                             abs_path.to_string_lossy().to_string()
                         };
                         if self.mark && is_dir && !is_symlink && !formatted.ends_with('/') {
-                            format!("{}/", formatted)
+                            format!("{formatted}/")
                         } else {
                             formatted
                         }
                     } else {
                         let base = if self.dot_relative && !base_path.starts_with("../") {
-                            format!("./{}", base_path)
+                            format!("./{base_path}")
                         } else {
                             base_path.to_string()
                         };
                         if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
-                            format!("{}/", base)
+                            format!("{base}/")
                         } else {
                             base
                         }

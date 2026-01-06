@@ -211,14 +211,7 @@ describe('globstar - basic ** pattern tests', () => {
     beforeAll(async () => {
       // Create fixture matching bash-results.ts test case
       bashFixturePath = await createTestFixture('globstar-bash', {
-        files: [
-          'a/abcdef/g/h',
-          'a/abcfed/g/h',
-          'a/b/c/d',
-          'a/bc/e/f',
-          'a/c/d/c/b',
-          'a/cb/e/f',
-        ],
+        files: ['a/abcdef/g/h', 'a/abcfed/g/h', 'a/b/c/d', 'a/bc/e/f', 'a/c/d/c/b', 'a/cb/e/f'],
       })
     })
 
@@ -248,9 +241,7 @@ describe('globstar - basic ** pattern tests', () => {
 
     beforeAll(async () => {
       bashFixturePath = await createTestFixture('globstar-ab', {
-        files: [
-          'a/b/c/d',
-        ],
+        files: ['a/b/c/d'],
       })
     })
 
@@ -262,7 +253,9 @@ describe('globstar - basic ** pattern tests', () => {
       const results = await globOriginal('a/b/**', { cwd: bashFixturePath })
       // Should match: a/b, a/b/c, a/b/c/d
       expect(results.length).toBeGreaterThanOrEqual(1)
-      expect(results.every(r => r === 'a' + sep + 'b' || r.startsWith('a' + sep + 'b' + sep))).toBe(true)
+      expect(results.every(r => r === 'a' + sep + 'b' || r.startsWith('a' + sep + 'b' + sep))).toBe(
+        true
+      )
     })
 
     it('globlin matches glob behavior', async () => {
@@ -281,11 +274,7 @@ describe('globstar - basic ** pattern tests', () => {
 
     beforeAll(async () => {
       bashFixturePath = await createTestFixture('globstar-fff', {
-        files: [
-          'a/bc/e/f',
-          'a/cb/e/f',
-          'a/b/c/d',
-        ],
+        files: ['a/bc/e/f', 'a/cb/e/f', 'a/b/c/d'],
       })
     })
 
@@ -315,11 +304,7 @@ describe('globstar - basic ** pattern tests', () => {
 
     beforeAll(async () => {
       bashFixturePath = await createTestFixture('globstar-f', {
-        files: [
-          'a/bc/e/f',
-          'a/cb/e/f',
-          'a/b/c/d',
-        ],
+        files: ['a/bc/e/f', 'a/cb/e/f', 'a/b/c/d'],
       })
     })
 
@@ -348,7 +333,7 @@ describe('globstar - basic ** pattern tests', () => {
     it('** alone matches everything', async () => {
       const globResults = await globOriginal('**', { cwd: fixturePath })
       expect(globResults.length).toBeGreaterThan(0)
-      
+
       if (!globlin) {
         console.warn('Globlin not built, skipping comparison')
         return
@@ -360,7 +345,7 @@ describe('globstar - basic ** pattern tests', () => {
     it('**/* matches all files', async () => {
       const globResults = await globOriginal('**/*', { cwd: fixturePath })
       expect(globResults.length).toBeGreaterThan(0)
-      
+
       if (!globlin) {
         console.warn('Globlin not built, skipping comparison')
         return
@@ -373,7 +358,7 @@ describe('globstar - basic ** pattern tests', () => {
       const globResults = await globOriginal('**/**/*.ts', { cwd: fixturePath })
       expect(globResults.length).toBeGreaterThan(0)
       expect(globResults.every(r => r.endsWith('.ts'))).toBe(true)
-      
+
       if (!globlin) {
         console.warn('Globlin not built, skipping comparison')
         return
@@ -385,7 +370,7 @@ describe('globstar - basic ** pattern tests', () => {
     it('handles trailing /** correctly', async () => {
       const globResults = await globOriginal('src/components/**', { cwd: fixturePath })
       expect(globResults.length).toBeGreaterThan(0)
-      
+
       if (!globlin) {
         console.warn('Globlin not built, skipping comparison')
         return

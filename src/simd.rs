@@ -242,13 +242,7 @@ mod neon_impl {
         }
 
         // Handle remaining bytes
-        for j in i..len {
-            if haystack[j] == needle {
-                return Some(j);
-            }
-        }
-
-        None
+        (i..len).find(|&j| haystack[j] == needle)
     }
 
     /// Count occurrences of byte using NEON.
@@ -293,11 +287,7 @@ mod neon_impl {
         }
 
         // Handle remaining bytes
-        for j in i..len {
-            if haystack[j] == needle {
-                count += 1;
-            }
-        }
+        count += haystack[i..len].iter().filter(|&&b| b == needle).count();
 
         count
     }
@@ -480,12 +470,9 @@ pub fn eq_ignore_ascii_case_fast(a: &str, b: &str) -> bool {
 #[inline]
 pub fn find_last_separator(path: &[u8]) -> Option<usize> {
     // Search from the end for better locality
-    for i in (0..path.len()).rev() {
-        if path[i] == b'/' || path[i] == b'\\' {
-            return Some(i);
-        }
-    }
-    None
+    (0..path.len())
+        .rev()
+        .find(|&i| path[i] == b'/' || path[i] == b'\\')
 }
 
 /// Count the number of path separators in a path.
@@ -544,7 +531,7 @@ pub fn has_extension_nocase(path: &[u8], ext: &[u8]) -> bool {
             file_ext
                 .iter()
                 .zip(ext.iter())
-                .all(|(&a, &b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+                .all(|(&a, &b)| a.eq_ignore_ascii_case(&b))
         }
         None => false,
     }

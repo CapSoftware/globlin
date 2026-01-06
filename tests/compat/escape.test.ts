@@ -186,8 +186,8 @@ describe('hasMagic', () => {
 
   describe('after escape()', () => {
     // Only test patterns that escape() actually modifies
-    const escapablePatterns = testPatterns.filter(p =>
-      p.includes('*') || p.includes('?') || p.includes('[') || p.includes('(')
+    const escapablePatterns = testPatterns.filter(
+      p => p.includes('*') || p.includes('?') || p.includes('[') || p.includes('(')
     )
     for (const pattern of escapablePatterns) {
       it(`escape("${pattern}") should have no magic (posix)`, () => {

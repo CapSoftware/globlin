@@ -44,21 +44,21 @@ console.log('')
 
 // Test patterns
 const patterns = [
-  'src/**/*.ts',      // Should only traverse src/
-  'src/lib/**/*.ts',  // Should only traverse src/lib/
-  '**/*.ts',          // Must traverse all
-  'test/**/*.ts',     // Should only traverse test/
+  'src/**/*.ts', // Should only traverse src/
+  'src/lib/**/*.ts', // Should only traverse src/lib/
+  '**/*.ts', // Must traverse all
+  'test/**/*.ts', // Should only traverse test/
 ]
 
 for (const pattern of patterns) {
   console.log(`Pattern: ${pattern}`)
-  
+
   const globResults = globOriginal(pattern, { cwd: fixtureDir })
   const globlinResults = globSync(pattern, { cwd: fixtureDir })
-  
+
   console.log(`  glob:    ${JSON.stringify(globResults.sort())}`)
   console.log(`  globlin: ${JSON.stringify(globlinResults.sort())}`)
-  
+
   const match = JSON.stringify(globResults.sort()) === JSON.stringify(globlinResults.sort())
   console.log(`  match: ${match ? 'ok' : 'MISMATCH'}`)
   console.log('')

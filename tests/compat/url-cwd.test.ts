@@ -15,7 +15,7 @@ let fixturePath: string
 
 beforeAll(async () => {
   globlin = await loadGloblin()
-  
+
   // Create a simple fixture
   fixturePath = await createTestFixture('url-cwd-test', {
     files: ['a', 'b', 'c'],

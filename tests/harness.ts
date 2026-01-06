@@ -1,6 +1,6 @@
 /**
  * Test harness for differential testing between globlin and glob.
- * 
+ *
  * All tests use REAL filesystem operations - no mocks or simulations.
  * Every test compares globlin results against glob results on identical fixtures.
  */
@@ -60,16 +60,16 @@ export async function loadGloblin(): Promise<GloblinModule> {
   if (globlinLoadAttempted && globlinModule) {
     return globlinModule
   }
-  
+
   globlinLoadAttempted = true
-  
+
   try {
     // Dynamic import to handle case where native module isn't built yet
     const mod = await import('../js/index.js')
     globlinModule = {
       glob: mod.glob || mod.default?.glob,
       globSync: mod.globSync || mod.default?.globSync,
-      Glob: mod.Glob || mod.default?.Glob
+      Glob: mod.Glob || mod.default?.Glob,
     }
     return globlinModule
   } catch (err) {
@@ -89,16 +89,16 @@ export async function compareGlobResults(
 ): Promise<ComparisonResult> {
   const { ordered = false, skipIfNoGloblin = false, ...globOptions } = options
   const fullOptions = { ...globOptions, cwd: fixturePath }
-  
+
   // Run glob - cast result to string[] (we're not using withFileTypes)
   const globStart = performance.now()
   const rawGlobResults = await globOriginal(pattern, fullOptions)
   const globResults = rawGlobResults as string[]
   const globTime = performance.now() - globStart
-  
+
   // Try to run globlin
   const globlin = await loadGloblin()
-  
+
   if (!globlin && skipIfNoGloblin) {
     return {
       globResults,
@@ -108,35 +108,34 @@ export async function compareGlobResults(
       extra: [],
       globTime,
       globlinTime: 0,
-      speedup: 0
+      speedup: 0,
     }
   }
-  
+
   if (!globlin) {
-    throw new Error(
-      'Globlin native module not available. Run `npm run build` first.'
-    )
+    throw new Error('Globlin native module not available. Run `npm run build` first.')
   }
-  
+
   const globlinStart = performance.now()
   const globlinResults = await globlin.glob(pattern, fullOptions)
   const globlinTime = performance.now() - globlinStart
-  
+
   // Compare results
   const globSet = new Set(globResults)
   const globlinSet = new Set(globlinResults)
-  
+
   const missing = globResults.filter((r: string) => !globlinSet.has(r))
   const extra = globlinResults.filter((r: string) => !globSet.has(r))
-  
+
   let match = missing.length === 0 && extra.length === 0
-  
+
   // Check order if required
   if (match && ordered) {
-    match = globResults.length === globlinResults.length &&
+    match =
+      globResults.length === globlinResults.length &&
       globResults.every((r: string, i: number) => r === globlinResults[i])
   }
-  
+
   return {
     globResults,
     globlinResults,
@@ -145,7 +144,7 @@ export async function compareGlobResults(
     extra,
     globTime,
     globlinTime,
-    speedup: globlinTime > 0 ? globTime / globlinTime : 0
+    speedup: globlinTime > 0 ? globTime / globlinTime : 0,
   }
 }
 
@@ -159,17 +158,17 @@ export function compareGlobResultsSync(
 ): ComparisonResult {
   const { ordered = false, skipIfNoGloblin = false, ...globOptions } = options
   const fullOptions = { ...globOptions, cwd: fixturePath }
-  
+
   // Run glob - cast result to string[]
   const globStart = performance.now()
   const rawGlobResults = globSyncOriginal(pattern, fullOptions)
   const globResults = rawGlobResults as string[]
   const globTime = performance.now() - globStart
-  
+
   // For sync, we need pre-loaded module
   let globlinResults: string[] = []
   let globlinTime = 0
-  
+
   if (globlinModule) {
     const globlinStart = performance.now()
     globlinResults = globlinModule.globSync(pattern, fullOptions)
@@ -179,21 +178,22 @@ export function compareGlobResultsSync(
       'Globlin native module not available. Run `npm run build` first, or call loadGloblin() first.'
     )
   }
-  
+
   // Compare results
   const globSet = new Set(globResults)
   const globlinSet = new Set(globlinResults)
-  
+
   const missing = globResults.filter((r: string) => !globlinSet.has(r))
   const extra = globlinResults.filter((r: string) => !globSet.has(r))
-  
+
   let match = missing.length === 0 && extra.length === 0
-  
+
   if (match && ordered) {
-    match = globResults.length === globlinResults.length &&
+    match =
+      globResults.length === globlinResults.length &&
       globResults.every((r: string, i: number) => r === globlinResults[i])
   }
-  
+
   return {
     globResults,
     globlinResults,
@@ -202,7 +202,7 @@ export function compareGlobResultsSync(
     extra,
     globTime,
     globlinTime,
-    speedup: globlinTime > 0 ? globTime / globlinTime : 0
+    speedup: globlinTime > 0 ? globTime / globlinTime : 0,
   }
 }
 
@@ -212,7 +212,7 @@ export function compareGlobResultsSync(
 export function assertResultsMatch(result: ComparisonResult): void {
   if (!result.match) {
     const details: string[] = []
-    
+
     if (result.missing.length > 0) {
       details.push(`Missing from globlin (${result.missing.length}):`)
       details.push(...result.missing.slice(0, 10).map((f: string) => `  - ${f}`))
@@ -220,7 +220,7 @@ export function assertResultsMatch(result: ComparisonResult): void {
         details.push(`  ... and ${result.missing.length - 10} more`)
       }
     }
-    
+
     if (result.extra.length > 0) {
       details.push(`Extra in globlin (${result.extra.length}):`)
       details.push(...result.extra.slice(0, 10).map((f: string) => `  - ${f}`))
@@ -228,10 +228,10 @@ export function assertResultsMatch(result: ComparisonResult): void {
         details.push(`  ... and ${result.extra.length - 10} more`)
       }
     }
-    
+
     throw new Error(
       `Results mismatch: glob found ${result.globResults.length}, ` +
-      `globlin found ${result.globlinResults.length}\n${details.join('\n')}`
+        `globlin found ${result.globlinResults.length}\n${details.join('\n')}`
     )
   }
 }
@@ -243,9 +243,9 @@ export function assertSpeedup(result: ComparisonResult, minSpeedup: number): voi
   if (result.speedup < minSpeedup) {
     throw new Error(
       `Performance target not met: expected ${minSpeedup}x speedup, ` +
-      `got ${result.speedup.toFixed(2)}x\n` +
-      `glob: ${result.globTime.toFixed(2)}ms, ` +
-      `globlin: ${result.globlinTime.toFixed(2)}ms`
+        `got ${result.speedup.toFixed(2)}x\n` +
+        `glob: ${result.globTime.toFixed(2)}ms, ` +
+        `globlin: ${result.globlinTime.toFixed(2)}ms`
     )
   }
 }
@@ -260,13 +260,13 @@ export async function runDifferentialTest(
   expectedSpeedup?: number
 ): Promise<ComparisonResult> {
   const result = await compareGlobResults(pattern, options, fixturePath)
-  
+
   assertResultsMatch(result)
-  
+
   if (expectedSpeedup !== undefined) {
     assertSpeedup(result, expectedSpeedup)
   }
-  
+
   return result
 }
 
@@ -303,9 +303,7 @@ export const DEFAULT_FIXTURE: FixtureConfig = {
     'a/x/.y/b',
     'a/z/.y/b',
   ],
-  symlinks: process.platform !== 'win32' 
-    ? [['a/symlink/a/b/c', '../..']]
-    : [],
+  symlinks: process.platform !== 'win32' ? [['a/symlink/a/b/c', '../..']] : [],
 }
 
 /**
@@ -315,18 +313,22 @@ export async function createTestFixture(
   name: string,
   config: FixtureConfig = DEFAULT_FIXTURE
 ): Promise<string> {
-  const fixtureDir = path.join(FIXTURES_ROOT, name, `run-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  
+  const fixtureDir = path.join(
+    FIXTURES_ROOT,
+    name,
+    `run-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
+
   // Create fixture root
   await fsp.mkdir(fixtureDir, { recursive: true })
-  
+
   // Create directories first
   if (config.dirs) {
     for (const dir of config.dirs) {
       await fsp.mkdir(path.join(fixtureDir, dir), { recursive: true })
     }
   }
-  
+
   // Create files
   if (config.files) {
     for (const file of config.files) {
@@ -336,7 +338,7 @@ export async function createTestFixture(
       await fsp.writeFile(filePath, content)
     }
   }
-  
+
   // Create symlinks
   if (config.symlinks) {
     for (const [linkPath, target] of config.symlinks) {
@@ -350,7 +352,7 @@ export async function createTestFixture(
       }
     }
   }
-  
+
   return fixtureDir
 }
 
@@ -367,19 +369,19 @@ export async function createLargeFixture(
 ): Promise<string> {
   const { maxDepth = 5, extensions = ['js', 'ts', 'txt'], name = `large-${fileCount}` } = options
   const fixtureDir = path.join(FIXTURES_ROOT, name, `run-${Date.now()}`)
-  
+
   await fsp.mkdir(fixtureDir, { recursive: true })
-  
+
   for (let i = 0; i < fileCount; i++) {
     const depth = i % maxDepth
     const ext = extensions[i % extensions.length]
     const dirParts = Array.from({ length: depth }, (_, j) => `level${j}`)
     const filePath = path.join(fixtureDir, ...dirParts, `file${i}.${ext}`)
-    
+
     await fsp.mkdir(path.dirname(filePath), { recursive: true })
     await fsp.writeFile(filePath, `// File ${i}\n`)
   }
-  
+
   return fixtureDir
 }
 
@@ -411,9 +413,7 @@ export async function cleanupAllFixtures(name?: string): Promise<void> {
 /**
  * Measure execution time of an async function
  */
-export async function measureTime<T>(
-  fn: () => Promise<T>
-): Promise<{ result: T; time: number }> {
+export async function measureTime<T>(fn: () => Promise<T>): Promise<{ result: T; time: number }> {
   const start = performance.now()
   const result = await fn()
   const time = performance.now() - start
@@ -423,9 +423,7 @@ export async function measureTime<T>(
 /**
  * Measure execution time of a sync function
  */
-export function measureTimeSync<T>(
-  fn: () => T
-): { result: T; time: number } {
+export function measureTimeSync<T>(fn: () => T): { result: T; time: number } {
   const start = performance.now()
   const result = fn()
   const time = performance.now() - start
@@ -451,24 +449,22 @@ export async function compareTiming(
   fixtureRoot: string
 ): Promise<TimingResult> {
   const fullOptions = { ...options, cwd: fixtureRoot }
-  
-  const { time: globTime } = await measureTime(() =>
-    globOriginal(pattern, fullOptions) as Promise<string[]>
+
+  const { time: globTime } = await measureTime(
+    () => globOriginal(pattern, fullOptions) as Promise<string[]>
   )
-  
+
   const globlin = await loadGloblin()
   if (!globlin) {
     throw new Error('Globlin native module not available. Run `npm run build` first.')
   }
-  
-  const { time: globlinTime } = await measureTime(() =>
-    globlin.glob(pattern, fullOptions)
-  )
-  
+
+  const { time: globlinTime } = await measureTime(() => globlin.glob(pattern, fullOptions))
+
   return {
     globTime,
     globlinTime,
-    speedup: globlinTime > 0 ? globTime / globlinTime : 0
+    speedup: globlinTime > 0 ? globTime / globlinTime : 0,
   }
 }
 
@@ -481,23 +477,23 @@ export function compareTimingSync(
   fixtureRoot: string
 ): TimingResult {
   const fullOptions = { ...options, cwd: fixtureRoot }
-  
-  const { time: globTime } = measureTimeSync(() =>
-    globSyncOriginal(pattern, fullOptions) as string[]
+
+  const { time: globTime } = measureTimeSync(
+    () => globSyncOriginal(pattern, fullOptions) as string[]
   )
-  
+
   if (!globlinModule) {
-    throw new Error('Globlin native module not available. Run `npm run build` first, or call loadGloblin() first.')
+    throw new Error(
+      'Globlin native module not available. Run `npm run build` first, or call loadGloblin() first.'
+    )
   }
-  
-  const { time: globlinTime } = measureTimeSync(() =>
-    globlinModule!.globSync(pattern, fullOptions)
-  )
-  
+
+  const { time: globlinTime } = measureTimeSync(() => globlinModule!.globSync(pattern, fullOptions))
+
   return {
     globTime,
     globlinTime,
-    speedup: globlinTime > 0 ? globTime / globlinTime : 0
+    speedup: globlinTime > 0 ? globTime / globlinTime : 0,
   }
 }
 
@@ -534,5 +530,3 @@ export function normalizePath(p: string): string {
 export function normalizePaths(paths: string[]): string[] {
   return paths.map(normalizePath).sort()
 }
-
-

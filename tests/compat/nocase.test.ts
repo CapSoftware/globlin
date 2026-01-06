@@ -1,6 +1,6 @@
 /**
  * Comprehensive nocase option tests
- * 
+ *
  * Tests case-insensitive matching for:
  * - Simple patterns
  * - Recursive patterns
@@ -44,10 +44,10 @@ describe('nocase option', () => {
         'UBER.TXT',
         'naive.txt',
         'NAIVE.TXT',
-        'jpfile.txt',  // CJK doesn't have case
-        'delta.txt',   // Greek
+        'jpfile.txt', // CJK doesn't have case
+        'delta.txt', // Greek
         'DELTA.TXT',
-      ]
+      ],
     })
   })
 
@@ -67,7 +67,7 @@ describe('nocase option', () => {
       const result = await globlin.glob('*.txt', { cwd: fixturePath, nocase: false })
       // Should only match lowercase .txt files
       for (const r of result) {
-        expect(r.endsWith('.txt')).toBe(true)  // exact case match
+        expect(r.endsWith('.txt')).toBe(true) // exact case match
       }
     })
 
@@ -96,7 +96,10 @@ describe('nocase option', () => {
     })
 
     it('nocase: true matches nested paths', async () => {
-      const result = await globlin.glob('nested/deep/path/*.txt', { cwd: fixturePath, nocase: true })
+      const result = await globlin.glob('nested/deep/path/*.txt', {
+        cwd: fixturePath,
+        nocase: true,
+      })
       expect(result.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -158,7 +161,7 @@ describe('nocase option', () => {
   describe('unicode case folding', () => {
     // Note: Unicode case handling depends on the filesystem and regex engine
     // These tests verify basic Unicode support
-    
+
     it('handles basic ASCII files case-insensitively', async () => {
       // uber.txt and UBER.TXT
       const result = await globlin.glob('uber.txt', { cwd: fixturePath, nocase: true })
@@ -178,7 +181,9 @@ describe('nocase option', () => {
 
   describe('sync vs async consistency', () => {
     it('async and sync produce same results with nocase: true', async () => {
-      const asyncResult = (await globlin.glob('**/*.txt', { cwd: fixturePath, nocase: true })).sort()
+      const asyncResult = (
+        await globlin.glob('**/*.txt', { cwd: fixturePath, nocase: true })
+      ).sort()
       const syncResult = globlin.globSync('**/*.txt', { cwd: fixturePath, nocase: true }).sort()
       expect(asyncResult).toEqual(syncResult)
     })
@@ -201,13 +206,9 @@ describe('nocase option', () => {
     it('nocase + dot works together', async () => {
       // Create a fixture with hidden files
       const dotFixture = await createTestFixture('nocase-dot', {
-        files: [
-          '.HIDDEN',
-          '.hidden',
-          'visible.txt',
-        ]
+        files: ['.HIDDEN', '.hidden', 'visible.txt'],
       })
-      
+
       try {
         const result = await globlin.glob('*', { cwd: dotFixture, nocase: true, dot: true })
         expect(result.length).toBeGreaterThanOrEqual(2)

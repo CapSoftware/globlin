@@ -142,7 +142,7 @@ describe('Multiple patterns', () => {
   describe('Glob class', async () => {
     // Import Glob class directly from js/index
     const { Glob } = await import('../../js/index.js')
-    
+
     it('should accept an array of patterns', () => {
       const patterns = ['*.txt', '*.js']
       const g = new Glob(patterns, { cwd: fixture })

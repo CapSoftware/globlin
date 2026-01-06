@@ -1,6 +1,6 @@
 /**
  * Test utility functions for globlin.
- * 
+ *
  * Re-exports from harness.ts for cleaner imports.
  */
 
@@ -14,7 +14,7 @@ export {
   normalizePath,
   normalizePaths,
   loadGloblin,
-  type TimingResult
+  type TimingResult,
 } from './harness.js'
 
 import * as path from 'path'
@@ -35,9 +35,7 @@ export function cleanResults(results: string[]): string[] {
     .sort(alphasort)
     .map(f => {
       // Normalize Windows paths
-      return process.platform !== 'win32'
-        ? f
-        : f.replace(/^[a-zA-Z]:\\\\/, '/').replace(/\\/g, '/')
+      return process.platform !== 'win32' ? f : f.replace(/^[a-zA-Z]:\\\\/, '/').replace(/\\/g, '/')
     })
 }
 
@@ -63,9 +61,9 @@ export async function retry<T>(
   options: { maxAttempts?: number; delayMs?: number } = {}
 ): Promise<T> {
   const { maxAttempts = 3, delayMs = 100 } = options
-  
+
   let lastError: Error | undefined
-  
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       return await fn()
@@ -76,7 +74,7 @@ export async function retry<T>(
       }
     }
   }
-  
+
   throw lastError
 }
 

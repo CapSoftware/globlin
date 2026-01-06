@@ -1,6 +1,6 @@
 /**
  * Ported from vendor/glob/test/empty-set.ts
- * 
+ *
  * Tests patterns that cannot match anything - should return empty results.
  * Also tests empty patterns (empty string and empty array).
  */
@@ -25,12 +25,7 @@ describe('empty-set - patterns that cannot match anything', () => {
     // Create a simple fixture - doesn't matter what files exist
     // since these patterns shouldn't match anything
     fixturePath = await createTestFixture('empty-set', {
-      files: [
-        'a.txt',
-        'b.js',
-        'c/d.ts',
-        'e/f/g.md',
-      ],
+      files: ['a.txt', 'b.js', 'c/d.ts', 'e/f/g.md'],
     })
     globlin = await loadGloblin()
   })
