@@ -2,6 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/globlin.svg)](https://www.npmjs.com/package/globlin)
 [![CI](https://github.com/capsoftware/globlin/actions/workflows/test.yml/badge.svg)](https://github.com/capsoftware/globlin/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/capsoftware/globlin/graph/badge.svg)](https://codecov.io/gh/capsoftware/globlin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 **A high-performance glob pattern matcher for Node.js, built in Rust.**

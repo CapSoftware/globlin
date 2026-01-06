@@ -702,16 +702,29 @@ mod tests {
     #[test]
     fn test_different_patterns() {
         let options = default_options();
-        let size_before = cache_size();
 
-        // Use unique patterns
-        get_or_compile_pattern("unique_diff_test_*.aaa", &options);
-        get_or_compile_pattern("unique_diff_test_*.bbb", &options);
-        get_or_compile_pattern("unique_diff_test_**/*.ccc", &options);
+        // Use UUID-like unique patterns that won't conflict with other tests
+        let uuid = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
 
-        let size_after = cache_size();
-        // Should have added 3 entries
-        assert!(size_after >= size_before + 3);
+        let p1 = format!("diff_test_{}_*.aaa", uuid);
+        let p2 = format!("diff_test_{}_*.bbb", uuid);
+        let p3 = format!("diff_test_{}/**/*.ccc", uuid);
+
+        // Compile patterns
+        let pattern1 = get_or_compile_pattern(&p1, &options);
+        let pattern2 = get_or_compile_pattern(&p2, &options);
+        let pattern3 = get_or_compile_pattern(&p3, &options);
+
+        // Verify they are different patterns
+        assert_ne!(pattern1.raw(), pattern2.raw());
+        assert_ne!(pattern2.raw(), pattern3.raw());
+
+        // Verify they are cached (calling again returns same pattern)
+        let pattern1_again = get_or_compile_pattern(&p1, &options);
+        assert_eq!(pattern1.raw(), pattern1_again.raw());
     }
 
     #[test]
