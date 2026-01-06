@@ -199,13 +199,22 @@ function main() {
   fs.writeFileSync(markdownFile, generateMarkdown(comparison));
   console.log(`Markdown written to ${markdownFile}`);
 
+  // Set GitHub Actions outputs
   if (process.env.GITHUB_OUTPUT) {
     const outputLines = [
       `regression=${comparison.summary.hasRegression}`,
       `regressions=${comparison.regressions.length}`,
       `improvements=${comparison.improvements.length}`,
+      `worst_regression=${comparison.summary.worstRegression.toFixed(1)}`,
+      `best_improvement=${comparison.summary.bestImprovement.toFixed(1)}`,
     ];
     fs.appendFileSync(process.env.GITHUB_OUTPUT, outputLines.join('\n') + '\n');
+  }
+  
+  // Set GITHUB_STEP_SUMMARY for rich output
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const markdown = generateMarkdown(comparison);
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
   }
 
   if (comparison.summary.hasRegression) {

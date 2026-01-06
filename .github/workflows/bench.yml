@@ -1,6 +1,26 @@
 name: Continuous Benchmarks
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'js/**'
+      - 'benches/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'js/**'
+      - 'benches/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 jobs:
@@ -57,12 +77,19 @@ jobs:
 
       - name: Compare with baseline
         id: compare
+        if: always()
         run: |
-          node scripts/compare-benchmarks.js \
-            --current bench-results.json \
-            --baseline baseline/bench-results.json \
-            --threshold 10 \
-            --output bench-comparison.json
+          if [ -f "baseline/bench-results.json" ]; then
+            node scripts/compare-benchmarks.js \
+              --current bench-results.json \
+              --baseline baseline/bench-results.json \
+              --threshold 10 \
+              --output bench-comparison.json
+          else
+            echo "No baseline found, this will become the baseline"
+            echo "regression=false" >> $GITHUB_OUTPUT
+            echo "regressions=0" >> $GITHUB_OUTPUT
+          fi
         continue-on-error: true
 
       - name: Comment PR with results
@@ -148,17 +175,34 @@ jobs:
           path: bench-results.json
           retention-days: 90
 
+      - name: Convert results to benchmark format
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('bench-results.json', 'utf-8'));
+            const benchmarks = data.patterns.map(p => ({
+              name: p.pattern + ' (' + p.fixture + ')',
+              unit: 'ms',
+              value: p.globlin ? p.globlin.mean : p.glob.mean,
+              range: (p.globlin ? p.globlin.stdDev : p.glob.stdDev).toFixed(2) + ' ms',
+              extra: 'Results: ' + (p.globlin ? p.globlin.resultCount : p.glob.resultCount)
+            }));
+            fs.writeFileSync('benchmark-data.json', JSON.stringify(benchmarks, null, 2));
+          "
+
       - name: Store benchmark result for tracking
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: Globlin Benchmarks
           tool: 'customSmallerIsBetter'
-          output-file-path: bench-results.json
+          output-file-path: benchmark-data.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           alert-threshold: '150%'
           comment-on-alert: true
           fail-on-alert: false
-          alert-comment-cc-users: '@maintainers'
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench
         continue-on-error: true

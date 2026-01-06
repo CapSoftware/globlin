@@ -107,12 +107,21 @@ const PATTERNS = [
 
 function loadGloblin(): ((pattern: string, options?: { cwd?: string }) => string[]) | null {
   try {
-    const globlinModule = require('../index.node');
+    // Try loading from the compiled JS module first (recommended)
+    const globlinModule = require('../index.js');
     if (globlinModule && typeof globlinModule.globSync === 'function') {
       return globlinModule.globSync;
     }
   } catch {
-    // Globlin not built yet
+    // Fallback to raw native module
+    try {
+      const nativeModule = require('../index.node');
+      if (nativeModule && typeof nativeModule.globSync === 'function') {
+        return nativeModule.globSync;
+      }
+    } catch {
+      // Globlin not built yet
+    }
   }
   return null;
 }
@@ -126,7 +135,9 @@ async function main(): Promise<void> {
     outputFile = args[outputIdx + 1];
   }
 
-  const fixtures = ['small', 'medium'];
+  // Include large fixture if environment variable is set (reduces CI time)
+  const includeLarge = process.env.BENCH_LARGE === 'true';
+  const fixtures = includeLarge ? ['small', 'medium', 'large'] : ['small', 'medium'];
   const globlinSync = loadGloblin();
 
   console.log('Running CI benchmarks...');
