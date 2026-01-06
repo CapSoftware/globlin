@@ -272,6 +272,11 @@ impl Glob {
         let mut patterns: Vec<Pattern> = Vec::new();
 
         for pattern_str in &pattern_strs {
+            // Skip empty patterns - they match nothing (like glob v13)
+            if pattern_str.is_empty() {
+                continue;
+            }
+
             // Check if the ORIGINAL pattern has path separators BEFORE brace expansion
             // This is important because matchBase should only apply if the entire original
             // pattern has no separators. If {a,b/c} is used, neither a nor b/c gets matchBase.
