@@ -37,9 +37,13 @@ compact_str = "0.8"  # Small string optimization
 smallvec = { version = "1.13", features = ["union"] }  # Stack-allocated small vectors
 ahash = "0.8"  # Faster hashing for HashSet/HashMap
 
-# Platform-specific I/O optimizations (Linux only)
+# Platform-specific I/O optimizations (Linux)
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"  # For getdents64 syscall and kernel version detection
+
+# Platform-specific I/O optimizations (macOS)
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"  # For getdirentries64 syscall
 
 [build-dependencies]
 napi-build = "2.1"

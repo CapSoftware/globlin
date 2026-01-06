@@ -175,23 +175,24 @@ export interface GlobOptions {
   cache?: boolean
 
   /**
-   * Use optimized native I/O operations on Linux.
+   * Use optimized native I/O operations on Linux and macOS.
    * 
-   * When `true` on Linux, uses platform-specific optimizations:
-   * - `getdents64` syscall for faster directory reading (bypasses libc overhead)
-   * - Batched I/O operations for reduced syscall overhead
-   * - Expected 1.3-2x speedup on directory-heavy workloads
+   * When `true`, uses platform-specific optimizations:
+   * - Linux: `getdents64` syscall for faster directory reading (bypasses libc overhead)
+   * - macOS: Low-level BSD directory APIs with d_type for early file type detection
+   * 
+   * Performance characteristics:
+   * - Linux: Expected 1.3-1.5x speedup on directory-heavy workloads
+   * - macOS: May provide speedup on some filesystems; benchmark for your use case
    * 
    * When `false` (default), uses the standard `walkdir` library which is:
    * - Cross-platform compatible
    * - Well-tested and stable
    * - Sufficient for most use cases
    * 
-   * On non-Linux platforms (macOS, Windows), this option is ignored and the
-   * standard walker is used.
+   * On Windows, this option is ignored and the standard walker is used.
    * 
    * **Note:** This is a globlin-specific option not present in the original glob package.
-   * Requires Linux kernel 5.1+ for full io_uring support.
    * 
    * @default false
    */

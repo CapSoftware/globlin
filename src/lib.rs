@@ -18,6 +18,9 @@ pub mod walker;
 #[cfg(target_os = "linux")]
 pub mod io_uring_walker;
 
+#[cfg(target_os = "macos")]
+pub mod macos_walker;
+
 // Re-exports
 pub use glob::PathData;
 pub use glob::*;

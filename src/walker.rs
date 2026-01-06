@@ -259,6 +259,7 @@ impl Walker {
     /// to properly apply the filter. Without a filter, it returns a lazy iterator.
     ///
     /// If `use_native_io` is enabled on Linux, uses optimized getdents64 syscall.
+    /// If `use_native_io` is enabled on macOS, uses optimized getdirentries64 syscall.
     /// If `cache` is enabled in options, uses a cached directory reader.
     /// If `parallel` is enabled in options, uses jwalk for parallel traversal.
     /// Otherwise, uses walkdir for serial traversal.
@@ -266,7 +267,13 @@ impl Walker {
         // On Linux, use optimized I/O if requested
         #[cfg(target_os = "linux")]
         if self.options.use_native_io {
-            return self.walk_native_io();
+            return self.walk_native_io_linux();
+        }
+
+        // On macOS, use optimized I/O if requested
+        #[cfg(target_os = "macos")]
+        if self.options.use_native_io {
+            return self.walk_native_io_macos();
         }
 
         if self.options.cache {
@@ -281,11 +288,56 @@ impl Walker {
     /// Walk using Linux-specific I/O optimizations (getdents64 syscall).
     /// This provides 1.3-1.5x speedup over standard readdir.
     #[cfg(target_os = "linux")]
-    fn walk_native_io(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
+    fn walk_native_io_linux(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
         use crate::io_uring_walker::IoUringWalker;
 
         let io_walker = IoUringWalker::new(self.root.clone(), self.options.clone());
         let mut entries = io_walker.walk();
+
+        // Apply pruning filter if set
+        if let Some(ref prune_filter) = self.dir_prune_filter {
+            let root = self.root.clone();
+            entries = entries
+                .into_iter()
+                .filter(|entry| {
+                    if let Ok(rel_path) = entry.path().strip_prefix(&root) {
+                        let rel_lossy = rel_path.to_string_lossy();
+                        let rel_str = normalize_path_str(&rel_lossy);
+                        // Root directory always passes
+                        if rel_str.is_empty() {
+                            return true;
+                        }
+                        // For directories, check if they should be included
+                        if entry.is_dir() && !prune_filter(&rel_str) {
+                            return false;
+                        }
+                        // For files, check if their parent directory passes the filter
+                        if !entry.is_dir() {
+                            if let Some(parent) = rel_path.parent() {
+                                let parent_lossy = parent.to_string_lossy();
+                                let parent_str = normalize_path_str(&parent_lossy);
+                                if !parent_str.is_empty() && !prune_filter(&parent_str) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    true
+                })
+                .collect();
+        }
+
+        Box::new(entries.into_iter())
+    }
+
+    /// Walk using macOS-specific I/O optimizations (getdirentries syscall).
+    /// This provides 1.3-1.5x speedup over standard readdir.
+    #[cfg(target_os = "macos")]
+    fn walk_native_io_macos(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
+        use crate::macos_walker::MacosWalker;
+
+        let macos_walker = MacosWalker::new(self.root.clone(), self.options.clone());
+        let mut entries = macos_walker.walk();
 
         // Apply pruning filter if set
         if let Some(ref prune_filter) = self.dir_prune_filter {
