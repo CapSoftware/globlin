@@ -661,9 +661,39 @@ impl Pattern {
     /// Returns None if the pattern is not static.
     ///
     /// This is used to directly stat() the file instead of walking directories.
-    pub fn static_path(&self) -> Option<&str> {
+    /// When windowsPathsNoEscape is true, backslashes in the original pattern
+    /// were converted to forward slashes, so we return the converted path.
+    pub fn static_path(&self) -> Option<String> {
         if self.is_static() {
-            Some(&self.raw)
+            // Reconstruct the path from literal parts, which have the correct separators
+            // This handles windowsPathsNoEscape correctly since the parts were created
+            // from the processed pattern (with backslashes converted to forward slashes)
+            let path_parts: Vec<&str> = self
+                .parts
+                .iter()
+                .filter_map(|p| match p {
+                    PatternPart::Literal(s) => {
+                        // Skip root markers
+                        if s == "/" || s == "." {
+                            None
+                        } else {
+                            Some(s.as_str())
+                        }
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            if path_parts.is_empty() {
+                // Pattern is just "." or "/"
+                if self.raw == "." {
+                    Some(".".to_string())
+                } else {
+                    None
+                }
+            } else {
+                Some(path_parts.join("/"))
+            }
         } else {
             None
         }
@@ -741,16 +771,22 @@ impl Pattern {
     /// This is useful for optimization: we can start walking from the prefix
     /// directory instead of the cwd.
     ///
+    /// Note: The last literal component is NOT included unless it's followed by
+    /// another segment (magic, globstar, or literal). This is because the last
+    /// component might be a filename, not a directory.
+    ///
     /// Examples:
-    /// - `src/lib/**/*.rs` -> `Some("src/lib")`
-    /// - `packages/foo/*.js` -> `Some("packages/foo")`
+    /// - `src/lib/**/*.rs` -> `Some("src/lib")` (lib is followed by globstar)
+    /// - `packages/foo/*.js` -> `Some("packages/foo")` (foo is followed by magic)
+    /// - `a/file.txt` -> `Some("a")` (file.txt is NOT followed by anything)
     /// - `**/*.rs` -> `None`
     /// - `*.rs` -> `None`
-    /// - `src/*/foo.rs` -> `Some("src")`
+    /// - `src/*/foo.rs` -> `Some("src")` (stops at magic *)
     pub fn literal_prefix(&self) -> Option<String> {
         let mut prefix_parts: Vec<&str> = Vec::new();
+        let mut has_subsequent_part = false;
 
-        for part in &self.parts {
+        for (i, part) in self.parts.iter().enumerate() {
             match part {
                 PatternPart::Literal(s) => {
                     // Skip root markers like "/" for Unix absolute paths
@@ -758,11 +794,22 @@ impl Pattern {
                     if s == "/" || s == "." {
                         continue;
                     }
+                    // Check if there's a part after this one
+                    has_subsequent_part = i + 1 < self.parts.len();
                     prefix_parts.push(s);
                 }
                 // Stop at any magic or globstar
-                PatternPart::Magic(..) | PatternPart::Globstar => break,
+                PatternPart::Magic(..) | PatternPart::Globstar => {
+                    has_subsequent_part = true;
+                    break;
+                }
             }
+        }
+
+        // If the last literal part is NOT followed by another segment,
+        // it might be a filename, so exclude it from the prefix
+        if !prefix_parts.is_empty() && !has_subsequent_part {
+            prefix_parts.pop();
         }
 
         if prefix_parts.is_empty() {

@@ -473,7 +473,11 @@ impl Glob {
         // OPTIMIZATION: Shallow pattern fast path
         // If ALL patterns have max_depth of 0 (root-level only), use direct readdir
         // instead of the full walker machinery. This is 2-3x faster for patterns like "*.js".
-        if self.all_patterns_shallow() && self.ignore_filter.is_none() {
+        // NOTE: We must respect user's maxDepth if specified. maxDepth: 0 means only "."
+        // which can't match shallow patterns like "*.js" - those need depth 1.
+        // If user specified maxDepth: 0, skip this optimization and let the walker handle it.
+        if self.all_patterns_shallow() && self.ignore_filter.is_none() && self.max_depth != Some(0)
+        {
             return self.resolve_shallow_patterns();
         }
 
@@ -1936,7 +1940,7 @@ impl Glob {
         for pattern in self.patterns.iter() {
             if let Some(static_path) = pattern.static_path() {
                 // Construct the full path
-                let full_path = self.cwd.join(static_path);
+                let full_path = self.cwd.join(&static_path);
 
                 // Check if the file exists
                 let metadata = if self.follow {
@@ -1961,7 +1965,7 @@ impl Glob {
 
                     // Apply ignore filter if present
                     if let Some(ref filter) = self.ignore_filter {
-                        if filter.should_ignore(static_path, &full_path) {
+                        if filter.should_ignore(&static_path, &full_path) {
                             continue;
                         }
                     }
@@ -1971,7 +1975,7 @@ impl Glob {
                         let has_hidden = static_path
                             .split('/')
                             .any(|seg| seg.starts_with('.') && seg != "." && seg != "..");
-                        if has_hidden && !pattern.allows_dotfile(static_path) {
+                        if has_hidden && !pattern.allows_dotfile(&static_path) {
                             continue;
                         }
                     }
