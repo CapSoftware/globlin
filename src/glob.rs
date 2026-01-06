@@ -5,6 +5,7 @@ use std::sync::Arc;
 use ahash::AHashSet;
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
+use rayon::prelude::*;
 
 use crate::cache::get_or_compile_pattern;
 use crate::ignore::IgnoreFilter;
@@ -1387,14 +1388,56 @@ impl Glob {
         })
     }
 
-    /// Walk using multiple base directories.
+    /// Walk using multiple base directories in parallel using rayon.
     ///
     /// This is an optimization for patterns like `['src/**/*.ts', 'test/**/*.ts']`.
     /// Instead of walking from cwd and visiting all directories, we walk from
-    /// `src/` and `test/` separately.
+    /// `src/` and `test/` concurrently using rayon's parallel iterators.
+    ///
+    /// Each base directory is processed in parallel, and results are merged
+    /// with deduplication at the end.
     fn walk_multi_base(&self) -> Vec<String> {
         let groups = self.group_patterns_by_base();
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+
+        // Convert groups to a Vec for parallel iteration
+        let groups_vec: Vec<(Option<String>, Vec<usize>)> = groups.into_iter().collect();
+
+        // Process each base group in parallel using rayon
+        // Each group returns its own Vec of results (local deduplication)
+        let group_results: Vec<Vec<String>> = groups_vec
+            .par_iter()
+            .filter_map(|(base, pattern_indices)| {
+                // Skip groups without a valid base
+                base.as_ref()?;
+
+                Some(self.walk_single_base_group(pattern_indices, &abs_cwd))
+            })
+            .collect();
+
+        // Merge all results and deduplicate
         let estimated_capacity = self.estimate_result_capacity();
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
+        let mut results = Vec::with_capacity(estimated_capacity);
+
+        for group_result in group_results {
+            for result in group_result {
+                if seen.insert(result.clone()) {
+                    results.push(result);
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Walk a single base directory group and return results.
+    ///
+    /// This method is designed to be called in parallel from `walk_multi_base`.
+    /// It handles all the logic for walking a single base directory and matching
+    /// patterns within that group.
+    fn walk_single_base_group(&self, pattern_indices: &[usize], abs_cwd: &Path) -> Vec<String> {
+        let estimated_capacity = self.estimate_result_capacity() / 4; // Smaller per-group
         let mut results = Vec::with_capacity(estimated_capacity);
         let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8);
@@ -1404,203 +1447,141 @@ impl Glob {
             AHashSet::with_capacity(estimated_capacity / 4)
         };
         let mut result_buffer = String::with_capacity(self.estimate_path_buffer_capacity());
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
         let has_ignore_filter = self.ignore_filter.is_some();
 
-        // Process each base group separately
-        for (base, pattern_indices) in groups {
-            let _base_str = match base {
-                Some(b) => b,
-                None => continue, // Should not happen if should_use_multi_base_walking returned true
-            };
+        // Get the patterns for this group
+        let group_patterns: Vec<&Pattern> =
+            pattern_indices.iter().map(|&i| &self.patterns[i]).collect();
 
-            // Get the patterns for this group
-            let group_patterns: Vec<&Pattern> =
-                pattern_indices.iter().map(|&i| &self.patterns[i]).collect();
+        // Find the longest common prefix within this group
+        let prefixes: Vec<Option<String>> =
+            group_patterns.iter().map(|p| p.literal_prefix()).collect();
+        let prefix_strs: Vec<&str> = prefixes
+            .iter()
+            .filter_map(|p| p.as_ref().map(|s| s.as_str()))
+            .collect();
+        let common_prefix = Self::longest_common_prefix(&prefix_strs);
 
-            // Find the longest common prefix within this group
-            let prefixes: Vec<Option<String>> =
-                group_patterns.iter().map(|p| p.literal_prefix()).collect();
-            let prefix_strs: Vec<&str> = prefixes
-                .iter()
-                .filter_map(|p| p.as_ref().map(|s| s.as_str()))
-                .collect();
-            let common_prefix = Self::longest_common_prefix(&prefix_strs);
+        // Walk from the common prefix (at least the base)
+        let walk_root = self.cwd.join(&common_prefix);
+        let prefix_to_strip = if common_prefix.is_empty() {
+            None
+        } else {
+            Some(common_prefix.clone())
+        };
 
-            // Walk from the common prefix (at least the base)
-            let walk_root = self.cwd.join(&common_prefix);
-            let prefix_to_strip = if common_prefix.is_empty() {
-                None
-            } else {
-                Some(common_prefix.clone())
-            };
-
-            // Adjust walk options for this prefix
-            let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
-                let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
-                if let Some(max_d) = self.walk_options.max_depth {
-                    if max_d <= prefix_depth {
-                        self.walk_options.clone().max_depth(Some(0))
-                    } else {
-                        self.walk_options
-                            .clone()
-                            .max_depth(Some(max_d - prefix_depth))
-                    }
+        // Adjust walk options for this prefix
+        let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
+            let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
+            if let Some(max_d) = self.walk_options.max_depth {
+                if max_d <= prefix_depth {
+                    self.walk_options.clone().max_depth(Some(0))
                 } else {
-                    self.walk_options.clone()
+                    self.walk_options
+                        .clone()
+                        .max_depth(Some(max_d - prefix_depth))
                 }
             } else {
                 self.walk_options.clone()
+            }
+        } else {
+            self.walk_options.clone()
+        };
+
+        // Create pruning filter for this group's patterns
+        let patterns_arc: Arc<[Pattern]> = group_patterns.iter().cloned().cloned().collect();
+        let prefix_for_filter = prefix_to_strip.clone();
+
+        let prune_filter = Box::new(move |dir_path: &str| -> bool {
+            let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
+                if dir_path.is_empty() {
+                    Cow::Borrowed(prefix.as_str())
+                } else {
+                    Cow::Owned(format!("{prefix}/{dir_path}"))
+                }
+            } else {
+                Cow::Borrowed(dir_path)
             };
 
-            // Create pruning filter for this group's patterns
-            let patterns_arc: Arc<[Pattern]> = group_patterns.iter().cloned().cloned().collect();
-            let prefix_for_filter = prefix_to_strip.clone();
+            patterns_arc
+                .iter()
+                .any(|p| p.could_match_in_dir(&path_from_cwd))
+        });
 
-            let prune_filter = Box::new(move |dir_path: &str| -> bool {
-                let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
-                    if dir_path.is_empty() {
-                        Cow::Borrowed(prefix.as_str())
-                    } else {
-                        Cow::Owned(format!("{prefix}/{dir_path}"))
-                    }
+        // Create walker for this group
+        let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
+            .with_dir_prune_filter(prune_filter);
+
+        // Walk and collect results
+        for entry in walker.walk() {
+            let path = entry.path();
+
+            let rel_path_from_walk_root = match path.strip_prefix(&walk_root) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
+            let is_walk_root_entry = rel_str_from_walk_root.is_empty();
+
+            let normalized = self.normalize_path(
+                &rel_str_from_walk_root,
+                &prefix_to_strip,
+                is_walk_root_entry,
+            );
+
+            if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
+                continue;
+            }
+
+            if has_ignore_filter {
+                let rel_path = if prefix_to_strip.is_some() {
+                    PathBuf::from(normalized.as_ref())
                 } else {
-                    Cow::Borrowed(dir_path)
+                    rel_path_from_walk_root.to_path_buf()
                 };
+                let abs_path = abs_cwd.join(&rel_path);
+                let ignore_filter = self.ignore_filter.as_ref().unwrap();
 
-                patterns_arc
-                    .iter()
-                    .any(|p| p.could_match_in_dir(&path_from_cwd))
-            });
-
-            // Create walker for this group
-            let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
-                .with_dir_prune_filter(prune_filter);
-
-            // Walk and collect results
-            for entry in walker.walk() {
-                let path = entry.path();
-
-                let rel_path_from_walk_root = match path.strip_prefix(&walk_root) {
-                    Ok(p) => p,
-                    Err(_) => continue,
-                };
-                let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
-                let is_walk_root_entry = rel_str_from_walk_root.is_empty();
-
-                let normalized = self.normalize_path(
-                    &rel_str_from_walk_root,
-                    &prefix_to_strip,
-                    is_walk_root_entry,
-                );
-
-                if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
-                    continue;
-                }
-
-                if has_ignore_filter {
-                    let rel_path = if prefix_to_strip.is_some() {
-                        PathBuf::from(normalized.as_ref())
-                    } else {
-                        rel_path_from_walk_root.to_path_buf()
-                    };
-                    let abs_path = abs_cwd.join(&rel_path);
-                    let ignore_filter = self.ignore_filter.as_ref().unwrap();
-
-                    if ignore_filter.should_ignore(&normalized, &abs_path) {
-                        if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path)
-                        {
-                            ignored_dirs.insert(normalized.into_owned());
-                        }
-                        continue;
-                    }
-
+                if ignore_filter.should_ignore(&normalized, &abs_path) {
                     if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
-                        ignored_dirs.insert(normalized.to_string());
-                    }
-                }
-
-                // Handle root of walk_root - for multi-base, this is the base directory itself
-                if is_walk_root_entry {
-                    // The base directory (e.g., "src") - check if any pattern matches it
-                    let matches_base = group_patterns.iter().any(|p| {
-                        let path_matches = match p.matches_fast(&normalized) {
-                            Some(result) => result,
-                            None => p.matches(&normalized),
-                        };
-                        if path_matches && p.requires_dir() {
-                            true // It's the base dir, which is a directory
-                        } else {
-                            path_matches
-                        }
-                    });
-
-                    if matches_base && !self.nodir {
-                        if let Some(ref ignore_filter) = self.ignore_filter {
-                            let abs_path = abs_cwd.join(&*normalized);
-                            if ignore_filter.should_ignore(&normalized, &abs_path) {
-                                continue;
-                            }
-                        }
-
-                        let result = self.build_result_path(
-                            &normalized,
-                            true, // is_dir
-                            entry.is_symlink(),
-                            &abs_cwd,
-                            &mut result_buffer,
-                        );
-
-                        if seen.insert(result.clone()) {
-                            if !self.include_child_matches {
-                                matched_parents.insert(normalized.into_owned());
-                            }
-                            results.push(result);
-                        }
+                        ignored_dirs.insert(normalized.into_owned());
                     }
                     continue;
                 }
 
-                if normalized.is_empty() {
-                    continue;
+                if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                    ignored_dirs.insert(normalized.to_string());
                 }
+            }
 
-                if self.nodir && entry.is_dir() {
-                    continue;
-                }
-
-                if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
-                    continue;
-                }
-
-                if !self.include_child_matches
-                    && self.is_child_of_matched(&normalized, &matched_parents)
-                {
-                    continue;
-                }
-
-                let is_dir = entry.is_dir();
-                let is_symlink = entry.is_symlink();
-
-                // Check if any pattern in this group matches
-                let matches = group_patterns.iter().any(|p| {
+            // Handle root of walk_root - for multi-base, this is the base directory itself
+            if is_walk_root_entry {
+                // The base directory (e.g., "src") - check if any pattern matches it
+                let matches_base = group_patterns.iter().any(|p| {
                     let path_matches = match p.matches_fast(&normalized) {
                         Some(result) => result,
                         None => p.matches(&normalized),
                     };
                     if path_matches && p.requires_dir() {
-                        is_dir
+                        true // It's the base dir, which is a directory
                     } else {
                         path_matches
                     }
                 });
 
-                if matches {
+                if matches_base && !self.nodir {
+                    if let Some(ref ignore_filter) = self.ignore_filter {
+                        let abs_path = abs_cwd.join(&*normalized);
+                        if ignore_filter.should_ignore(&normalized, &abs_path) {
+                            continue;
+                        }
+                    }
+
                     let result = self.build_result_path(
                         &normalized,
-                        is_dir,
-                        is_symlink,
-                        &abs_cwd,
+                        true, // is_dir
+                        entry.is_symlink(),
+                        abs_cwd,
                         &mut result_buffer,
                     );
 
@@ -1610,6 +1591,58 @@ impl Glob {
                         }
                         results.push(result);
                     }
+                }
+                continue;
+            }
+
+            if normalized.is_empty() {
+                continue;
+            }
+
+            if self.nodir && entry.is_dir() {
+                continue;
+            }
+
+            if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
+                continue;
+            }
+
+            if !self.include_child_matches
+                && self.is_child_of_matched(&normalized, &matched_parents)
+            {
+                continue;
+            }
+
+            let is_dir = entry.is_dir();
+            let is_symlink = entry.is_symlink();
+
+            // Check if any pattern in this group matches
+            let matches = group_patterns.iter().any(|p| {
+                let path_matches = match p.matches_fast(&normalized) {
+                    Some(result) => result,
+                    None => p.matches(&normalized),
+                };
+                if path_matches && p.requires_dir() {
+                    is_dir
+                } else {
+                    path_matches
+                }
+            });
+
+            if matches {
+                let result = self.build_result_path(
+                    &normalized,
+                    is_dir,
+                    is_symlink,
+                    abs_cwd,
+                    &mut result_buffer,
+                );
+
+                if seen.insert(result.clone()) {
+                    if !self.include_child_matches {
+                        matched_parents.insert(normalized.into_owned());
+                    }
+                    results.push(result);
                 }
             }
         }
@@ -4468,5 +4501,127 @@ mod tests {
         // Should still use multi-base walking but return empty results
         let results = glob.walk_sync();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_walk_multi_base_parallel_results_match() {
+        let temp = create_multi_base_fixture();
+
+        // Test that parallel multi-base walking produces correct results
+        // by comparing with expected results
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "test/**/*.ts".to_string(),
+                "lib/**/*.ts".to_string(),
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        // Run multiple times to test parallel execution consistency
+        for _ in 0..5 {
+            let results = glob.walk_sync();
+
+            // Verify expected files are present (order may vary due to parallelism)
+            let results_set: std::collections::HashSet<_> = results.iter().collect();
+
+            assert!(
+                results_set.contains(&"src/main.ts".to_string()),
+                "Should contain src/main.ts"
+            );
+            assert!(
+                results_set.contains(&"src/util.ts".to_string()),
+                "Should contain src/util.ts"
+            );
+            assert!(
+                results_set.contains(&"src/lib/helper.ts".to_string()),
+                "Should contain src/lib/helper.ts"
+            );
+            assert!(
+                results_set.contains(&"test/main.test.ts".to_string()),
+                "Should contain test/main.test.ts"
+            );
+            assert!(
+                results_set.contains(&"test/util.test.ts".to_string()),
+                "Should contain test/util.test.ts"
+            );
+            assert!(
+                results_set.contains(&"test/fixtures/data.ts".to_string()),
+                "Should contain test/fixtures/data.ts"
+            );
+            assert!(
+                results_set.contains(&"lib/index.ts".to_string()),
+                "Should contain lib/index.ts"
+            );
+
+            // Total should be 7 files
+            assert_eq!(results.len(), 7, "Should have exactly 7 results");
+        }
+    }
+
+    #[test]
+    fn test_walk_multi_base_parallel_with_ignore() {
+        let temp = create_multi_base_fixture();
+
+        let mut opts = make_opts(&temp.path().to_string_lossy());
+        opts.ignore = Some(napi::Either::A("**/util*".to_string()));
+
+        let glob = Glob::new_multi(
+            vec!["src/**/*.ts".to_string(), "test/**/*.ts".to_string()],
+            opts,
+        );
+
+        let results = glob.walk_sync();
+
+        // Should have files except util-related ones
+        assert!(results.contains(&"src/main.ts".to_string()));
+        assert!(!results.contains(&"src/util.ts".to_string())); // ignored
+        assert!(results.contains(&"test/main.test.ts".to_string()));
+        assert!(!results.contains(&"test/util.test.ts".to_string())); // ignored
+    }
+
+    #[test]
+    fn test_walk_multi_base_parallel_consistency() {
+        let temp = create_multi_base_fixture();
+
+        // Run multi-base walking several times and verify results are consistent
+        let glob = Glob::new_multi(
+            vec!["src/**/*.ts".to_string(), "test/**/*.ts".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let first_results: std::collections::HashSet<_> = glob.walk_sync().into_iter().collect();
+
+        for _ in 0..10 {
+            let results: std::collections::HashSet<_> = glob.walk_sync().into_iter().collect();
+            assert_eq!(
+                first_results, results,
+                "Parallel results should be consistent across runs"
+            );
+        }
+    }
+
+    #[test]
+    fn test_walk_single_base_group_returns_correct_results() {
+        let temp = create_multi_base_fixture();
+        let cwd = temp.path();
+        let abs_cwd = cwd.canonicalize().unwrap();
+
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "src/lib/*.ts".to_string(),
+                "test/**/*.ts".to_string(),
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        // Walk just the src group (indices 0 and 1)
+        let results = glob.walk_single_base_group(&[0, 1], &abs_cwd);
+
+        assert!(results.contains(&"src/main.ts".to_string()));
+        assert!(results.contains(&"src/util.ts".to_string()));
+        assert!(results.contains(&"src/lib/helper.ts".to_string()));
+        assert!(!results.contains(&"test/main.test.ts".to_string())); // Not in this group
     }
 }
