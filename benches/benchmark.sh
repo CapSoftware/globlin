@@ -88,7 +88,7 @@ for pattern in "${patterns[@]}"; do
   # globlin sync (when available)
   globlin_time="N/A"
   globlin_count="N/A"
-  if [ -f "$PROJECT_DIR/index.node" ] || [ -f "$PROJECT_DIR/dist/index.js" ]; then
+  if [ -f "$PROJECT_DIR/index.js" ] || ls "$PROJECT_DIR"/*.node 1>/dev/null 2>&1; then
     globlin_result=$(node -e "
       const start = Date.now();
       const { globSync } = require('$PROJECT_DIR');
