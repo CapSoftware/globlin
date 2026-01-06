@@ -68,9 +68,24 @@ pub enum PatternPart {
     /// Literal string segment (no magic characters)
     Literal(String),
     /// Magic pattern segment (has wildcards, etc.)
-    Magic(String, Regex),
+    /// Contains: raw pattern, compiled regex, optional simple match type for fast matching
+    Magic(String, Regex, Option<SimpleMatch>),
     /// GLOBSTAR segment (**)
     Globstar,
+}
+
+/// Simple match types that can be checked without regex.
+/// These cover common patterns where string operations are faster than regex.
+#[derive(Clone, Debug)]
+pub enum SimpleMatch {
+    /// Matches any single segment (pattern is just `*`)
+    Any,
+    /// Matches segments starting with a prefix (pattern is `prefix*`)
+    Prefix(String),
+    /// Matches segments ending with a suffix (pattern is `*suffix`)
+    Suffix(String),
+    /// Matches segments with both prefix and suffix (pattern is `prefix*suffix`)
+    PrefixSuffix(String, String),
 }
 
 impl PatternPart {
@@ -86,14 +101,14 @@ impl PatternPart {
 
     /// Check if this part is a regex (magic pattern)
     pub fn is_regexp(&self) -> bool {
-        matches!(self, PatternPart::Magic(_, _))
+        matches!(self, PatternPart::Magic(_, _, _))
     }
 
     /// Get the raw string representation of this part
     pub fn raw(&self) -> &str {
         match self {
             PatternPart::Literal(s) => s,
-            PatternPart::Magic(s, _) => s,
+            PatternPart::Magic(s, _, _) => s,
             PatternPart::Globstar => "**",
         }
     }
@@ -102,9 +117,86 @@ impl PatternPart {
     pub fn matches(&self, segment: &str) -> bool {
         match self {
             PatternPart::Literal(s) => s == segment,
-            PatternPart::Magic(_, regex) => regex.is_match(segment).unwrap_or(false),
+            PatternPart::Magic(_, regex, _) => regex.is_match(segment).unwrap_or(false),
             PatternPart::Globstar => true, // Globstar matches any segment
         }
+    }
+
+    /// Test if this part matches the given segment using fast string operations when possible.
+    /// Falls back to regex matching for complex patterns.
+    ///
+    /// This is optimized for directory pruning where we want to quickly determine
+    /// if a directory could possibly contain matches.
+    #[inline]
+    pub fn matches_fast(&self, segment: &str, nocase: bool) -> bool {
+        match self {
+            PatternPart::Literal(s) => {
+                if nocase {
+                    s.eq_ignore_ascii_case(segment)
+                } else {
+                    s == segment
+                }
+            }
+            PatternPart::Magic(_, regex, simple_match) => {
+                // Try simple match first (string operations are faster than regex)
+                if let Some(simple) = simple_match {
+                    let seg = if nocase {
+                        segment.to_lowercase()
+                    } else {
+                        segment.to_string()
+                    };
+                    match simple {
+                        SimpleMatch::Any => !seg.contains('/'),
+                        SimpleMatch::Prefix(prefix) => {
+                            let prefix = if nocase {
+                                prefix.to_lowercase()
+                            } else {
+                                prefix.clone()
+                            };
+                            seg.starts_with(&prefix) && !seg.contains('/')
+                        }
+                        SimpleMatch::Suffix(suffix) => {
+                            let suffix = if nocase {
+                                suffix.to_lowercase()
+                            } else {
+                                suffix.clone()
+                            };
+                            seg.ends_with(&suffix) && !seg.contains('/')
+                        }
+                        SimpleMatch::PrefixSuffix(prefix, suffix) => {
+                            let prefix = if nocase {
+                                prefix.to_lowercase()
+                            } else {
+                                prefix.clone()
+                            };
+                            let suffix = if nocase {
+                                suffix.to_lowercase()
+                            } else {
+                                suffix.clone()
+                            };
+                            seg.starts_with(&prefix)
+                                && seg.ends_with(&suffix)
+                                && seg.len() >= prefix.len() + suffix.len()
+                                && !seg.contains('/')
+                        }
+                    }
+                } else {
+                    // Fall back to regex for complex patterns
+                    let seg = if nocase {
+                        segment.to_lowercase()
+                    } else {
+                        segment.to_string()
+                    };
+                    regex.is_match(&seg).unwrap_or(false)
+                }
+            }
+            PatternPart::Globstar => true,
+        }
+    }
+
+    /// Check if this part has a simple match optimization available.
+    pub fn has_simple_match(&self) -> bool {
+        matches!(self, PatternPart::Magic(_, _, Some(_)))
     }
 }
 
@@ -545,6 +637,36 @@ impl Pattern {
         self.parts.first().is_some_and(|p| p.is_regexp())
     }
 
+    /// Check if this is a static pattern (no magic characters).
+    /// Static patterns can be resolved directly with stat() instead of walking.
+    ///
+    /// A pattern is static if:
+    /// - It has no magic characters (*, ?, [, ], {, }, !)
+    /// - All parts are literal strings
+    /// - It resolves to a single path
+    ///
+    /// Examples:
+    /// - `package.json` -> static
+    /// - `src/index.ts` -> static
+    /// - `*.js` -> NOT static
+    /// - `src/**/*.ts` -> NOT static
+    pub fn is_static(&self) -> bool {
+        // If has_magic is false, the pattern is fully literal
+        !self.has_magic && self.parts.iter().all(|p| p.is_string())
+    }
+
+    /// Get the static path for this pattern.
+    /// Returns None if the pattern is not static.
+    ///
+    /// This is used to directly stat() the file instead of walking directories.
+    pub fn static_path(&self) -> Option<&str> {
+        if self.is_static() {
+            Some(&self.raw)
+        } else {
+            None
+        }
+    }
+
     /// Get the glob string representation.
     #[allow(dead_code)]
     pub fn glob_string(&self) -> String {
@@ -637,7 +759,7 @@ impl Pattern {
                     prefix_parts.push(s);
                 }
                 // Stop at any magic or globstar
-                PatternPart::Magic(_, _) | PatternPart::Globstar => break,
+                PatternPart::Magic(..) | PatternPart::Globstar => break,
             }
         }
 
@@ -771,12 +893,56 @@ impl Pattern {
                     false
                 }
             }
-            PatternPart::Magic(_, regex) => {
-                // Check if the regex matches this directory segment
-                let matches = if self.nocase {
-                    regex.is_match(&dir_segment.to_lowercase()).unwrap_or(false)
+            PatternPart::Magic(_, regex, simple_match) => {
+                // Try simple string matching first (faster than regex)
+                let matches = if let Some(simple) = simple_match {
+                    let seg = if self.nocase {
+                        dir_segment.to_lowercase()
+                    } else {
+                        dir_segment.to_string()
+                    };
+                    match simple {
+                        SimpleMatch::Any => !seg.contains('/'),
+                        SimpleMatch::Prefix(prefix) => {
+                            let prefix = if self.nocase {
+                                prefix.to_lowercase()
+                            } else {
+                                prefix.clone()
+                            };
+                            seg.starts_with(&prefix) && !seg.contains('/')
+                        }
+                        SimpleMatch::Suffix(suffix) => {
+                            let suffix = if self.nocase {
+                                suffix.to_lowercase()
+                            } else {
+                                suffix.clone()
+                            };
+                            seg.ends_with(&suffix) && !seg.contains('/')
+                        }
+                        SimpleMatch::PrefixSuffix(prefix, suffix) => {
+                            let prefix = if self.nocase {
+                                prefix.to_lowercase()
+                            } else {
+                                prefix.clone()
+                            };
+                            let suffix = if self.nocase {
+                                suffix.to_lowercase()
+                            } else {
+                                suffix.clone()
+                            };
+                            seg.starts_with(&prefix)
+                                && seg.ends_with(&suffix)
+                                && seg.len() >= prefix.len() + suffix.len()
+                                && !seg.contains('/')
+                        }
+                    }
                 } else {
-                    regex.is_match(dir_segment).unwrap_or(false)
+                    // Fall back to regex for complex patterns
+                    if self.nocase {
+                        regex.is_match(&dir_segment.to_lowercase()).unwrap_or(false)
+                    } else {
+                        regex.is_match(dir_segment).unwrap_or(false)
+                    }
                 };
 
                 if matches {
@@ -969,7 +1135,9 @@ fn parse_pattern_parts(
         } else if has_magic_in_pattern(part, noext, false) {
             // Create regex for this part
             let part_regex = segment_to_regex(part, noext, nocase);
-            pattern_parts.push(PatternPart::Magic(part.clone(), part_regex));
+            // Detect if this is a simple pattern that can use string ops instead of regex
+            let simple_match = detect_simple_match(part, noext);
+            pattern_parts.push(PatternPart::Magic(part.clone(), part_regex, simple_match));
         } else {
             pattern_parts.push(PatternPart::Literal(part.clone()));
         }
@@ -1057,6 +1225,71 @@ fn segment_to_regex(segment: &str, noext: bool, nocase: bool) -> Regex {
     regex_str.push('$');
 
     Regex::new(&regex_str).unwrap_or_else(|_| Regex::new("^$").unwrap())
+}
+
+/// Detect if a pattern segment can use simple string matching instead of regex.
+///
+/// This is an optimization for directory pruning. Common patterns like:
+/// - `*` (any) -> SimpleMatch::Any
+/// - `foo*` (prefix) -> SimpleMatch::Prefix("foo")
+/// - `*.js` (suffix) -> SimpleMatch::Suffix(".js")
+/// - `test*spec` (prefix+suffix) -> SimpleMatch::PrefixSuffix("test", "spec")
+///
+/// Complex patterns (character classes, extglobs, multiple wildcards, etc.)
+/// return None and will use regex matching.
+fn detect_simple_match(segment: &str, noext: bool) -> Option<SimpleMatch> {
+    let chars: Vec<char> = segment.chars().collect();
+
+    // Check for patterns that are too complex for simple matching
+    for (i, &c) in chars.iter().enumerate() {
+        match c {
+            // Character classes always need regex
+            '[' => return None,
+            // Question mark always needs regex
+            '?' => return None,
+            // Extglob patterns need regex
+            '+' | '@' | '!' if !noext && i + 1 < chars.len() && chars[i + 1] == '(' => {
+                return None;
+            }
+            // Escape sequences need regex
+            '\\' => return None,
+            _ => {}
+        }
+    }
+
+    // Count the number of wildcards
+    let star_count = chars.iter().filter(|&&c| c == '*').count();
+
+    // Too many wildcards for simple matching (e.g., *foo*bar*)
+    if star_count > 1 {
+        return None;
+    }
+
+    // No wildcards - this should be a literal, not magic
+    if star_count == 0 {
+        return None;
+    }
+
+    // Exactly one wildcard - analyze the pattern
+    let star_pos = chars.iter().position(|&c| c == '*').unwrap();
+
+    if star_pos == 0 && chars.len() == 1 {
+        // Pattern is just `*`
+        Some(SimpleMatch::Any)
+    } else if star_pos == 0 {
+        // Pattern starts with `*` - suffix match
+        let suffix: String = chars[1..].iter().collect();
+        Some(SimpleMatch::Suffix(suffix))
+    } else if star_pos == chars.len() - 1 {
+        // Pattern ends with `*` - prefix match
+        let prefix: String = chars[..star_pos].iter().collect();
+        Some(SimpleMatch::Prefix(prefix))
+    } else {
+        // Pattern has `*` in the middle - prefix + suffix match
+        let prefix: String = chars[..star_pos].iter().collect();
+        let suffix: String = chars[star_pos + 1..].iter().collect();
+        Some(SimpleMatch::PrefixSuffix(prefix, suffix))
+    }
 }
 
 /// Check if a pattern contains magic glob characters, taking escapes into account.
@@ -1719,7 +1952,7 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool, nobrace:
     // Check for `*.ext` pattern (extension-only at root level)
     // Pattern should be exactly one part that matches `*.something`
     if parts.len() == 1 {
-        if let PatternPart::Magic(raw, _) = &parts[0] {
+        if let PatternPart::Magic(raw, ..) = &parts[0] {
             if let Some(ext) = parse_extension_pattern(raw) {
                 let ext_for_match = if nocase { ext.to_lowercase() } else { ext };
                 return FastPath::ExtensionOnly(ext_for_match);
@@ -1742,7 +1975,7 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool, nobrace:
     // Check for `**/*.ext` pattern (recursive extension matching)
     // Should be: [Globstar, Magic("*.ext")]
     if parts.len() == 2 {
-        if let (PatternPart::Globstar, PatternPart::Magic(raw, _)) = (&parts[0], &parts[1]) {
+        if let (PatternPart::Globstar, PatternPart::Magic(raw, ..)) = (&parts[0], &parts[1]) {
             if let Some(ext) = parse_extension_pattern(raw) {
                 let ext_for_match = if nocase { ext.to_lowercase() } else { ext };
                 return FastPath::RecursiveExtension(ext_for_match);
@@ -1775,7 +2008,7 @@ fn detect_fast_path(pattern: &str, parts: &[PatternPart], nocase: bool, nobrace:
 
     // Check for suffix patterns at root level: *.test.js, *.spec.ts
     if parts.len() == 1 {
-        if let PatternPart::Magic(raw, _) = &parts[0] {
+        if let PatternPart::Magic(raw, ..) = &parts[0] {
             if let Some(suffix) = parse_suffix_pattern(raw) {
                 let suffix_for_match = if nocase {
                     suffix.to_lowercase()
@@ -3926,6 +4159,190 @@ mod test_could_match_in_dir {
         assert!(pattern.could_match_in_dir("packages/foo/src"));
         assert!(pattern.could_match_in_dir("packages/foo/src/utils"));
         assert!(pattern.could_match_in_dir("src")); // ** matches zero segments
+    }
+}
+
+#[cfg(test)]
+mod test_simple_match {
+    use super::*;
+
+    #[test]
+    fn test_detect_simple_match_any() {
+        let result = detect_simple_match("*", false);
+        assert!(matches!(result, Some(SimpleMatch::Any)));
+    }
+
+    #[test]
+    fn test_detect_simple_match_prefix() {
+        let result = detect_simple_match("foo*", false);
+        assert!(matches!(result, Some(SimpleMatch::Prefix(ref s)) if s == "foo"));
+
+        let result = detect_simple_match("test-*", false);
+        assert!(matches!(result, Some(SimpleMatch::Prefix(ref s)) if s == "test-"));
+    }
+
+    #[test]
+    fn test_detect_simple_match_suffix() {
+        let result = detect_simple_match("*.js", false);
+        assert!(matches!(result, Some(SimpleMatch::Suffix(ref s)) if s == ".js"));
+
+        let result = detect_simple_match("*-test", false);
+        assert!(matches!(result, Some(SimpleMatch::Suffix(ref s)) if s == "-test"));
+    }
+
+    #[test]
+    fn test_detect_simple_match_prefix_suffix() {
+        let result = detect_simple_match("test*spec", false);
+        assert!(
+            matches!(result, Some(SimpleMatch::PrefixSuffix(ref p, ref s)) if p == "test" && s == "spec")
+        );
+
+        let result = detect_simple_match("foo*.js", false);
+        assert!(
+            matches!(result, Some(SimpleMatch::PrefixSuffix(ref p, ref s)) if p == "foo" && s == ".js")
+        );
+    }
+
+    #[test]
+    fn test_detect_simple_match_returns_none_for_complex() {
+        // Character class
+        assert!(detect_simple_match("[abc]*", false).is_none());
+        assert!(detect_simple_match("*[0-9]", false).is_none());
+
+        // Question mark
+        assert!(detect_simple_match("?*", false).is_none());
+        assert!(detect_simple_match("foo?*", false).is_none());
+
+        // Multiple wildcards
+        assert!(detect_simple_match("*foo*", false).is_none());
+        assert!(detect_simple_match("foo*bar*", false).is_none());
+
+        // Extglob patterns (when noext=false)
+        assert!(detect_simple_match("+(foo)", false).is_none());
+        assert!(detect_simple_match("@(foo|bar)", false).is_none());
+        assert!(detect_simple_match("!(foo)", false).is_none());
+
+        // Escape sequences
+        assert!(detect_simple_match("\\*", false).is_none());
+    }
+
+    #[test]
+    fn test_detect_simple_match_with_noext() {
+        // When noext=true, extglob patterns should be treated as literals
+        // But they still have special chars that make them complex
+        let result = detect_simple_match("+(foo)", true);
+        // This still has ( ) which are not simple patterns
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_pattern_part_matches_fast() {
+        // Test the PatternPart::matches_fast method
+        let regex = segment_to_regex("*", false, false);
+        let part = PatternPart::Magic("*".to_string(), regex, Some(SimpleMatch::Any));
+        assert!(part.matches_fast("anything", false));
+        assert!(part.matches_fast("foo", false));
+        assert!(!part.matches_fast("foo/bar", false)); // Should not match segments with /
+
+        // Prefix pattern
+        let regex = segment_to_regex("foo*", false, false);
+        let part = PatternPart::Magic(
+            "foo*".to_string(),
+            regex,
+            Some(SimpleMatch::Prefix("foo".to_string())),
+        );
+        assert!(part.matches_fast("foo", false));
+        assert!(part.matches_fast("foobar", false));
+        assert!(part.matches_fast("foo123", false));
+        assert!(!part.matches_fast("bar", false));
+        assert!(!part.matches_fast("barfoo", false));
+
+        // Suffix pattern
+        let regex = segment_to_regex("*.js", false, false);
+        let part = PatternPart::Magic(
+            "*.js".to_string(),
+            regex,
+            Some(SimpleMatch::Suffix(".js".to_string())),
+        );
+        assert!(part.matches_fast("file.js", false));
+        assert!(part.matches_fast("foo.bar.js", false));
+        assert!(part.matches_fast(".js", false));
+        assert!(!part.matches_fast("file.ts", false));
+        assert!(!part.matches_fast("jsfile", false));
+
+        // Prefix + Suffix pattern
+        let regex = segment_to_regex("test*.spec", false, false);
+        let part = PatternPart::Magic(
+            "test*.spec".to_string(),
+            regex,
+            Some(SimpleMatch::PrefixSuffix(
+                "test".to_string(),
+                ".spec".to_string(),
+            )),
+        );
+        assert!(part.matches_fast("test.spec", false));
+        assert!(part.matches_fast("test-foo.spec", false));
+        assert!(part.matches_fast("testbar.spec", false));
+        assert!(!part.matches_fast("foo.spec", false));
+        assert!(!part.matches_fast("test.js", false));
+    }
+
+    #[test]
+    fn test_pattern_part_matches_fast_nocase() {
+        // Test case-insensitive matching
+        let regex = segment_to_regex("foo*", false, true);
+        let part = PatternPart::Magic(
+            "foo*".to_string(),
+            regex,
+            Some(SimpleMatch::Prefix("foo".to_string())),
+        );
+        assert!(part.matches_fast("foo", true));
+        assert!(part.matches_fast("FOO", true));
+        assert!(part.matches_fast("Foo", true));
+        assert!(part.matches_fast("fooBAR", true));
+        assert!(!part.matches_fast("bar", true));
+    }
+
+    #[test]
+    fn test_could_match_in_dir_uses_simple_match() {
+        // Verify that could_match_in_dir works correctly with SimpleMatch optimization
+        // Pattern: packages/*/src/**/*.ts
+        let pattern = Pattern::new("packages/*/src/**/*.ts");
+
+        // Should match directories that could contain matches
+        assert!(pattern.could_match_in_dir("packages"));
+        assert!(pattern.could_match_in_dir("packages/foo"));
+        assert!(pattern.could_match_in_dir("packages/bar"));
+        assert!(pattern.could_match_in_dir("packages/my-package"));
+        assert!(pattern.could_match_in_dir("packages/foo/src"));
+        assert!(pattern.could_match_in_dir("packages/foo/src/utils"));
+
+        // Should not match directories that can't contain matches
+        assert!(!pattern.could_match_in_dir("src")); // Wrong root
+        assert!(!pattern.could_match_in_dir("node_modules")); // Wrong root
+        assert!(!pattern.could_match_in_dir("packages/foo/lib")); // Wrong subdir (not src)
+    }
+
+    #[test]
+    fn test_simple_match_with_real_patterns() {
+        // Test with realistic glob patterns
+        // Pattern: src/*.ts (single level extension match)
+        let pattern = Pattern::new("src/*.ts");
+        assert!(pattern.could_match_in_dir("src"));
+        assert!(!pattern.could_match_in_dir("lib"));
+
+        // Pattern: **/node_modules/** (recursive match)
+        let pattern = Pattern::new("**/node_modules/**");
+        assert!(pattern.could_match_in_dir("node_modules"));
+        assert!(pattern.could_match_in_dir("packages"));
+        assert!(pattern.could_match_in_dir("packages/foo/node_modules"));
+
+        // Pattern: test-* directories
+        let pattern = Pattern::new("test-*/**/*.ts");
+        assert!(pattern.could_match_in_dir("test-unit"));
+        assert!(pattern.could_match_in_dir("test-integration"));
+        assert!(!pattern.could_match_in_dir("tests")); // No hyphen after test
+        assert!(!pattern.could_match_in_dir("unit-test")); // Doesn't start with test-
     }
 }
 
