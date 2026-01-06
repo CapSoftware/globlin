@@ -73,6 +73,131 @@ pub fn has_magic(
     )
 }
 
+/// A pattern warning with message and optional suggestion.
+/// Used for providing helpful feedback about potential pattern issues.
+#[napi(object)]
+pub struct PatternWarningInfo {
+    /// The type of warning (e.g., "escaped_wildcard", "performance", "empty")
+    pub warning_type: String,
+    /// Human-readable warning message
+    pub message: String,
+    /// The original problematic pattern
+    pub pattern: Option<String>,
+    /// Suggested fix (if applicable)
+    pub suggestion: Option<String>,
+}
+
+impl From<pattern::PatternWarning> for PatternWarningInfo {
+    fn from(warning: pattern::PatternWarning) -> Self {
+        let message = warning.message();
+        match warning {
+            pattern::PatternWarning::EscapedWildcardAtStart {
+                pattern,
+                suggestion,
+            } => PatternWarningInfo {
+                warning_type: "escaped_wildcard_at_start".to_string(),
+                message,
+                pattern: Some(pattern),
+                suggestion: Some(suggestion),
+            },
+            pattern::PatternWarning::DoubleEscaped {
+                pattern,
+                suggestion,
+            } => PatternWarningInfo {
+                warning_type: "double_escaped".to_string(),
+                message,
+                pattern: Some(pattern),
+                suggestion: Some(suggestion),
+            },
+            pattern::PatternWarning::BackslashOnWindows {
+                pattern,
+                suggestion,
+            } => PatternWarningInfo {
+                warning_type: "backslash_on_windows".to_string(),
+                message,
+                pattern: Some(pattern),
+                suggestion: Some(suggestion),
+            },
+            pattern::PatternWarning::PerformanceWarning {
+                pattern,
+                suggestion,
+                ..
+            } => PatternWarningInfo {
+                warning_type: "performance".to_string(),
+                message,
+                pattern: Some(pattern),
+                suggestion: Some(suggestion),
+            },
+            pattern::PatternWarning::TrailingSpaces {
+                pattern,
+                suggestion,
+            } => PatternWarningInfo {
+                warning_type: "trailing_spaces".to_string(),
+                message,
+                pattern: Some(pattern),
+                suggestion: Some(suggestion),
+            },
+            pattern::PatternWarning::EmptyPattern => PatternWarningInfo {
+                warning_type: "empty_pattern".to_string(),
+                message,
+                pattern: None,
+                suggestion: None,
+            },
+            pattern::PatternWarning::NullBytes { pattern } => PatternWarningInfo {
+                warning_type: "null_bytes".to_string(),
+                message,
+                pattern: Some(pattern),
+                suggestion: None,
+            },
+        }
+    }
+}
+
+/// Analyze a pattern for potential issues and return warnings.
+/// This is useful for providing helpful feedback about common mistakes.
+///
+/// @param pattern - The glob pattern to analyze
+/// @param windowsPathsNoEscape - Whether backslashes are path separators (Windows mode)
+/// @param platform - The target platform ("win32", "darwin", "linux")
+/// @returns Array of warnings (empty if no issues detected)
+#[napi]
+pub fn analyze_pattern(
+    pattern: String,
+    windows_paths_no_escape: Option<bool>,
+    platform: Option<String>,
+) -> Vec<PatternWarningInfo> {
+    pattern::analyze_pattern(
+        &pattern,
+        windows_paths_no_escape.unwrap_or(false),
+        platform.as_deref(),
+    )
+    .into_iter()
+    .map(PatternWarningInfo::from)
+    .collect()
+}
+
+/// Analyze multiple patterns for potential issues and return all warnings.
+///
+/// @param patterns - Array of glob patterns to analyze
+/// @param windowsPathsNoEscape - Whether backslashes are path separators (Windows mode)
+/// @param platform - The target platform ("win32", "darwin", "linux")
+/// @returns Array of warnings for all patterns (empty if no issues detected)
+#[napi]
+pub fn analyze_patterns(
+    patterns: Vec<String>,
+    windows_paths_no_escape: Option<bool>,
+    platform: Option<String>,
+) -> Vec<PatternWarningInfo> {
+    pattern::analyze_patterns(
+        &patterns,
+        windows_paths_no_escape.unwrap_or(false),
+        platform.as_deref(),
+    )
+    .into_iter()
+    .map(PatternWarningInfo::from)
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

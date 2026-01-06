@@ -2625,6 +2625,358 @@ pub fn unescape_pattern(pattern: &str, windows_paths_no_escape: bool) -> String 
     result
 }
 
+/// Pattern warning types for helpful error messages.
+/// These warn users about potential issues with their patterns.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PatternWarning {
+    /// Pattern starts with escaped wildcard that won't match anything
+    /// e.g., `\*.txt` instead of `*.txt`
+    EscapedWildcardAtStart { pattern: String, suggestion: String },
+
+    /// Pattern has unnecessary double-escaping
+    /// e.g., `\\\\*.txt` instead of `\\*.txt`
+    DoubleEscaped { pattern: String, suggestion: String },
+
+    /// Pattern uses backslash escapes on Windows where it might be a path separator
+    /// e.g., `foo\bar` might be intended as `foo/bar`
+    BackslashOnWindows { pattern: String, suggestion: String },
+
+    /// Pattern is very complex and may be slow
+    /// e.g., multiple globstars `**/**/**`
+    PerformanceWarning {
+        pattern: String,
+        reason: String,
+        suggestion: String,
+    },
+
+    /// Pattern has trailing spaces that may be unintentional
+    TrailingSpaces { pattern: String, suggestion: String },
+
+    /// Empty pattern won't match anything
+    EmptyPattern,
+
+    /// Pattern contains null bytes which are invalid
+    NullBytes { pattern: String },
+}
+
+impl PatternWarning {
+    /// Get a human-readable message for this warning
+    pub fn message(&self) -> String {
+        match self {
+            PatternWarning::EscapedWildcardAtStart {
+                pattern,
+                suggestion,
+            } => {
+                format!(
+                    "Pattern `{}` starts with an escaped wildcard and won't match anything. Did you mean `{}`?",
+                    pattern, suggestion
+                )
+            }
+            PatternWarning::DoubleEscaped {
+                pattern,
+                suggestion,
+            } => {
+                format!(
+                    "Pattern `{}` has double-escaped characters. Did you mean `{}`?",
+                    pattern, suggestion
+                )
+            }
+            PatternWarning::BackslashOnWindows {
+                pattern,
+                suggestion,
+            } => {
+                format!(
+                    "Pattern `{}` uses backslashes which are escape characters. For Windows paths, use forward slashes or set `windowsPathsNoEscape: true`. Did you mean `{}`?",
+                    pattern, suggestion
+                )
+            }
+            PatternWarning::PerformanceWarning {
+                pattern,
+                reason,
+                suggestion,
+            } => {
+                format!(
+                    "Pattern `{}` may be slow: {}. Consider using `{}`.",
+                    pattern, reason, suggestion
+                )
+            }
+            PatternWarning::TrailingSpaces {
+                pattern,
+                suggestion,
+            } => {
+                format!(
+                    "Pattern `{}` has trailing spaces. Did you mean `{}`?",
+                    pattern, suggestion
+                )
+            }
+            PatternWarning::EmptyPattern => "Empty pattern will not match any files.".to_string(),
+            PatternWarning::NullBytes { pattern } => {
+                format!(
+                    "Pattern contains null bytes which are invalid in file paths: `{}`",
+                    pattern.replace('\0', "\\0")
+                )
+            }
+        }
+    }
+}
+
+/// Analyze a pattern and return any warnings about potential issues.
+/// This is useful for providing helpful feedback to users about common mistakes.
+///
+/// # Arguments
+/// * `pattern` - The glob pattern to analyze
+/// * `windows_paths_no_escape` - Whether backslashes are path separators (Windows mode)
+/// * `platform` - The target platform ("win32", "darwin", "linux")
+///
+/// # Returns
+/// A vector of warnings (empty if no issues detected)
+pub fn analyze_pattern(
+    pattern: &str,
+    windows_paths_no_escape: bool,
+    platform: Option<&str>,
+) -> Vec<PatternWarning> {
+    let mut warnings = Vec::new();
+
+    // Check for empty pattern
+    if pattern.is_empty() {
+        warnings.push(PatternWarning::EmptyPattern);
+        return warnings;
+    }
+
+    // Check for null bytes
+    if pattern.contains('\0') {
+        warnings.push(PatternWarning::NullBytes {
+            pattern: pattern.to_string(),
+        });
+        return warnings; // Can't analyze further with null bytes
+    }
+
+    // Check for trailing spaces
+    if pattern != pattern.trim_end() {
+        warnings.push(PatternWarning::TrailingSpaces {
+            pattern: pattern.to_string(),
+            suggestion: pattern.trim_end().to_string(),
+        });
+    }
+
+    // Check for escaped wildcards at start (common mistake)
+    if !windows_paths_no_escape {
+        if pattern.starts_with("\\*") {
+            warnings.push(PatternWarning::EscapedWildcardAtStart {
+                pattern: pattern.to_string(),
+                suggestion: pattern.strip_prefix('\\').unwrap_or(pattern).to_string(),
+            });
+        } else if pattern.starts_with("\\?") {
+            warnings.push(PatternWarning::EscapedWildcardAtStart {
+                pattern: pattern.to_string(),
+                suggestion: pattern.strip_prefix('\\').unwrap_or(pattern).to_string(),
+            });
+        }
+
+        // Check for double-escaped patterns (\\\\)
+        if pattern.contains("\\\\\\\\") {
+            let suggestion = pattern.replace("\\\\\\\\", "\\\\");
+            warnings.push(PatternWarning::DoubleEscaped {
+                pattern: pattern.to_string(),
+                suggestion,
+            });
+        }
+    }
+
+    // Check for backslash paths on Windows without windowsPathsNoEscape
+    let is_windows = platform.map_or(false, |p| p == "win32");
+    if is_windows && !windows_paths_no_escape {
+        // Look for patterns that look like Windows paths (letter:\ or just \)
+        if pattern.contains('\\') && !pattern.starts_with("\\\\") {
+            // Check if it looks like an escaped character vs a path
+            let has_path_like_backslash = pattern.chars().collect::<Vec<_>>().windows(2).any(|w| {
+                w[0] == '\\'
+                    && !matches!(
+                        w[1],
+                        '*' | '?' | '[' | ']' | '(' | ')' | '{' | '}' | '!' | '@' | '+' | '\\'
+                    )
+            });
+
+            if has_path_like_backslash {
+                warnings.push(PatternWarning::BackslashOnWindows {
+                    pattern: pattern.to_string(),
+                    suggestion: pattern.replace('\\', "/"),
+                });
+            }
+        }
+    }
+
+    // Check for performance issues
+    let globstar_count = pattern.matches("**").count();
+    if globstar_count > 2 {
+        warnings.push(PatternWarning::PerformanceWarning {
+            pattern: pattern.to_string(),
+            reason: format!("Pattern has {} globstars which can be slow", globstar_count),
+            suggestion: if pattern.contains("**/**") {
+                pattern.replace("**/**", "**")
+            } else {
+                "Simplify the pattern or use maxDepth option".to_string()
+            },
+        });
+    }
+
+    // Check for patterns like **/*/**/* which are redundant
+    if pattern.contains("**/*/**") {
+        warnings.push(PatternWarning::PerformanceWarning {
+            pattern: pattern.to_string(),
+            reason: "Pattern has redundant **/* sequences".to_string(),
+            suggestion: pattern.replace("**/*/**", "**/"),
+        });
+    }
+
+    warnings
+}
+
+/// Analyze multiple patterns and return all warnings.
+pub fn analyze_patterns(
+    patterns: &[String],
+    windows_paths_no_escape: bool,
+    platform: Option<&str>,
+) -> Vec<PatternWarning> {
+    patterns
+        .iter()
+        .flat_map(|p| analyze_pattern(p, windows_paths_no_escape, platform))
+        .collect()
+}
+
+#[cfg(test)]
+mod warning_tests {
+    use super::*;
+
+    #[test]
+    fn test_escaped_wildcard_warning() {
+        let warnings = analyze_pattern("\\*.txt", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            PatternWarning::EscapedWildcardAtStart { suggestion, .. } if suggestion == "*.txt"
+        ));
+    }
+
+    #[test]
+    fn test_escaped_question_mark_warning() {
+        let warnings = analyze_pattern("\\?.txt", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            PatternWarning::EscapedWildcardAtStart { suggestion, .. } if suggestion == "?.txt"
+        ));
+    }
+
+    #[test]
+    fn test_no_warning_for_valid_pattern() {
+        let warnings = analyze_pattern("*.txt", false, None);
+        assert!(warnings.is_empty());
+
+        let warnings = analyze_pattern("**/*.js", false, None);
+        assert!(warnings.is_empty());
+
+        let warnings = analyze_pattern("src/**/*.ts", false, None);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_empty_pattern_warning() {
+        let warnings = analyze_pattern("", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(&warnings[0], PatternWarning::EmptyPattern));
+    }
+
+    #[test]
+    fn test_trailing_spaces_warning() {
+        let warnings = analyze_pattern("*.txt   ", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            PatternWarning::TrailingSpaces { suggestion, .. } if suggestion == "*.txt"
+        ));
+    }
+
+    #[test]
+    fn test_null_bytes_warning() {
+        let warnings = analyze_pattern("*.txt\0bad", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(&warnings[0], PatternWarning::NullBytes { .. }));
+    }
+
+    #[test]
+    fn test_performance_warning_multiple_globstars() {
+        let warnings = analyze_pattern("**/**/**/*.js", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            PatternWarning::PerformanceWarning { reason, .. } if reason.contains("3 globstars")
+        ));
+    }
+
+    #[test]
+    fn test_performance_warning_redundant_globstar() {
+        let warnings = analyze_pattern("src/**/*/**/*.js", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            PatternWarning::PerformanceWarning { reason, .. } if reason.contains("redundant")
+        ));
+    }
+
+    #[test]
+    fn test_backslash_on_windows_warning() {
+        let warnings = analyze_pattern("src\\lib\\*.js", false, Some("win32"));
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            &warnings[0],
+            PatternWarning::BackslashOnWindows { suggestion, .. } if suggestion == "src/lib/*.js"
+        ));
+    }
+
+    #[test]
+    fn test_no_backslash_warning_with_windows_paths_no_escape() {
+        let warnings = analyze_pattern("src\\lib\\*.js", true, Some("win32"));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_no_backslash_warning_on_non_windows() {
+        let warnings = analyze_pattern("src\\lib\\*.js", false, Some("darwin"));
+        assert!(warnings.is_empty()); // Backslash is escape on non-Windows
+    }
+
+    #[test]
+    fn test_double_escaped_warning() {
+        let warnings = analyze_pattern("foo\\\\\\\\bar", false, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(&warnings[0], PatternWarning::DoubleEscaped { .. }));
+    }
+
+    #[test]
+    fn test_warning_message() {
+        let warning = PatternWarning::EscapedWildcardAtStart {
+            pattern: "\\*.txt".to_string(),
+            suggestion: "*.txt".to_string(),
+        };
+        let msg = warning.message();
+        assert!(msg.contains("\\*.txt"));
+        assert!(msg.contains("Did you mean"));
+        assert!(msg.contains("*.txt"));
+    }
+
+    #[test]
+    fn test_analyze_patterns_multiple() {
+        let patterns = vec![
+            "*.txt".to_string(),
+            "\\*.js".to_string(),
+            "**/**/**/*.ts".to_string(),
+        ];
+        let warnings = analyze_patterns(&patterns, false, None);
+        assert_eq!(warnings.len(), 2); // escaped wildcard + performance
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

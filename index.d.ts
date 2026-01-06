@@ -364,3 +364,36 @@ export declare function unescape(pattern: string, windowsPathsNoEscape?: boolean
  * @returns True if the pattern has magic (unescaped) glob characters
  */
 export declare function hasMagic(pattern: string, noext?: boolean | undefined | null, windowsPathsNoEscape?: boolean | undefined | null): boolean
+/**
+ * A pattern warning with message and optional suggestion.
+ * Used for providing helpful feedback about potential pattern issues.
+ */
+export interface PatternWarningInfo {
+  /** The type of warning (e.g., "escaped_wildcard", "performance", "empty") */
+  warningType: string
+  /** Human-readable warning message */
+  message: string
+  /** The original problematic pattern */
+  pattern?: string
+  /** Suggested fix (if applicable) */
+  suggestion?: string
+}
+/**
+ * Analyze a pattern for potential issues and return warnings.
+ * This is useful for providing helpful feedback about common mistakes.
+ *
+ * @param pattern - The glob pattern to analyze
+ * @param windowsPathsNoEscape - Whether backslashes are path separators (Windows mode)
+ * @param platform - The target platform ("win32", "darwin", "linux")
+ * @returns Array of warnings (empty if no issues detected)
+ */
+export declare function analyzePattern(pattern: string, windowsPathsNoEscape?: boolean | undefined | null, platform?: string | undefined | null): Array<PatternWarningInfo>
+/**
+ * Analyze multiple patterns for potential issues and return all warnings.
+ *
+ * @param patterns - Array of glob patterns to analyze
+ * @param windowsPathsNoEscape - Whether backslashes are path separators (Windows mode)
+ * @param platform - The target platform ("win32", "darwin", "linux")
+ * @returns Array of warnings for all patterns (empty if no issues detected)
+ */
+export declare function analyzePatterns(patterns: Array<string>, windowsPathsNoEscape?: boolean | undefined | null, platform?: string | undefined | null): Array<PatternWarningInfo>
