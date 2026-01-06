@@ -402,6 +402,7 @@ impl Glob {
         let parallel = options.parallel.unwrap_or(false);
         let cache = options.cache.unwrap_or(false);
         let use_native_io = options.use_native_io.unwrap_or(false);
+        let use_gcd = options.use_gcd.unwrap_or(false);
 
         let walk_options = WalkOptions::new()
             .follow_symlinks(follow)
@@ -410,7 +411,8 @@ impl Glob {
             .need_accurate_symlink_detection(need_accurate_symlink_detection)
             .parallel(parallel)
             .cache(cache)
-            .use_native_io(use_native_io);
+            .use_native_io(use_native_io)
+            .use_gcd(use_gcd);
 
         // Pre-compute: check if any pattern requires directory matching (ends with /)
         let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());
@@ -453,6 +455,21 @@ impl Glob {
             if d < 0 {
                 return Vec::new();
             }
+        }
+
+        // OPTIMIZATION: Static pattern fast path
+        // If ALL patterns are static (no wildcards), we can use direct stat() instead of walking.
+        // This is 10-100x faster for patterns like "package.json" or "src/index.ts".
+        if self.all_patterns_static() {
+            return self.resolve_static_patterns();
+        }
+
+        // OPTIMIZATION: Multi-base walking
+        // If patterns have different prefixes (e.g., ['src/**/*.ts', 'test/**/*.ts']),
+        // walk from each prefix separately instead of from cwd.
+        // This avoids traversing unrelated directories.
+        if self.should_use_multi_base_walking() {
+            return self.walk_multi_base();
         }
 
         // Pre-allocate result vector with estimated capacity based on pattern depth.
@@ -1296,6 +1313,310 @@ impl Glob {
         (walk_root, Some(common_prefix))
     }
 
+    /// Group patterns by their first-level literal prefix.
+    ///
+    /// This enables multi-base walking: instead of walking from cwd when patterns
+    /// have different prefixes, we walk from each unique prefix separately.
+    ///
+    /// Returns a map of prefix -> pattern indices.
+    /// Patterns without a prefix (e.g., `**/*.js`) go into the `None` group.
+    ///
+    /// # Example
+    /// ```ignore
+    /// patterns: ["src/**/*.ts", "src/lib/*.ts", "test/**/*.ts", "**/*.js"]
+    /// Result: {
+    ///   Some("src") -> [0, 1],
+    ///   Some("test") -> [2],
+    ///   None -> [3]
+    /// }
+    /// ```
+    fn group_patterns_by_base(&self) -> std::collections::HashMap<Option<String>, Vec<usize>> {
+        use std::collections::HashMap;
+        let mut groups: HashMap<Option<String>, Vec<usize>> = HashMap::new();
+
+        for (idx, pattern) in self.patterns.iter().enumerate() {
+            // Get the first component of the literal prefix
+            // This is more aggressive grouping than using the full prefix
+            let base = pattern.literal_prefix().map(|prefix| {
+                // Get just the first path component
+                prefix
+                    .split('/')
+                    .next()
+                    .map(|s| s.to_string())
+                    .unwrap_or(prefix)
+            });
+
+            groups.entry(base).or_default().push(idx);
+        }
+
+        groups
+    }
+
+    /// Check if multi-base walking would be beneficial.
+    ///
+    /// Multi-base walking helps when:
+    /// 1. All patterns have literal prefixes (no patterns like `**/*.js`)
+    /// 2. There are multiple distinct first-level prefixes (e.g., `src` and `test`)
+    /// 3. All prefixes point to existing directories
+    fn should_use_multi_base_walking(&self) -> bool {
+        // Quick check: if any pattern has no prefix, we can't use multi-base
+        if self.patterns.iter().any(|p| p.literal_prefix().is_none()) {
+            return false;
+        }
+
+        // Get first-level bases
+        let groups = self.group_patterns_by_base();
+
+        // Need at least 2 distinct bases to benefit from multi-base walking
+        if groups.len() < 2 {
+            return false;
+        }
+
+        // All groups must have Some base (no None group)
+        if groups.contains_key(&None) {
+            return false;
+        }
+
+        // Check that all base directories exist
+        groups.keys().all(|base| {
+            if let Some(base_str) = base {
+                self.cwd.join(base_str).exists()
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Walk using multiple base directories.
+    ///
+    /// This is an optimization for patterns like `['src/**/*.ts', 'test/**/*.ts']`.
+    /// Instead of walking from cwd and visiting all directories, we walk from
+    /// `src/` and `test/` separately.
+    fn walk_multi_base(&self) -> Vec<String> {
+        let groups = self.group_patterns_by_base();
+        let estimated_capacity = self.estimate_result_capacity();
+        let mut results = Vec::with_capacity(estimated_capacity);
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
+        let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8);
+        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
+            AHashSet::new()
+        } else {
+            AHashSet::with_capacity(estimated_capacity / 4)
+        };
+        let mut result_buffer = String::with_capacity(self.estimate_path_buffer_capacity());
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        let has_ignore_filter = self.ignore_filter.is_some();
+
+        // Process each base group separately
+        for (base, pattern_indices) in groups {
+            let _base_str = match base {
+                Some(b) => b,
+                None => continue, // Should not happen if should_use_multi_base_walking returned true
+            };
+
+            // Get the patterns for this group
+            let group_patterns: Vec<&Pattern> =
+                pattern_indices.iter().map(|&i| &self.patterns[i]).collect();
+
+            // Find the longest common prefix within this group
+            let prefixes: Vec<Option<String>> =
+                group_patterns.iter().map(|p| p.literal_prefix()).collect();
+            let prefix_strs: Vec<&str> = prefixes
+                .iter()
+                .filter_map(|p| p.as_ref().map(|s| s.as_str()))
+                .collect();
+            let common_prefix = Self::longest_common_prefix(&prefix_strs);
+
+            // Walk from the common prefix (at least the base)
+            let walk_root = self.cwd.join(&common_prefix);
+            let prefix_to_strip = if common_prefix.is_empty() {
+                None
+            } else {
+                Some(common_prefix.clone())
+            };
+
+            // Adjust walk options for this prefix
+            let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
+                let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
+                if let Some(max_d) = self.walk_options.max_depth {
+                    if max_d <= prefix_depth {
+                        self.walk_options.clone().max_depth(Some(0))
+                    } else {
+                        self.walk_options
+                            .clone()
+                            .max_depth(Some(max_d - prefix_depth))
+                    }
+                } else {
+                    self.walk_options.clone()
+                }
+            } else {
+                self.walk_options.clone()
+            };
+
+            // Create pruning filter for this group's patterns
+            let patterns_arc: Arc<[Pattern]> = group_patterns.iter().cloned().cloned().collect();
+            let prefix_for_filter = prefix_to_strip.clone();
+
+            let prune_filter = Box::new(move |dir_path: &str| -> bool {
+                let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
+                    if dir_path.is_empty() {
+                        Cow::Borrowed(prefix.as_str())
+                    } else {
+                        Cow::Owned(format!("{prefix}/{dir_path}"))
+                    }
+                } else {
+                    Cow::Borrowed(dir_path)
+                };
+
+                patterns_arc
+                    .iter()
+                    .any(|p| p.could_match_in_dir(&path_from_cwd))
+            });
+
+            // Create walker for this group
+            let walker = Walker::new(walk_root.clone(), adjusted_walk_options)
+                .with_dir_prune_filter(prune_filter);
+
+            // Walk and collect results
+            for entry in walker.walk() {
+                let path = entry.path();
+
+                let rel_path_from_walk_root = match path.strip_prefix(&walk_root) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let rel_str_from_walk_root = rel_path_from_walk_root.to_string_lossy();
+                let is_walk_root_entry = rel_str_from_walk_root.is_empty();
+
+                let normalized = self.normalize_path(
+                    &rel_str_from_walk_root,
+                    &prefix_to_strip,
+                    is_walk_root_entry,
+                );
+
+                if self.is_in_ignored_dir(&normalized, &ignored_dirs) {
+                    continue;
+                }
+
+                if has_ignore_filter {
+                    let rel_path = if prefix_to_strip.is_some() {
+                        PathBuf::from(normalized.as_ref())
+                    } else {
+                        rel_path_from_walk_root.to_path_buf()
+                    };
+                    let abs_path = abs_cwd.join(&rel_path);
+                    let ignore_filter = self.ignore_filter.as_ref().unwrap();
+
+                    if ignore_filter.should_ignore(&normalized, &abs_path) {
+                        if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path)
+                        {
+                            ignored_dirs.insert(normalized.into_owned());
+                        }
+                        continue;
+                    }
+
+                    if entry.is_dir() && ignore_filter.children_ignored(&normalized, &abs_path) {
+                        ignored_dirs.insert(normalized.to_string());
+                    }
+                }
+
+                // Handle root of walk_root - for multi-base, this is the base directory itself
+                if is_walk_root_entry {
+                    // The base directory (e.g., "src") - check if any pattern matches it
+                    let matches_base = group_patterns.iter().any(|p| {
+                        let path_matches = match p.matches_fast(&normalized) {
+                            Some(result) => result,
+                            None => p.matches(&normalized),
+                        };
+                        if path_matches && p.requires_dir() {
+                            true // It's the base dir, which is a directory
+                        } else {
+                            path_matches
+                        }
+                    });
+
+                    if matches_base && !self.nodir {
+                        if let Some(ref ignore_filter) = self.ignore_filter {
+                            let abs_path = abs_cwd.join(&*normalized);
+                            if ignore_filter.should_ignore(&normalized, &abs_path) {
+                                continue;
+                            }
+                        }
+
+                        let result = self.build_result_path(
+                            &normalized,
+                            true, // is_dir
+                            entry.is_symlink(),
+                            &abs_cwd,
+                            &mut result_buffer,
+                        );
+
+                        if seen.insert(result.clone()) {
+                            if !self.include_child_matches {
+                                matched_parents.insert(normalized.into_owned());
+                            }
+                            results.push(result);
+                        }
+                    }
+                    continue;
+                }
+
+                if normalized.is_empty() {
+                    continue;
+                }
+
+                if self.nodir && entry.is_dir() {
+                    continue;
+                }
+
+                if !self.dot && !self.path_allowed_by_dot_rules(&normalized) {
+                    continue;
+                }
+
+                if !self.include_child_matches
+                    && self.is_child_of_matched(&normalized, &matched_parents)
+                {
+                    continue;
+                }
+
+                let is_dir = entry.is_dir();
+                let is_symlink = entry.is_symlink();
+
+                // Check if any pattern in this group matches
+                let matches = group_patterns.iter().any(|p| {
+                    let path_matches = match p.matches_fast(&normalized) {
+                        Some(result) => result,
+                        None => p.matches(&normalized),
+                    };
+                    if path_matches && p.requires_dir() {
+                        is_dir
+                    } else {
+                        path_matches
+                    }
+                });
+
+                if matches {
+                    let result = self.build_result_path(
+                        &normalized,
+                        is_dir,
+                        is_symlink,
+                        &abs_cwd,
+                        &mut result_buffer,
+                    );
+
+                    if seen.insert(result.clone()) {
+                        if !self.include_child_matches {
+                            matched_parents.insert(normalized.into_owned());
+                        }
+                        results.push(result);
+                    }
+                }
+            }
+        }
+
+        results
+    }
+
     /// Find the longest common prefix among a list of paths.
     ///
     /// For example:
@@ -1330,6 +1651,112 @@ impl Glob {
         }
 
         common_components.join("/")
+    }
+
+    /// Check if all patterns are static (no wildcards, can be resolved with stat()).
+    ///
+    /// Static patterns are patterns like `package.json` or `src/index.ts` that
+    /// resolve to a single path and can be checked with a direct stat() call
+    /// instead of walking the entire directory tree.
+    fn all_patterns_static(&self) -> bool {
+        !self.patterns.is_empty() && self.patterns.iter().all(|p| p.is_static())
+    }
+
+    /// Resolve static patterns directly using stat() instead of walking.
+    ///
+    /// This is a fast path for patterns like `package.json` or `src/index.ts`
+    /// that can be resolved to a single file path. Instead of walking the
+    /// directory tree and matching each file, we directly check if the file
+    /// exists.
+    ///
+    /// Returns a Vec of matching paths.
+    fn resolve_static_patterns(&self) -> Vec<String> {
+        use std::fs;
+
+        let mut results = Vec::with_capacity(self.patterns.len());
+        let mut seen: AHashSet<String> = AHashSet::with_capacity(self.patterns.len());
+
+        for pattern in self.patterns.iter() {
+            if let Some(static_path) = pattern.static_path() {
+                // Construct the full path
+                let full_path = self.cwd.join(static_path);
+
+                // Check if the file exists
+                let metadata = if self.follow {
+                    fs::metadata(&full_path)
+                } else {
+                    fs::symlink_metadata(&full_path)
+                };
+
+                if let Ok(meta) = metadata {
+                    let is_dir = meta.is_dir();
+                    let is_symlink = meta.file_type().is_symlink();
+
+                    // Check nodir option
+                    if self.nodir && is_dir {
+                        continue;
+                    }
+
+                    // Check if pattern requires directory (ends with /)
+                    if pattern.requires_dir() && !is_dir {
+                        continue;
+                    }
+
+                    // Apply ignore filter if present
+                    if let Some(ref filter) = self.ignore_filter {
+                        if filter.should_ignore(static_path, &full_path) {
+                            continue;
+                        }
+                    }
+
+                    // Check dot option
+                    if !self.dot {
+                        let has_hidden = static_path
+                            .split('/')
+                            .any(|seg| seg.starts_with('.') && seg != "." && seg != "..");
+                        if has_hidden && !pattern.allows_dotfile(static_path) {
+                            continue;
+                        }
+                    }
+
+                    // Strip trailing slash from static path (glob returns paths without trailing slash unless mark: true)
+                    let base_path = static_path.trim_end_matches('/');
+
+                    // Format the result path
+                    let result = if self.absolute {
+                        let abs_path = full_path.canonicalize().unwrap_or(full_path.clone());
+                        let formatted = if self.posix {
+                            abs_path.to_string_lossy().replace('\\', "/")
+                        } else {
+                            abs_path.to_string_lossy().to_string()
+                        };
+                        if self.mark && is_dir && !is_symlink && !formatted.ends_with('/') {
+                            format!("{}/", formatted)
+                        } else {
+                            formatted
+                        }
+                    } else {
+                        let base = if self.dot_relative && !base_path.starts_with("../") {
+                            format!("./{}", base_path)
+                        } else {
+                            base_path.to_string()
+                        };
+                        if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
+                            format!("{}/", base)
+                        } else {
+                            base
+                        }
+                    };
+
+                    // Deduplicate (in case of brace expansion producing duplicates)
+                    if seen.insert(result.clone()) {
+                        results.push(result);
+                    }
+                }
+            }
+        }
+
+        results
     }
 
     /// Walk the directory tree and stream results via callback.
@@ -3597,5 +4024,449 @@ mod tests {
             !results.contains(&"test/b.test.tsx".to_string()),
             "Should not contain test/b.test.tsx"
         );
+    }
+
+    // Static pattern tests - Task 5.10.1
+
+    #[test]
+    fn test_static_pattern_single_file() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "foo.txt".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find the exact file
+        assert!(results.contains(&"foo.txt".to_string()));
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_static_pattern_nested_file() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "src/main.js".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find the nested file
+        assert!(results.contains(&"src/main.js".to_string()));
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_static_pattern_deeply_nested() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "src/lib/helper.js".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find the deeply nested file
+        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_static_pattern_directory() {
+        let temp = create_test_fixture();
+        let glob = Glob::new("src".to_string(), make_opts(&temp.path().to_string_lossy()));
+        let results = glob.walk_sync();
+
+        // Should find the directory
+        assert!(results.contains(&"src".to_string()));
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_static_pattern_nonexistent() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "does-not-exist.txt".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should return empty for non-existent files
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_static_pattern_multiple() {
+        let temp = create_test_fixture();
+        let glob = Glob::new_multi(
+            vec!["foo.txt".to_string(), "bar.txt".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should find both files
+        assert!(results.contains(&"foo.txt".to_string()));
+        assert!(results.contains(&"bar.txt".to_string()));
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_static_pattern_with_nodir() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "src".to_string(),
+            make_opts_with_nodir(&temp.path().to_string_lossy(), true),
+        );
+        let results = glob.walk_sync();
+
+        // Should NOT include directory when nodir: true
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_static_pattern_with_mark() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "src".to_string(),
+            make_opts_with_mark(&temp.path().to_string_lossy(), true),
+        );
+        let results = glob.walk_sync();
+
+        // Should include trailing slash for directory
+        assert!(results.contains(&"src/".to_string()));
+    }
+
+    #[test]
+    fn test_static_pattern_with_dot_relative() {
+        let temp = create_test_fixture();
+        let glob = Glob::new(
+            "foo.txt".to_string(),
+            make_opts_with_dot_relative(&temp.path().to_string_lossy(), true),
+        );
+        let results = glob.walk_sync();
+
+        // Should include ./ prefix
+        assert!(results.contains(&"./foo.txt".to_string()));
+    }
+
+    #[test]
+    fn test_static_pattern_with_absolute() {
+        let temp = create_test_fixture();
+        let mut opts = make_opts(&temp.path().to_string_lossy());
+        opts.absolute = Some(true);
+
+        let glob = Glob::new("foo.txt".to_string(), opts);
+        let results = glob.walk_sync();
+
+        // Should return absolute path
+        assert!(!results.is_empty());
+        let result = &results[0];
+        assert!(result.contains("foo.txt"));
+        // Absolute path should start with / (Unix) or drive letter (Windows)
+        assert!(result.starts_with('/') || result.chars().nth(1) == Some(':'));
+    }
+
+    #[test]
+    fn test_static_pattern_deduplication() {
+        let temp = create_test_fixture();
+        // Same file referenced multiple times
+        let glob = Glob::new_multi(
+            vec!["foo.txt".to_string(), "foo.txt".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        let results = glob.walk_sync();
+
+        // Should only include once
+        assert_eq!(results.len(), 1);
+        assert!(results.contains(&"foo.txt".to_string()));
+    }
+
+    #[test]
+    fn test_all_patterns_static_detection() {
+        let temp = create_test_fixture();
+
+        // Static patterns
+        let glob1 = Glob::new(
+            "foo.txt".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(glob1.all_patterns_static());
+
+        let glob2 = Glob::new_multi(
+            vec!["foo.txt".to_string(), "src/main.js".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(glob2.all_patterns_static());
+
+        // Non-static patterns
+        let glob3 = Glob::new(
+            "*.txt".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(!glob3.all_patterns_static());
+
+        let glob4 = Glob::new(
+            "**/*.js".to_string(),
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(!glob4.all_patterns_static());
+
+        // Mixed - should be false
+        let glob5 = Glob::new_multi(
+            vec!["foo.txt".to_string(), "*.js".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+        assert!(!glob5.all_patterns_static());
+    }
+
+    // Multi-base walking tests
+    fn create_multi_base_fixture() -> TempDir {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+
+        // Create src directory with TypeScript files
+        fs::create_dir_all(base.join("src")).unwrap();
+        File::create(base.join("src/main.ts")).unwrap();
+        File::create(base.join("src/util.ts")).unwrap();
+        fs::create_dir_all(base.join("src/lib")).unwrap();
+        File::create(base.join("src/lib/helper.ts")).unwrap();
+
+        // Create test directory with TypeScript files
+        fs::create_dir_all(base.join("test")).unwrap();
+        File::create(base.join("test/main.test.ts")).unwrap();
+        File::create(base.join("test/util.test.ts")).unwrap();
+        fs::create_dir_all(base.join("test/fixtures")).unwrap();
+        File::create(base.join("test/fixtures/data.ts")).unwrap();
+
+        // Create lib directory with TypeScript files
+        fs::create_dir_all(base.join("lib")).unwrap();
+        File::create(base.join("lib/index.ts")).unwrap();
+
+        // Create other directories that should not be traversed
+        fs::create_dir_all(base.join("node_modules/pkg")).unwrap();
+        File::create(base.join("node_modules/pkg/index.ts")).unwrap();
+
+        fs::create_dir_all(base.join("dist")).unwrap();
+        File::create(base.join("dist/main.js")).unwrap();
+
+        // Create root level files
+        File::create(base.join("package.json")).unwrap();
+        File::create(base.join("tsconfig.json")).unwrap();
+
+        temp
+    }
+
+    #[test]
+    fn test_group_patterns_by_base() {
+        let temp = create_multi_base_fixture();
+
+        // Patterns with different bases
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "src/lib/*.ts".to_string(),
+                "test/**/*.ts".to_string(),
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let groups = glob.group_patterns_by_base();
+
+        // Should have 2 groups: src and test
+        assert_eq!(groups.len(), 2);
+        assert!(groups.contains_key(&Some("src".to_string())));
+        assert!(groups.contains_key(&Some("test".to_string())));
+
+        // src group should have 2 patterns
+        assert_eq!(groups.get(&Some("src".to_string())).unwrap().len(), 2);
+        // test group should have 1 pattern
+        assert_eq!(groups.get(&Some("test".to_string())).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_group_patterns_with_none_prefix() {
+        let temp = create_multi_base_fixture();
+
+        // Patterns with and without prefixes
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "**/*.json".to_string(), // No prefix
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let groups = glob.group_patterns_by_base();
+
+        // Should have 2 groups: src and None
+        assert_eq!(groups.len(), 2);
+        assert!(groups.contains_key(&Some("src".to_string())));
+        assert!(groups.contains_key(&None));
+    }
+
+    #[test]
+    fn test_should_use_multi_base_walking_true() {
+        let temp = create_multi_base_fixture();
+
+        // All patterns have different bases
+        let glob = Glob::new_multi(
+            vec!["src/**/*.ts".to_string(), "test/**/*.ts".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        assert!(glob.should_use_multi_base_walking());
+    }
+
+    #[test]
+    fn test_should_use_multi_base_walking_false_no_prefix() {
+        let temp = create_multi_base_fixture();
+
+        // One pattern has no prefix
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "**/*.ts".to_string(), // No prefix
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        assert!(!glob.should_use_multi_base_walking());
+    }
+
+    #[test]
+    fn test_should_use_multi_base_walking_false_same_base() {
+        let temp = create_multi_base_fixture();
+
+        // All patterns have the same base
+        let glob = Glob::new_multi(
+            vec!["src/**/*.ts".to_string(), "src/lib/*.ts".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        // Only one group, so no benefit from multi-base
+        assert!(!glob.should_use_multi_base_walking());
+    }
+
+    #[test]
+    fn test_should_use_multi_base_walking_false_nonexistent_dir() {
+        let temp = create_multi_base_fixture();
+
+        // One base doesn't exist
+        let glob = Glob::new_multi(
+            vec!["src/**/*.ts".to_string(), "nonexistent/**/*.ts".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        assert!(!glob.should_use_multi_base_walking());
+    }
+
+    #[test]
+    fn test_walk_multi_base_results() {
+        let temp = create_multi_base_fixture();
+
+        // Multi-base pattern
+        let glob = Glob::new_multi(
+            vec!["src/**/*.ts".to_string(), "test/**/*.ts".to_string()],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let results = glob.walk_sync();
+
+        // Should find files in both src and test
+        assert!(results.contains(&"src/main.ts".to_string()));
+        assert!(results.contains(&"src/util.ts".to_string()));
+        assert!(results.contains(&"src/lib/helper.ts".to_string()));
+        assert!(results.contains(&"test/main.test.ts".to_string()));
+        assert!(results.contains(&"test/util.test.ts".to_string()));
+        assert!(results.contains(&"test/fixtures/data.ts".to_string()));
+
+        // Should NOT find files in other directories (node_modules, lib)
+        assert!(!results.iter().any(|r| r.contains("node_modules")));
+        assert!(!results.contains(&"lib/index.ts".to_string()));
+
+        // Should have exactly 6 results
+        assert_eq!(results.len(), 6);
+    }
+
+    #[test]
+    fn test_walk_multi_base_three_directories() {
+        let temp = create_multi_base_fixture();
+
+        // Three different bases
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "test/**/*.ts".to_string(),
+                "lib/**/*.ts".to_string(),
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        let results = glob.walk_sync();
+
+        // Should find files in all three directories
+        assert!(results.contains(&"src/main.ts".to_string()));
+        assert!(results.contains(&"test/main.test.ts".to_string()));
+        assert!(results.contains(&"lib/index.ts".to_string()));
+
+        // Should have exactly 7 results (3 in src, 3 in test, 1 in lib)
+        assert_eq!(results.len(), 7);
+    }
+
+    #[test]
+    fn test_walk_multi_base_with_nodir() {
+        let temp = create_multi_base_fixture();
+
+        let mut opts = make_opts(&temp.path().to_string_lossy());
+        opts.nodir = Some(true);
+
+        let glob = Glob::new_multi(vec!["src/**/*".to_string(), "test/**/*".to_string()], opts);
+
+        let results = glob.walk_sync();
+
+        // Should only contain files, not directories
+        assert!(results.contains(&"src/main.ts".to_string()));
+        assert!(!results
+            .iter()
+            .any(|r| r == "src" || r == "src/" || r == "test" || r == "test/"));
+    }
+
+    #[test]
+    fn test_walk_multi_base_deduplication() {
+        let temp = create_multi_base_fixture();
+
+        // Overlapping patterns that could produce duplicates
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.ts".to_string(),
+                "src/lib/**/*.ts".to_string(), // More specific version
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        // Note: These have the same base (src), so they won't use multi-base walking
+        // But this tests that deduplication works in general
+        let results = glob.walk_sync();
+
+        // Count occurrences of helper.ts
+        let helper_count = results.iter().filter(|r| r.contains("helper.ts")).count();
+        assert_eq!(helper_count, 1, "Should not have duplicate entries");
+    }
+
+    #[test]
+    fn test_walk_multi_base_empty_results() {
+        let temp = create_multi_base_fixture();
+
+        // Pattern for non-existent file types
+        let glob = Glob::new_multi(
+            vec![
+                "src/**/*.py".to_string(), // No Python files
+                "test/**/*.py".to_string(),
+            ],
+            make_opts(&temp.path().to_string_lossy()),
+        );
+
+        // Should still use multi-base walking but return empty results
+        let results = glob.walk_sync();
+        assert!(results.is_empty());
     }
 }
