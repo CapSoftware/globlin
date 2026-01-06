@@ -470,6 +470,13 @@ impl Glob {
             return self.resolve_static_patterns();
         }
 
+        // OPTIMIZATION: Shallow pattern fast path
+        // If ALL patterns have max_depth of 0 (root-level only), use direct readdir
+        // instead of the full walker machinery. This is 2-3x faster for patterns like "*.js".
+        if self.all_patterns_shallow() && self.ignore_filter.is_none() {
+            return self.resolve_shallow_patterns();
+        }
+
         // OPTIMIZATION: Multi-base walking
         // If patterns have different prefixes (e.g., ['src/**/*.ts', 'test/**/*.ts']),
         // walk from each prefix separately instead of from cwd.
@@ -1786,6 +1793,130 @@ impl Glob {
     /// instead of walking the entire directory tree.
     fn all_patterns_static(&self) -> bool {
         !self.patterns.is_empty() && self.patterns.iter().all(|p| p.is_static())
+    }
+
+    /// Check if all patterns are shallow (max_depth 0, root-level only).
+    ///
+    /// Shallow patterns like `*.js` or `*.{ts,tsx}` can be resolved with a single
+    /// readdir call instead of using the full walker machinery.
+    fn all_patterns_shallow(&self) -> bool {
+        if self.patterns.is_empty() {
+            return false;
+        }
+        // All patterns must have max_depth of 0 (no path separators, no **)
+        self.patterns.iter().all(|p| p.max_depth() == Some(0))
+    }
+
+    /// Resolve shallow patterns using direct readdir.
+    ///
+    /// This is a fast path for patterns like `*.js` that only match at the root level.
+    /// Instead of using the full walker machinery with all its overhead, we do a
+    /// single readdir and filter the results.
+    fn resolve_shallow_patterns(&self) -> Vec<String> {
+        use std::fs;
+
+        let mut results = Vec::new();
+        let mut seen: AHashSet<String> = AHashSet::new();
+
+        // Read the directory entries directly
+        let entries = match fs::read_dir(&self.cwd) {
+            Ok(rd) => rd,
+            Err(_) => return results,
+        };
+
+        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+
+        for entry_result in entries {
+            let entry = match entry_result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            let file_name = match entry.file_name().into_string() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+
+            // Filter dotfiles if dot option is false
+            if !self.dot && file_name.starts_with('.') {
+                continue;
+            }
+
+            // Get file type - use file_type() from DirEntry when possible
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            let is_dir_raw = file_type.is_dir();
+            let is_symlink = file_type.is_symlink();
+
+            // If following symlinks and this is a symlink, get target type
+            // Note: entry.metadata() returns metadata for the symlink itself on macOS,
+            // not the target. Use fs::metadata() on the path to follow the symlink.
+            let is_dir = if is_symlink && self.follow {
+                match fs::metadata(entry.path()) {
+                    Ok(meta) => meta.is_dir(),
+                    Err(_) => false, // Broken symlink
+                }
+            } else {
+                is_dir_raw
+            };
+
+            // Skip directories if nodir is true
+            if self.nodir && is_dir {
+                continue;
+            }
+
+            // Check if any pattern matches
+            let matches = self.patterns.iter().any(|p| {
+                let path_matches = match p.matches_fast(&file_name) {
+                    Some(result) => result,
+                    None => p.matches(&file_name),
+                };
+                if path_matches && p.requires_dir() {
+                    is_dir
+                } else {
+                    path_matches
+                }
+            });
+
+            if !matches {
+                continue;
+            }
+
+            // Build result path
+            let result = if self.absolute {
+                let abs_path = abs_cwd.join(&file_name);
+                let formatted = if self.posix {
+                    abs_path.to_string_lossy().replace('\\', "/")
+                } else {
+                    abs_path.to_string_lossy().to_string()
+                };
+                if self.mark && is_dir && !is_symlink && !formatted.ends_with('/') {
+                    format!("{formatted}/")
+                } else {
+                    formatted
+                }
+            } else {
+                let base = if self.dot_relative {
+                    format!("./{file_name}")
+                } else {
+                    file_name.clone()
+                };
+                if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
+                    format!("{base}/")
+                } else {
+                    base
+                }
+            };
+
+            if seen.insert(result.clone()) {
+                results.push(result);
+            }
+        }
+
+        results
     }
 
     /// Resolve static patterns directly using stat() instead of walking.

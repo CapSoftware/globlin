@@ -137,6 +137,17 @@
     "minipass": "^7.1.2",
     "path-scurry": "^2.0.0"
   },
+  "optionalDependencies": {
+    "@globlin/linux-x64-gnu": "1.0.0",
+    "@globlin/linux-x64-musl": "1.0.0",
+    "@globlin/linux-arm64-gnu": "1.0.0",
+    "@globlin/linux-arm64-musl": "1.0.0",
+    "@globlin/darwin-x64": "1.0.0",
+    "@globlin/darwin-arm64": "1.0.0",
+    "@globlin/win32-x64-msvc": "1.0.0",
+    "@globlin/win32-arm64-msvc": "1.0.0",
+    "@globlin/win32-ia32-msvc": "1.0.0"
+  },
   "tsd": {
     "directory": "tests",
     "testFilePattern": "types.test-d.ts",

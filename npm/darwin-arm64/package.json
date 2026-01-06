@@ -1,0 +1,35 @@
+{
+  "name": "@globlin/darwin-arm64",
+  "version": "1.0.0",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "main": "globlin.darwin-arm64.node",
+  "files": ["globlin.darwin-arm64.node"],
+  "description": "2-3x faster drop-in replacement for glob v13, built with Rust (macOS ARM64)",
+  "keywords": [
+    "glob",
+    "globbing",
+    "pattern",
+    "match",
+    "file",
+    "directory",
+    "fast",
+    "rust",
+    "napi",
+    "native",
+    "performance"
+  ],
+  "author": "Anomaly",
+  "homepage": "https://github.com/anomalyco/globlin#readme",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/globlin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anomalyco/globlin/issues"
+  }
+}

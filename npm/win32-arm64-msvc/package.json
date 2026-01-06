@@ -1,0 +1,35 @@
+{
+  "name": "@globlin/win32-arm64-msvc",
+  "version": "1.0.0",
+  "os": ["win32"],
+  "cpu": ["arm64"],
+  "main": "globlin.win32-arm64-msvc.node",
+  "files": ["globlin.win32-arm64-msvc.node"],
+  "description": "2-3x faster drop-in replacement for glob v13, built with Rust (Windows ARM64)",
+  "keywords": [
+    "glob",
+    "globbing",
+    "pattern",
+    "match",
+    "file",
+    "directory",
+    "fast",
+    "rust",
+    "napi",
+    "native",
+    "performance"
+  ],
+  "author": "Anomaly",
+  "homepage": "https://github.com/anomalyco/globlin#readme",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/globlin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anomalyco/globlin/issues"
+  }
+}

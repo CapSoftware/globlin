@@ -67,6 +67,11 @@ jobs:
             target: aarch64-pc-windows-msvc
             build: npm run build -- --target aarch64-pc-windows-msvc
 
+          # Windows x86 (32-bit)
+          - host: windows-latest
+            target: i686-pc-windows-msvc
+            build: npm run build -- --target i686-pc-windows-msvc
+
     steps:
       - uses: actions/checkout@v4
 
@@ -77,7 +82,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.settings.target }}
 
