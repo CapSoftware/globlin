@@ -14,6 +14,10 @@ pub mod processor;
 pub mod util;
 pub mod walker;
 
+// Platform-specific I/O optimizations
+#[cfg(target_os = "linux")]
+pub mod io_uring_walker;
+
 // Re-exports
 pub use glob::PathData;
 pub use glob::*;

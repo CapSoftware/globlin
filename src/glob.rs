@@ -401,6 +401,7 @@ impl Glob {
 
         let parallel = options.parallel.unwrap_or(false);
         let cache = options.cache.unwrap_or(false);
+        let use_native_io = options.use_native_io.unwrap_or(false);
 
         let walk_options = WalkOptions::new()
             .follow_symlinks(follow)
@@ -408,7 +409,8 @@ impl Glob {
             .dot(true)
             .need_accurate_symlink_detection(need_accurate_symlink_detection)
             .parallel(parallel)
-            .cache(cache);
+            .cache(cache)
+            .use_native_io(use_native_io);
 
         // Pre-compute: check if any pattern requires directory matching (ends with /)
         let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());

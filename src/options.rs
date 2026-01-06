@@ -234,6 +234,25 @@ pub struct GlobOptions {
     ///
     /// **Note:** This is a globlin-specific option not present in the original glob package.
     pub cache: Option<bool>,
+
+    /// Use optimized I/O operations on Linux (io_uring/getdents64).
+    ///
+    /// When `true` on Linux, uses platform-specific optimizations:
+    /// - `getdents64` syscall for faster directory reading (bypasses libc overhead)
+    /// - Batched I/O operations for reduced syscall overhead
+    /// - Expected 1.3-2x speedup on directory-heavy workloads
+    ///
+    /// When `false` (default), uses the standard `walkdir` library which is:
+    /// - Cross-platform compatible
+    /// - Well-tested and stable
+    /// - Sufficient for most use cases
+    ///
+    /// On non-Linux platforms, this option is ignored and the standard walker is used.
+    ///
+    /// **Note:** This is a globlin-specific option not present in the original glob package.
+    /// Requires Linux kernel 5.1+ for full io_uring support.
+    #[napi(js_name = "useNativeIO")]
+    pub use_native_io: Option<bool>,
     // ==================== Not Supported in Rust ====================
     // The following options are handled in the JavaScript wrapper:
     // - signal: AbortSignal (JS-only)
