@@ -65,6 +65,7 @@
     "bench:parallel:all": "npx tsx benches/parallel_bench.ts --all",
     "bench:parallel:large": "npx tsx benches/parallel_bench.ts --large",
     "bench:cache": "npx tsx benches/cache_reuse_bench.ts",
+    "bench:cache:perf": "npx tsx benches/cache_performance_bench.ts",
     "bench:setup": "node benches/setup-fixtures.js",
     "bench:setup:huge": "node benches/setup-huge-fixture.js",
     "universal": "napi universal",
