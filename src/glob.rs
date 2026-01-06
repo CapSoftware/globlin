@@ -4278,8 +4278,10 @@ mod tests {
         std::fs::write(temp_path.join("test/a.test.ts"), "").unwrap();
         std::fs::write(temp_path.join("test/b.test.tsx"), "").unwrap();
 
-        let mut options = GlobOptions::default();
-        options.cwd = Some(temp_path.to_string_lossy().to_string());
+        let options = GlobOptions {
+            cwd: Some(temp_path.to_string_lossy().to_string()),
+            ..GlobOptions::default()
+        };
 
         let glob = Glob::new_multi(vec!["**/*.test.ts".to_string()], options);
         let results = glob.walk_sync();
@@ -4761,31 +4763,31 @@ mod tests {
             let results_set: std::collections::HashSet<_> = results.iter().collect();
 
             assert!(
-                results_set.contains(&"src/main.ts".to_string()),
+                results_set.contains(&String::from("src/main.ts")),
                 "Should contain src/main.ts"
             );
             assert!(
-                results_set.contains(&"src/util.ts".to_string()),
+                results_set.contains(&String::from("src/util.ts")),
                 "Should contain src/util.ts"
             );
             assert!(
-                results_set.contains(&"src/lib/helper.ts".to_string()),
+                results_set.contains(&String::from("src/lib/helper.ts")),
                 "Should contain src/lib/helper.ts"
             );
             assert!(
-                results_set.contains(&"test/main.test.ts".to_string()),
+                results_set.contains(&String::from("test/main.test.ts")),
                 "Should contain test/main.test.ts"
             );
             assert!(
-                results_set.contains(&"test/util.test.ts".to_string()),
+                results_set.contains(&String::from("test/util.test.ts")),
                 "Should contain test/util.test.ts"
             );
             assert!(
-                results_set.contains(&"test/fixtures/data.ts".to_string()),
+                results_set.contains(&String::from("test/fixtures/data.ts")),
                 "Should contain test/fixtures/data.ts"
             );
             assert!(
-                results_set.contains(&"lib/index.ts".to_string()),
+                results_set.contains(&String::from("lib/index.ts")),
                 "Should contain lib/index.ts"
             );
 

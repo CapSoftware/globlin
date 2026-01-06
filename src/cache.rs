@@ -709,9 +709,9 @@ mod tests {
             .unwrap()
             .as_nanos();
 
-        let p1 = format!("diff_test_{}_*.aaa", uuid);
-        let p2 = format!("diff_test_{}_*.bbb", uuid);
-        let p3 = format!("diff_test_{}/**/*.ccc", uuid);
+        let p1 = format!("diff_test_{uuid}_*.aaa");
+        let p2 = format!("diff_test_{uuid}_*.bbb");
+        let p3 = format!("diff_test_{uuid}/**/*.ccc");
 
         // Compile patterns
         let pattern1 = get_or_compile_pattern(&p1, &options);

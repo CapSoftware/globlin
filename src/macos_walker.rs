@@ -667,19 +667,16 @@ mod tests {
             .map(|e| e.name.to_string_lossy().to_string())
             .collect();
         assert!(
-            names.contains(&"file1.txt".to_string()),
-            "Missing file1.txt, got: {:?}",
-            names
+            names.contains(&String::from("file1.txt")),
+            "Missing file1.txt, got: {names:?}",
         );
         assert!(
-            names.contains(&"file2.txt".to_string()),
-            "Missing file2.txt, got: {:?}",
-            names
+            names.contains(&String::from("file2.txt")),
+            "Missing file2.txt, got: {names:?}",
         );
         assert!(
-            names.contains(&"subdir".to_string()),
-            "Missing subdir, got: {:?}",
-            names
+            names.contains(&String::from("subdir")),
+            "Missing subdir, got: {names:?}",
         );
         assert!(!names.contains(&".".to_string()));
         assert!(!names.contains(&"..".to_string()));
@@ -1079,7 +1076,7 @@ mod tests {
         // Create enough files to trigger large directory detection
         // (less than actual threshold for speed, but validates the tracking logic)
         for i in 0..100 {
-            File::create(base.join(format!("file_{}.txt", i))).unwrap();
+            File::create(base.join(format!("file_{i}.txt"))).unwrap();
         }
 
         let walker = MacosWalker::new(base.to_path_buf(), WalkOptions::default());
