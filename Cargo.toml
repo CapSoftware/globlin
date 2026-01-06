@@ -44,6 +44,7 @@ libc = "0.2"  # For getdents64 syscall and kernel version detection
 # Platform-specific I/O optimizations (macOS)
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"  # For getdirentries64 syscall
+dispatch = "0.2"  # Grand Central Dispatch for parallel walking
 
 [build-dependencies]
 napi-build = "2.1"

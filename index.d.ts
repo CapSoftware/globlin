@@ -310,6 +310,32 @@ export interface GlobOptions {
    * Requires Linux kernel 5.1+ for full io_uring support.
    */
   useNativeIO?: boolean
+  /**
+   * Use Grand Central Dispatch (GCD) for parallel walking on macOS.
+   *
+   * When `true` on macOS, uses Apple's Grand Central Dispatch framework for
+   * parallel directory traversal. This provides:
+   * - Native macOS scheduler integration
+   * - Automatic handling of efficiency vs performance cores on Apple Silicon
+   * - Better power management than generic thread pools
+   * - Lower overhead than rayon for I/O-bound workloads
+   *
+   * When `false` (default), uses the standard walker which is often faster
+   * on modern SSDs due to reduced coordination overhead.
+   *
+   * **When to use:**
+   * - Large directory trees (100k+ files) on Macs with many cores
+   * - Network filesystems where I/O latency dominates
+   * - When power efficiency matters (GCD respects system power state)
+   *
+   * **When NOT to use:**
+   * - Small to medium directories on SSD
+   * - When deterministic ordering is required
+   * - On non-macOS platforms (option is ignored)
+   *
+   * **Note:** This is a globlin-specific option not present in the original glob package.
+   */
+  useGcd?: boolean
 }
 /**
  * Escape magic glob characters in a pattern.
