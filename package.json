@@ -43,6 +43,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:types": "tsd",
+    "typecheck": "tsc --noEmit",
     "coverage": "npm run test:coverage && npm run coverage:rust",
     "coverage:rust": "cargo tarpaulin --out Html --output-dir coverage/rust --skip-clean --ignore-tests",
     "bench": "bash benches/benchmark.sh",
@@ -81,6 +83,7 @@
     "fast-check": "^4.5.3",
     "fast-glob": "^3.3.3",
     "glob": "^10.3.0",
+    "tsd": "^0.33.0",
     "tsx": "^4.7.0",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
@@ -89,5 +92,14 @@
     "minimatch": "^10.1.1",
     "minipass": "^7.1.2",
     "path-scurry": "^2.0.0"
+  },
+  "tsd": {
+    "directory": "tests",
+    "testFilePattern": "types.test-d.ts",
+    "compilerOptions": {
+      "esModuleInterop": true,
+      "moduleResolution": "NodeNext",
+      "module": "NodeNext"
+    }
   }
 }
