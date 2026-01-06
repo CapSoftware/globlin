@@ -511,6 +511,11 @@ impl Glob {
         // instead of the cwd, which can significantly reduce the number of files traversed.
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
 
+        // Pre-compute the prefix with trailing slash for efficient path concatenation.
+        // This avoids repeated format!() calls in the hot loop.
+        let prefix_with_slash: Option<String> =
+            prefix_to_strip.as_ref().map(|prefix| format!("{prefix}/"));
+
         // Adjust walk options for prefix-based walking
         // If we have a prefix, the user's max_depth is relative to cwd, but the walker
         // is relative to walk_root. We need to reduce max_depth by the prefix depth.
@@ -542,6 +547,8 @@ impl Glob {
         // Use Arc::clone for cheap reference counting instead of deep cloning patterns.
         let patterns_for_filter = Arc::clone(&self.patterns);
         let prefix_for_filter = prefix_to_strip.clone();
+        // Pre-compute prefix with slash for the filter to avoid repeated format! calls
+        let prefix_slash_for_filter = prefix_with_slash.clone();
 
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
             // Construct the path relative to cwd for pattern matching.
@@ -550,7 +557,12 @@ impl Glob {
                 if dir_path.is_empty() {
                     Cow::Borrowed(prefix.as_str())
                 } else {
-                    Cow::Owned(format!("{prefix}/{dir_path}"))
+                    // Use pre-computed prefix with slash for efficiency
+                    if let Some(ref prefix_slash) = prefix_slash_for_filter {
+                        Cow::Owned(format!("{prefix_slash}{dir_path}"))
+                    } else {
+                        Cow::Owned(format!("{prefix}/{dir_path}"))
+                    }
                 }
             } else {
                 Cow::Borrowed(dir_path)
@@ -785,6 +797,10 @@ impl Glob {
         // Calculate the walk root based on literal prefixes
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
 
+        // Pre-compute the prefix with trailing slash for efficient path concatenation
+        let prefix_with_slash: Option<String> =
+            prefix_to_strip.as_ref().map(|prefix| format!("{prefix}/"));
+
         // Adjust walk options for prefix-based walking
         let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
             let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
@@ -806,12 +822,15 @@ impl Glob {
         // Create directory pruning filter using Arc::clone for cheap reference counting
         let patterns_for_filter = Arc::clone(&self.patterns);
         let prefix_for_filter = prefix_to_strip.clone();
+        let prefix_slash_for_filter = prefix_with_slash.clone();
 
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
             // Use Cow to avoid allocation when no prefix is needed
             let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
                     Cow::Borrowed(prefix.as_str())
+                } else if let Some(ref prefix_slash) = prefix_slash_for_filter {
+                    Cow::Owned(format!("{prefix_slash}{dir_path}"))
                 } else {
                     Cow::Owned(format!("{prefix}/{dir_path}"))
                 }
@@ -1094,6 +1113,68 @@ impl Glob {
                 Cow::Owned(rel_str_from_walk_root.replace('\\', "/"))
             }
         }
+    }
+
+    /// Build a normalized path using a reusable buffer to minimize allocations.
+    /// This is the optimized hot path for scoped patterns where prefix concatenation
+    /// is needed for every file.
+    ///
+    /// # Arguments
+    /// * `rel_str_from_walk_root` - The path relative to the walk root
+    /// * `prefix_to_strip` - The original prefix (without trailing slash)
+    /// * `prefix_with_slash` - Pre-computed "prefix/" for fast concatenation
+    /// * `is_walk_root` - True if this is the walk root entry itself
+    /// * `buffer` - Reusable string buffer
+    #[inline]
+    fn normalize_path_buffered<'a>(
+        rel_str_from_walk_root: &str,
+        prefix_to_strip: &Option<String>,
+        prefix_with_slash: &Option<String>,
+        is_walk_root: bool,
+        buffer: &'a mut String,
+    ) -> &'a str {
+        // Fast path: no prefix and no backslashes - can't return borrowed reference
+        // from the input because we need to return from buffer for consistency
+        if prefix_to_strip.is_none() {
+            if !rel_str_from_walk_root.contains('\\') {
+                buffer.clear();
+                buffer.push_str(rel_str_from_walk_root);
+                return buffer.as_str();
+            }
+            // Has backslashes, needs conversion
+            buffer.clear();
+            for c in rel_str_from_walk_root.chars() {
+                buffer.push(if c == '\\' { '/' } else { c });
+            }
+            return buffer.as_str();
+        }
+
+        // Clear and reuse buffer
+        buffer.clear();
+
+        let prefix = prefix_to_strip.as_ref().unwrap();
+
+        if is_walk_root {
+            buffer.push_str(prefix);
+        } else {
+            // Use pre-computed prefix with slash for efficiency
+            if let Some(ref prefix_slash) = prefix_with_slash {
+                buffer.push_str(prefix_slash);
+            } else {
+                buffer.push_str(prefix);
+                buffer.push('/');
+            }
+
+            if rel_str_from_walk_root.contains('\\') {
+                // Convert backslashes while appending
+                for c in rel_str_from_walk_root.chars() {
+                    buffer.push(if c == '\\' { '/' } else { c });
+                }
+            } else {
+                buffer.push_str(rel_str_from_walk_root);
+            }
+        }
+        buffer.as_str()
     }
 
     /// Build the final result path from the normalized path.
@@ -1470,6 +1551,10 @@ impl Glob {
             Some(common_prefix.clone())
         };
 
+        // Pre-compute the prefix with trailing slash for efficient path concatenation
+        let prefix_with_slash: Option<String> =
+            prefix_to_strip.as_ref().map(|prefix| format!("{prefix}/"));
+
         // Adjust walk options for this prefix
         let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
             let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
@@ -1491,11 +1576,14 @@ impl Glob {
         // Create pruning filter for this group's patterns
         let patterns_arc: Arc<[Pattern]> = group_patterns.iter().cloned().cloned().collect();
         let prefix_for_filter = prefix_to_strip.clone();
+        let prefix_slash_for_filter = prefix_with_slash.clone();
 
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
             let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
                     Cow::Borrowed(prefix.as_str())
+                } else if let Some(ref prefix_slash) = prefix_slash_for_filter {
+                    Cow::Owned(format!("{prefix_slash}{dir_path}"))
                 } else {
                     Cow::Owned(format!("{prefix}/{dir_path}"))
                 }
@@ -1831,6 +1919,10 @@ impl Glob {
         let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
 
+        // Pre-compute the prefix with trailing slash for efficient path concatenation
+        let prefix_with_slash: Option<String> =
+            prefix_to_strip.as_ref().map(|prefix| format!("{prefix}/"));
+
         // Adjust walk options for prefix-based walking
         let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
             let prefix_depth = prefix.split('/').filter(|s| !s.is_empty()).count();
@@ -1852,11 +1944,14 @@ impl Glob {
         // Create directory pruning filter
         let patterns_for_filter = Arc::clone(&self.patterns);
         let prefix_for_filter = prefix_to_strip.clone();
+        let prefix_slash_for_filter = prefix_with_slash.clone();
 
         let prune_filter = Box::new(move |dir_path: &str| -> bool {
             let path_from_cwd: Cow<'_, str> = if let Some(ref prefix) = prefix_for_filter {
                 if dir_path.is_empty() {
                     Cow::Borrowed(prefix.as_str())
+                } else if let Some(ref prefix_slash) = prefix_slash_for_filter {
+                    Cow::Owned(format!("{prefix_slash}{dir_path}"))
                 } else {
                     Cow::Owned(format!("{prefix}/{dir_path}"))
                 }
