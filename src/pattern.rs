@@ -1,7 +1,6 @@
 use fancy_regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::path::Path;
 
 /// Fast-path matching strategies for common patterns.
 /// These allow skipping expensive regex matching for simple cases.
@@ -349,102 +348,143 @@ impl Pattern {
     /// assert_eq!(complex.matches_fast("src/lib/foo.js"), None);
     /// ```
     pub fn matches_fast(&self, path: &str) -> Option<bool> {
-        let path_ref = Path::new(path);
+        use crate::simd;
+
+        let path_bytes = path.as_bytes();
 
         match &self.fast_path {
             FastPath::ExtensionOnly(ext) => {
-                // Check if file extension matches
-                // For case-insensitive, compare lowercase
-                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
-                    if self.nocase {
-                        Some(file_ext.to_lowercase() == ext.to_lowercase())
-                    } else {
-                        Some(file_ext == ext)
-                    }
+                // Use SIMD-optimized extension checking
+                let ext_bytes = ext.as_bytes();
+                if self.nocase {
+                    Some(simd::has_extension_nocase(path_bytes, ext_bytes))
                 } else {
-                    Some(false)
+                    Some(simd::has_extension(path_bytes, ext_bytes))
                 }
             }
             FastPath::ExtensionSet(exts) => {
-                // Check if file extension is in the set
-                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
+                // Check if file extension is in the set using SIMD
+                if let Some(file_ext) = simd::get_extension(path_bytes) {
                     if self.nocase {
-                        let lower_ext = file_ext.to_lowercase();
-                        Some(exts.iter().any(|e| e.to_lowercase() == lower_ext))
+                        Some(exts.iter().any(|e| {
+                            let e_bytes = e.as_bytes();
+                            file_ext.len() == e_bytes.len()
+                                && file_ext.iter().zip(e_bytes.iter()).all(|(&a, &b)| {
+                                    a.to_ascii_lowercase() == b.to_ascii_lowercase()
+                                })
+                        }))
                     } else {
-                        Some(exts.contains(file_ext))
+                        Some(
+                            exts.iter()
+                                .any(|e| simd::bytes_equal(file_ext, e.as_bytes())),
+                        )
                     }
                 } else {
                     Some(false)
                 }
             }
             FastPath::LiteralName(name) => {
-                // Check if filename matches exactly
-                if let Some(file_name) = path_ref.file_name().and_then(|n| n.to_str()) {
-                    if self.nocase {
-                        Some(file_name.to_lowercase() == name.to_lowercase())
-                    } else {
-                        Some(file_name == name)
-                    }
+                // Get filename using SIMD-optimized separator search
+                let filename_start = simd::find_last_separator(path_bytes)
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                let file_name = &path_bytes[filename_start..];
+                let name_bytes = name.as_bytes();
+
+                if self.nocase {
+                    Some(simd::eq_ignore_ascii_case_fast(
+                        std::str::from_utf8(file_name).unwrap_or(""),
+                        name,
+                    ))
                 } else {
-                    Some(false)
+                    Some(simd::bytes_equal(file_name, name_bytes))
                 }
             }
             FastPath::RecursiveExtension(ext) => {
-                // For **/*.ext, just check the extension (path can be at any depth)
-                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
-                    if self.nocase {
-                        Some(file_ext.to_lowercase() == ext.to_lowercase())
-                    } else {
-                        Some(file_ext == ext)
-                    }
+                // Use SIMD-optimized extension checking
+                let ext_bytes = ext.as_bytes();
+                if self.nocase {
+                    Some(simd::has_extension_nocase(path_bytes, ext_bytes))
                 } else {
-                    Some(false)
+                    Some(simd::has_extension(path_bytes, ext_bytes))
                 }
             }
             FastPath::RecursiveExtensionSet(exts) => {
-                // For **/*.{ext1,ext2}, check extension against the set
-                if let Some(file_ext) = path_ref.extension().and_then(|e| e.to_str()) {
+                // Check extension against the set using SIMD
+                if let Some(file_ext) = simd::get_extension(path_bytes) {
                     if self.nocase {
-                        let lower_ext = file_ext.to_lowercase();
-                        Some(exts.iter().any(|e| e.to_lowercase() == lower_ext))
+                        Some(exts.iter().any(|e| {
+                            let e_bytes = e.as_bytes();
+                            file_ext.len() == e_bytes.len()
+                                && file_ext.iter().zip(e_bytes.iter()).all(|(&a, &b)| {
+                                    a.to_ascii_lowercase() == b.to_ascii_lowercase()
+                                })
+                        }))
                     } else {
-                        Some(exts.contains(file_ext))
+                        Some(
+                            exts.iter()
+                                .any(|e| simd::bytes_equal(file_ext, e.as_bytes())),
+                        )
                     }
                 } else {
                     Some(false)
                 }
             }
             FastPath::SuffixMatch { suffix, recursive } => {
-                // For patterns like *.test.js or **/*.spec.ts, check if filename ends with suffix
-                if let Some(file_name) = path_ref.file_name().and_then(|n| n.to_str()) {
-                    // For non-recursive patterns, path must be at root level (no path separators)
-                    if !recursive && path.contains('/') {
-                        return Some(false);
-                    }
-                    if self.nocase {
-                        Some(file_name.to_lowercase().ends_with(&suffix.to_lowercase()))
+                // Get filename using SIMD-optimized separator search
+                let filename_start = simd::find_last_separator(path_bytes)
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                let file_name = &path_bytes[filename_start..];
+                let suffix_bytes = suffix.as_bytes();
+
+                // For non-recursive patterns, path must be at root level (no path separators)
+                if !recursive && simd::has_separator(path_bytes) {
+                    return Some(false);
+                }
+
+                if self.nocase {
+                    // Case-insensitive suffix match
+                    if file_name.len() < suffix_bytes.len() {
+                        Some(false)
                     } else {
-                        Some(file_name.ends_with(suffix))
+                        let offset = file_name.len() - suffix_bytes.len();
+                        let file_suffix = &file_name[offset..];
+                        Some(
+                            file_suffix
+                                .iter()
+                                .zip(suffix_bytes.iter())
+                                .all(|(&a, &b)| a.to_ascii_lowercase() == b.to_ascii_lowercase()),
+                        )
                     }
                 } else {
-                    Some(false)
+                    Some(simd::ends_with_fast(file_name, suffix_bytes))
                 }
             }
             FastPath::PrefixMatch(prefix) => {
-                // For patterns like foo* or test-*, check if filename starts with prefix
                 // This only applies to root-level files (no path separators)
-                if path.contains('/') {
+                if simd::has_separator(path_bytes) {
                     return Some(false);
                 }
-                if let Some(file_name) = path_ref.file_name().and_then(|n| n.to_str()) {
-                    if self.nocase {
-                        Some(file_name.to_lowercase().starts_with(&prefix.to_lowercase()))
+
+                // For root-level files, the path IS the filename
+                let prefix_bytes = prefix.as_bytes();
+
+                if self.nocase {
+                    // Case-insensitive prefix match
+                    if path_bytes.len() < prefix_bytes.len() {
+                        Some(false)
                     } else {
-                        Some(file_name.starts_with(prefix))
+                        let file_prefix = &path_bytes[..prefix_bytes.len()];
+                        Some(
+                            file_prefix
+                                .iter()
+                                .zip(prefix_bytes.iter())
+                                .all(|(&a, &b)| a.to_ascii_lowercase() == b.to_ascii_lowercase()),
+                        )
                     }
                 } else {
-                    Some(false)
+                    Some(simd::starts_with_fast(path_bytes, prefix_bytes))
                 }
             }
             FastPath::None => None, // Fall back to regex

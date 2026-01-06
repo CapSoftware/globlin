@@ -14,12 +14,18 @@ pub mod processor;
 pub mod util;
 pub mod walker;
 
+// SIMD-optimized string operations
+pub mod simd;
+
 // Platform-specific I/O optimizations
 #[cfg(target_os = "linux")]
 pub mod io_uring_walker;
 
 #[cfg(target_os = "macos")]
 pub mod macos_walker;
+
+#[cfg(target_os = "macos")]
+pub mod gcd_walker;
 
 // Re-exports
 pub use glob::PathData;
