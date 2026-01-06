@@ -25,9 +25,11 @@ Thumbs.db
 # Build artifacts
 *.log
 
-# Markdown files (except README)
+# Markdown files (except README and user-facing docs)
 *.md
 !README.md
+!docs/api/**/*.md
+!docs/guides/**/*.md
 
 # Coverage reports
 coverage/
