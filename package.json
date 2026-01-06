@@ -1,45 +1,89 @@
 {
   "name": "globlin",
-  "version": "0.1.0",
-  "description": "A high-performance glob pattern matcher - 20-30x faster drop-in replacement for glob",
-  "main": "index.js",
-  "repository": "https://github.com/yourusername/globlin",
+  "version": "1.0.0",
+  "description": "2-3x faster drop-in replacement for glob v13, built with Rust",
+  "main": "./js/index.js",
+  "types": "./js/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./js/index.d.ts",
+      "import": "./js/index.js",
+      "require": "./js/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anomalyco/globlin.git"
+  },
+  "homepage": "https://github.com/anomalyco/globlin#readme",
+  "bugs": {
+    "url": "https://github.com/anomalyco/globlin/issues"
+  },
+  "author": "Anomaly",
   "license": "MIT",
   "keywords": [
     "glob",
+    "globbing",
     "pattern",
     "match",
     "file",
     "directory",
     "fast",
     "rust",
-    "napi"
+    "napi",
+    "native",
+    "performance",
+    "drop-in",
+    "replacement",
+    "minimatch",
+    "wildcard"
   ],
   "files": [
     "index.js",
     "index.d.ts",
-    "js"
+    "js/**/*.js",
+    "js/**/*.d.ts",
+    "js/**/*.d.ts.map",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "napi": {
     "name": "globlin",
     "triples": {
+      "defaults": true,
       "additional": [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
         "aarch64-unknown-linux-musl",
         "aarch64-pc-windows-msvc",
-        "x86_64-unknown-linux-musl"
+        "x86_64-unknown-linux-musl",
+        "i686-pc-windows-msvc"
       ]
     }
   },
   "engines": {
-    "node": ">= 20"
+    "node": ">=20.0.0"
   },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64",
+    "ia32"
+  ],
   "scripts": {
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
+    "build": "napi build --platform --release && npm run build:ts",
+    "build:debug": "napi build --platform && npm run build:ts",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "build:native": "napi build --platform --release",
+    "clean": "rm -rf js/*.js js/*.mjs js/*.d.ts js/*.map",
+    "prepublishOnly": "npm run clean && npm run build && napi prepublish -t npm",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
