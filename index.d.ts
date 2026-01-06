@@ -271,6 +271,26 @@ export interface GlobOptions {
    * Results may be returned in a different order when `parallel: true`.
    */
   parallel?: boolean
+  /**
+   * Enable directory caching for repeated glob operations.
+   *
+   * When `true`, caches directory listings in memory with a TTL-based invalidation
+   * strategy. This provides significant speedup when:
+   * - Running multiple glob operations on the same directories
+   * - Using the Glob class with cache reuse (passing Glob as options)
+   * - Patterns with overlapping directory prefixes
+   *
+   * When `false` (default), directories are read fresh each time, which is:
+   * - More accurate if the filesystem is changing
+   * - Lower memory usage (no cached directory listings)
+   * - Slightly slower for repeated operations
+   *
+   * The cache has a 5-second TTL to balance freshness with performance.
+   * Use `cache: false` when you expect filesystem changes during the operation.
+   *
+   * **Note:** This is a globlin-specific option not present in the original glob package.
+   */
+  cache?: boolean
 }
 /**
  * Escape magic glob characters in a pattern.

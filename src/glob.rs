@@ -400,13 +400,15 @@ impl Glob {
         let need_accurate_symlink_detection = mark && follow;
 
         let parallel = options.parallel.unwrap_or(false);
+        let cache = options.cache.unwrap_or(false);
 
         let walk_options = WalkOptions::new()
             .follow_symlinks(follow)
             .max_depth(walker_max_depth)
             .dot(true)
             .need_accurate_symlink_detection(need_accurate_symlink_detection)
-            .parallel(parallel);
+            .parallel(parallel)
+            .cache(cache);
 
         // Pre-compute: check if any pattern requires directory matching (ends with /)
         let any_pattern_requires_dir = patterns.iter().any(|p| p.requires_dir());
@@ -2237,7 +2239,7 @@ mod tests {
             "a/symlink/**/*.txt".to_string(),
             make_opts(&temp.path().to_string_lossy()),
         );
-        let results = glob.walk_sync();
+        let _results = glob.walk_sync();
 
         // When explicitly matching through a symlink, we should traverse it
         // even without follow:true (default behavior)

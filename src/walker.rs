@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
+use crate::cache::read_dir_cached;
+
 // Parallel walking support via jwalk (jwalk::WalkDir is used directly)
 
 /// Normalize path separators from backslash to forward slash.
@@ -34,6 +36,10 @@ pub struct WalkOptions {
     /// When true, uses jwalk for parallel traversal which can be faster on HDDs and network drives.
     /// When false (default), uses walkdir for serial traversal which is faster on SSDs.
     pub parallel: bool,
+    /// Enable directory caching for repeated glob operations.
+    /// When true, uses an LRU cache with TTL-based invalidation to cache directory listings.
+    /// This provides significant speedup for repeated glob operations on the same directories.
+    pub cache: bool,
 }
 
 /// A filter function that can prune directories during walking.
@@ -67,6 +73,11 @@ impl WalkOptions {
 
     pub fn parallel(mut self, parallel: bool) -> Self {
         self.parallel = parallel;
+        self
+    }
+
+    pub fn cache(mut self, cache: bool) -> Self {
+        self.cache = cache;
         self
     }
 }
@@ -238,10 +249,13 @@ impl Walker {
     /// Note: When a dir_prune_filter is set, the walk collects entries into a Vec
     /// to properly apply the filter. Without a filter, it returns a lazy iterator.
     ///
+    /// If `cache` is enabled in options, uses a cached directory reader.
     /// If `parallel` is enabled in options, uses jwalk for parallel traversal.
     /// Otherwise, uses walkdir for serial traversal.
     pub fn walk(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
-        if self.options.parallel {
+        if self.options.cache {
+            self.walk_cached()
+        } else if self.options.parallel {
             self.walk_parallel()
         } else {
             self.walk_serial()
@@ -511,6 +525,177 @@ impl Walker {
             Box::new(filtered.into_iter())
         } else {
             Box::new(raw_entries.into_iter())
+        }
+    }
+
+    /// Walk the directory tree using cached directory reads.
+    /// This mode provides significant speedup for repeated glob operations
+    /// on the same directories by caching directory listings with TTL-based invalidation.
+    fn walk_cached(&self) -> Box<dyn Iterator<Item = WalkEntry> + '_> {
+        let need_accurate_symlink = self.options.need_accurate_symlink_detection;
+        let dot = self.options.dot;
+        let follow_symlinks = self.options.follow_symlinks;
+        let max_depth = self.options.max_depth;
+        let root = self.root.clone();
+
+        // Collect entries using recursive cached walking
+        let mut entries = Vec::new();
+
+        // Add root entry
+        if let Ok(meta) = self.root.symlink_metadata() {
+            let is_symlink = meta.file_type().is_symlink();
+            let (is_dir, is_file) = if is_symlink && follow_symlinks {
+                // When following symlinks, get the target type
+                match self.root.metadata() {
+                    Ok(target_meta) => {
+                        let ft = target_meta.file_type();
+                        (ft.is_dir(), ft.is_file())
+                    }
+                    Err(_) => (false, false), // Broken symlink
+                }
+            } else {
+                let ft = meta.file_type();
+                (ft.is_dir(), ft.is_file())
+            };
+
+            entries.push(WalkEntry {
+                path: self.root.clone(),
+                depth: 0,
+                is_dir,
+                is_file,
+                is_symlink,
+            });
+
+            // If root is a directory, walk its contents
+            if is_dir {
+                self.walk_cached_recursive(
+                    &self.root,
+                    1,
+                    &root,
+                    dot,
+                    follow_symlinks,
+                    max_depth,
+                    need_accurate_symlink,
+                    &mut entries,
+                );
+            }
+        }
+
+        // Apply pruning filter if set
+        if let Some(ref prune_filter) = self.dir_prune_filter {
+            let filtered: Vec<WalkEntry> = entries
+                .into_iter()
+                .filter(|entry| {
+                    if let Ok(rel_path) = entry.path().strip_prefix(&root) {
+                        let rel_lossy = rel_path.to_string_lossy();
+                        let rel_str = normalize_path_str(&rel_lossy);
+                        // Root directory always passes
+                        if rel_str.is_empty() {
+                            return true;
+                        }
+                        // For directories, check if they should be included
+                        if entry.is_dir() && !prune_filter(&rel_str) {
+                            return false;
+                        }
+                        // For files, check if their parent directory passes the filter
+                        if !entry.is_dir() {
+                            if let Some(parent) = rel_path.parent() {
+                                let parent_lossy = parent.to_string_lossy();
+                                let parent_str = normalize_path_str(&parent_lossy);
+                                if !parent_str.is_empty() && !prune_filter(&parent_str) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    true
+                })
+                .collect();
+
+            Box::new(filtered.into_iter())
+        } else {
+            Box::new(entries.into_iter())
+        }
+    }
+
+    /// Recursive helper for cached walking.
+    fn walk_cached_recursive(
+        &self,
+        dir_path: &Path,
+        depth: usize,
+        root: &Path,
+        dot: bool,
+        follow_symlinks: bool,
+        max_depth: Option<usize>,
+        need_accurate_symlink: bool,
+        entries: &mut Vec<WalkEntry>,
+    ) {
+        // Check depth limit
+        if let Some(max) = max_depth {
+            if depth > max {
+                return;
+            }
+        }
+
+        // Apply pruning filter before reading directory
+        if let Some(ref prune_filter) = self.dir_prune_filter {
+            if let Ok(rel_path) = dir_path.strip_prefix(root) {
+                let rel_lossy = rel_path.to_string_lossy();
+                let rel_str = normalize_path_str(&rel_lossy);
+                if !rel_str.is_empty() && !prune_filter(&rel_str) {
+                    return;
+                }
+            }
+        }
+
+        // Read directory using cache
+        let cached_entries = read_dir_cached(dir_path, follow_symlinks);
+
+        for cached_entry in cached_entries {
+            // Filter dot files if dot option is false
+            if !dot && cached_entry.name.starts_with('.') {
+                continue;
+            }
+
+            let entry_path = dir_path.join(&cached_entry.name);
+
+            // Determine entry types
+            let (is_dir, is_file, is_symlink) = if need_accurate_symlink && follow_symlinks {
+                // Need accurate symlink detection: check symlink_metadata
+                let is_symlink = entry_path
+                    .symlink_metadata()
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false);
+                (cached_entry.is_dir, cached_entry.is_file, is_symlink)
+            } else {
+                (
+                    cached_entry.is_dir,
+                    cached_entry.is_file,
+                    cached_entry.is_symlink,
+                )
+            };
+
+            entries.push(WalkEntry {
+                path: entry_path.clone(),
+                depth,
+                is_dir,
+                is_file,
+                is_symlink,
+            });
+
+            // Recurse into directories (unless it's a symlink and we're not following)
+            if is_dir && (follow_symlinks || !cached_entry.is_symlink) {
+                self.walk_cached_recursive(
+                    &entry_path,
+                    depth + 1,
+                    root,
+                    dot,
+                    follow_symlinks,
+                    max_depth,
+                    need_accurate_symlink,
+                    entries,
+                );
+            }
         }
     }
 }
