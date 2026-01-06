@@ -20,16 +20,16 @@
     "performance"
   ],
   "author": "Anomaly",
-  "homepage": "https://github.com/anomalyco/globlin#readme",
+  "homepage": "https://github.com/capsoftware/globlin#readme",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anomalyco/globlin.git"
+    "url": "git+https://github.com/capsoftware/globlin.git"
   },
   "bugs": {
-    "url": "https://github.com/anomalyco/globlin/issues"
+    "url": "https://github.com/capsoftware/globlin/issues"
   }
 }
