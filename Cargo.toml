@@ -1,11 +1,11 @@
 [package]
 name = "globlin"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-authors = ["Globlin Contributors"]
-description = "A high-performance glob pattern matcher - 20-30x faster drop-in replacement for glob"
+authors = ["Ricardo Schlueter"]
+description = "A high-performance glob pattern matcher - 2-3x faster drop-in replacement for glob"
 license = "MIT"
-repository = "https://github.com/yourusername/globlin"
+repository = "https://github.com/capsoftware/globlin"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
