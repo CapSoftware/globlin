@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo (Unix)
         if: runner.os != 'Windows'
@@ -78,7 +78,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo (Unix)
         if: runner.os != 'Windows'
