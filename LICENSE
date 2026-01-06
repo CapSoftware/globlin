@@ -1,0 +1,76 @@
+MIT License
+
+Copyright (c) 2026 Anomaly
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Attribution
+
+Globlin is built upon the excellent work of:
+
+### glob
+Copyright (c) Isaac Z. Schlueter and Contributors
+https://github.com/isaacs/node-glob
+Licensed under ISC License
+
+### minimatch
+Copyright (c) Isaac Z. Schlueter and Contributors
+https://github.com/isaacs/minimatch
+Licensed under ISC License
+
+### path-scurry
+Copyright (c) Isaac Z. Schlueter and Contributors
+https://github.com/isaacs/path-scurry
+Licensed under BlueOak-1.0.0 License
+
+### minipass
+Copyright (c) Isaac Z. Schlueter and Contributors
+https://github.com/isaacs/minipass
+Licensed under ISC License
+
+### NAPI-RS
+Copyright (c) LongYinan and NAPI-RS Contributors
+https://github.com/napi-rs/napi-rs
+Licensed under MIT License
+
+### walkdir
+Copyright (c) Andrew Gallant
+https://github.com/BurntSushi/walkdir
+Licensed under MIT/Unlicense
+
+### jwalk
+Copyright (c) Byron Hood and Contributors
+https://github.com/byron/jwalk
+Licensed under MIT License
+
+### rayon
+Copyright (c) Niko Matsakis, Josh Stone, and Contributors
+https://github.com/rayon-rs/rayon
+Licensed under MIT/Apache-2.0 License
+
+### fancy-regex
+Copyright (c) The fancy-regex Authors
+https://github.com/fancy-regex/fancy-regex
+Licensed under MIT License
+
+---
+
+Additional Rust dependencies are listed in Cargo.toml with their respective licenses.
