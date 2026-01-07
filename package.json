@@ -128,6 +128,7 @@
     "bench:api:sync": "npx tsx benches/api/sync_bench.ts",
     "bench:api:async": "npx tsx benches/api/async_bench.ts",
     "bench:api:async:bottleneck": "npx tsx benches/api/async_bottleneck_analysis.ts",
+    "bench:api:stream": "npx tsx benches/api/stream_bench.ts",
     "bench:setup": "node benches/setup-fixtures.js",
     "bench:setup:huge": "node benches/setup-huge-fixture.js",
     "universal": "napi universal",
