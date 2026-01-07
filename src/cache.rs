@@ -795,17 +795,13 @@ mod tests {
         get_or_compile_pattern("clear_test_*.eee", &options);
         get_or_compile_pattern("clear_test_*.fff", &options);
 
-        let size_before = cache_size();
-        assert!(size_before >= 2);
-
+        // Just verify clear() doesn't panic - we can't assert on size
+        // because other tests running in parallel may add entries.
         clear_cache();
-        // Note: Can't assert size == 0 because other tests running in parallel
-        // may have added entries. Just verify clear() doesn't panic.
-        let size_after = cache_size();
-        assert!(
-            size_after <= size_before,
-            "Cache should be smaller or equal after clear"
-        );
+
+        // Re-add after clear to verify cache is operational
+        get_or_compile_pattern("clear_test_post_*.ggg", &options);
+        assert!(cache_size() > 0, "Cache should work after clear");
     }
 
     #[test]
