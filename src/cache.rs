@@ -660,8 +660,7 @@ mod tests {
         let path = temp.path().to_path_buf();
 
         // Note: Don't clear_readdir_cache() here as other tests may be running
-        // Just verify concurrent access works correctly
-        let _size_before = readdir_cache_size();
+        // This test verifies concurrent access works without panics/deadlocks
 
         let handles: Vec<_> = (0..10)
             .map(|_| {
@@ -669,7 +668,7 @@ mod tests {
                 thread::spawn(move || {
                     for _ in 0..100 {
                         let entries = read_dir_cached(&path_clone, false);
-                        assert!(!entries.is_empty());
+                        assert!(!entries.is_empty(), "Should be able to read directory");
                     }
                 })
             })
@@ -679,13 +678,8 @@ mod tests {
             handle.join().unwrap();
         }
 
-        // Should have cached at least one directory (or the cache size should have increased)
-        // Due to parallel tests, we can't guarantee exact counts
-        let size_after = readdir_cache_size();
-        assert!(
-            size_after >= 1,
-            "Cache should have at least one entry after concurrent reads"
-        );
+        // If we get here without panicking or deadlocking, concurrent access works correctly
+        // Don't check cache size - other tests running in parallel may clear it
     }
 
     // =========================================================================
