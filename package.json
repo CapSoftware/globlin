@@ -131,6 +131,7 @@
     "bench:api:stream": "npx tsx benches/api/stream_bench.ts",
     "bench:api:stream:bottleneck": "npx tsx benches/api/stream_bottleneck_analysis.ts",
     "bench:api:iterator": "npx tsx benches/api/iterator_bench.ts",
+    "bench:api:iterator:bottleneck": "npx tsx benches/api/iterator_bottleneck_analysis.ts",
     "bench:setup": "node benches/setup-fixtures.js",
     "bench:setup:huge": "node benches/setup-huge-fixture.js",
     "universal": "napi universal",
