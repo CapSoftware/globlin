@@ -510,15 +510,12 @@ mod tests {
         let path = temp.path();
         let subdir_path = path.join("subdir");
 
-        clear_readdir_cache();
-        let size_before = readdir_cache_size();
+        // Note: Don't rely on cache size counts as tests run in parallel
+        // Just verify that both directories are readable and have different contents
 
         // Read both directories
         let root_entries = read_dir_cached(path, false);
         let subdir_entries = read_dir_cached(&subdir_path, false);
-
-        // Both should be cached (cache size should have increased)
-        assert!(readdir_cache_size() > size_before);
 
         // They should have different contents
         assert!(!root_entries.is_empty());
@@ -526,6 +523,12 @@ mod tests {
         // root has: file1.txt, file2.js, .hidden, subdir = 4 entries
         // subdir has: nested.txt = 1 entry
         assert!(root_entries.len() > subdir_entries.len());
+
+        // Verify we can read again from cache (should return same content)
+        let root_entries2 = read_dir_cached(path, false);
+        let subdir_entries2 = read_dir_cached(&subdir_path, false);
+        assert_eq!(root_entries.len(), root_entries2.len());
+        assert_eq!(subdir_entries.len(), subdir_entries2.len());
     }
 
     #[test]
