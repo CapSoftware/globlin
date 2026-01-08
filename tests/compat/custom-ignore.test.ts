@@ -372,14 +372,14 @@ describe('custom ignore objects', () => {
 
       const results = globSync('**', { cwd: fixture, ignore, withFileTypes: true })
 
-      // Results should be Path objects
+      // Results should be GloblinPath objects (with Path-like interface)
       expect(results.length).toBeGreaterThan(0)
       for (const r of results) {
         expect(typeof r).toBe('object')
-        expect(typeof (r as Path).name).toBe('string')
+        expect(typeof r.name).toBe('string')
         // Single-char names only
-        if ((r as Path).name !== '.') {
-          expect((r as Path).name.length).toBe(1)
+        if (r.name !== '.') {
+          expect(r.name.length).toBe(1)
         }
       }
     })
@@ -391,11 +391,15 @@ describe('custom ignore objects', () => {
 
       const results = await glob('**', { cwd: fixture, ignore, withFileTypes: true })
 
-      // Results should be Path objects
+      // Results should be GloblinPath objects (with Path-like interface)
       expect(results.length).toBeGreaterThan(0)
       for (const r of results) {
         expect(typeof r).toBe('object')
-        expect(typeof (r as Path).name).toBe('string')
+        expect(typeof r.name).toBe('string')
+        // Single-char names only
+        if (r.name !== '.') {
+          expect(r.name.length).toBe(1)
+        }
       }
     })
   })

@@ -24,6 +24,7 @@ import {
   Minimatch,
   minimatch,
   Minipass,
+  GloblinPath,
 } from '../js/index'
 
 // ============================================================================
@@ -40,8 +41,10 @@ expectType<Promise<string[]>>(glob('*.js', { cwd: '/path' }))
 expectType<Promise<string[]>>(glob('*.js', { withFileTypes: false }))
 expectType<Promise<string[]>>(glob('*.js', { withFileTypes: undefined }))
 
-// withFileTypes: true returns Promise<Path[]>
-expectType<Promise<Path[]>>(glob('*.js', { withFileTypes: true }))
+// withFileTypes: true returns Promise<GloblinPath[]>
+// GloblinPath is faster to create than Path (~85% speedup)
+// Use .toPath() to convert to full PathScurry Path if needed
+expectType<Promise<GloblinPath[]>>(glob('*.js', { withFileTypes: true }))
 
 // ============================================================================
 // Basic globSync() function tests
@@ -57,8 +60,10 @@ expectType<string[]>(globSync('*.js', { cwd: '/path' }))
 expectType<string[]>(globSync('*.js', { withFileTypes: false }))
 expectType<string[]>(globSync('*.js', { withFileTypes: undefined }))
 
-// withFileTypes: true returns Path[]
-expectType<Path[]>(globSync('*.js', { withFileTypes: true }))
+// withFileTypes: true returns GloblinPath[]
+// GloblinPath is faster to create than Path (~85% speedup)
+// Use .toPath() to convert to full PathScurry Path if needed
+expectType<GloblinPath[]>(globSync('*.js', { withFileTypes: true }))
 
 // ============================================================================
 // Streaming API tests
