@@ -135,6 +135,8 @@
     "bench:api:glob-class": "npx tsx benches/api/glob_class_bench.ts",
     "bench:api:glob-class:bottleneck": "npx tsx benches/api/glob_class_bottleneck_analysis.ts",
     "bench:api:utility": "npx tsx benches/api/utility_bench.ts",
+    "bench:api:utility:bottleneck": "npx tsx benches/api/utility_bottleneck_analysis.ts",
+    "bench:api:with-file-types": "npx tsx benches/api/with_file_types_bench.ts",
     "bench:setup": "node benches/setup-fixtures.js",
     "bench:setup:huge": "node benches/setup-huge-fixture.js",
     "universal": "napi universal",

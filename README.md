@@ -141,26 +141,45 @@ See the [full options reference](docs/api/options.md) for all 22 options.
 
 ## Performance
 
-Benchmarks on a 100,000 file directory (Apple M1 Pro, SSD):
+Benchmarks comparing globlin vs glob v13 vs fast-glob (Apple M1 Pro, SSD):
 
-| Pattern | glob v13 | Globlin | Speedup |
-|---------|----------|---------|---------|
-| `**/*.js` | 281ms | 106ms | **2.7x** |
-| `*.js` | 36ms | 12ms | **2.9x** |
-| `level0/**/*.js` | 292ms | 99ms | **3.0x** |
-| `**/*.{js,ts}` | 264ms | 101ms | **2.6x** |
-| `**` | 253ms | 103ms | **2.5x** |
+### Large Directory (100,000 files)
 
-Average: **2.7x faster** on large directories.
+| Pattern | glob | fast-glob | Globlin | vs glob | vs fast-glob |
+|---------|------|-----------|---------|---------|--------------|
+| `**/*.js` | 318ms | 132ms | 150ms | **2.1x** | 0.9x |
+| `**/*` | 256ms | 115ms | 121ms | **2.1x** | 1.0x |
+| `**/*.{js,ts}` | 276ms | 115ms | 113ms | **2.5x** | **1.0x** |
+| `*.js` | 30ms | 12ms | 9ms | **3.4x** | **1.4x** |
+| `level0/**/*.js` | 231ms | 126ms | 134ms | **1.7x** | 0.9x |
+| Static patterns | 0.05ms | 0.02ms | 0.01ms | **5.6x** | **2.2x** |
 
-### Why Not 20-30x?
+### Summary by Fixture Size
 
-Glob operations are I/O-bound (~85% of execution time is spent in `readdir` syscalls). The original 20-30x target assumed CPU-bound workloads. Globlin optimizes both:
+| Fixture | Files | Avg vs glob | Avg vs fast-glob |
+|---------|-------|-------------|------------------|
+| Small | 303 | **3.2x** | **1.8x** |
+| Medium | 20,003 | **2.3x** | **1.3x** |
+| Large | 100,000 | **3.0x** | **1.3x** |
+
+### Summary by Pattern Type
+
+| Pattern Type | vs glob | vs fast-glob |
+|--------------|---------|--------------|
+| Static (`package.json`) | **7.5x** | **3.2x** |
+| Simple (`*.js`) | **2.8x** | **1.5x** |
+| Recursive (`**/*.js`) | **1.7x** | 1.0x |
+| Brace Expansion (`**/*.{js,ts}`) | **2.0x** | **1.1x** |
+
+**Overall: 2.8x faster than glob, competitive with fast-glob.**
+
+### Performance Characteristics
+
+Glob operations are I/O-bound (~85% of execution time is spent in `readdir` syscalls). Globlin optimizes both I/O and CPU:
 
 - **I/O reduction**: Depth-limited walking, prefix-based traversal, directory pruning
 - **CPU optimization**: Rust pattern matching, fast-path extensions, compiled patterns
-
-The result: 2-3x overall speedup, competitive with or faster than fast-glob.
+- **Static patterns**: Near-instant lookups without directory traversal
 
 ### When to Use Globlin
 
