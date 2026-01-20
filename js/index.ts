@@ -653,6 +653,9 @@ export class GloblinPath {
   private readonly _isFileVal: boolean
   private readonly _isSymlinkVal: boolean
 
+  /** Whether stat option was enabled (if false, isFile/isDirectory return false like PathScurry) */
+  private readonly _stat: boolean
+
   /** Lazily resolved PathScurry Path (only created if toPath() is called) */
   private _pathScurryPath?: Path
   private _pathScurry?: PathScurry
@@ -668,30 +671,34 @@ export class GloblinPath {
     cwd: string,
     isDirectory: boolean,
     isFile: boolean,
-    isSymlink: boolean
+    isSymlink: boolean,
+    stat: boolean = false
   ) {
     this.path = relativePath
     this._cwd = cwd
     this._isDir = isDirectory
     this._isFileVal = isFile
     this._isSymlinkVal = isSymlink
+    this._stat = stat
     this.name = nodePath.basename(relativePath) || relativePath
   }
 
   /**
    * Returns true if this is a regular file.
-   * Uses cached value from Rust - no filesystem access needed.
+   * Without stat: true, returns false (unknown type) to match PathScurry behavior.
+   * With stat: true, uses cached value from Rust - no filesystem access needed.
    */
   isFile(): boolean {
-    return this._isFileVal
+    return this._stat ? this._isFileVal : false
   }
 
   /**
    * Returns true if this is a directory.
-   * Uses cached value from Rust - no filesystem access needed.
+   * Without stat: true, returns false (unknown type) to match PathScurry behavior.
+   * With stat: true, uses cached value from Rust - no filesystem access needed.
    */
   isDirectory(): boolean {
-    return this._isDir
+    return this._stat ? this._isDir : false
   }
 
   /**
@@ -768,7 +775,7 @@ export class GloblinPath {
       return undefined
     }
     // Parent is always a directory
-    return new GloblinPath(parentPath, this._cwd, true, false, false)
+    return new GloblinPath(parentPath, this._cwd, true, false, false, this._stat)
   }
 
   /**
@@ -791,15 +798,15 @@ export type GlobPath = Path | GloblinPath
  *
  * @param data - Native path data from Rust
  * @param cwd - Current working directory
- * @param performLstat - If true, also calls lstat on each result (ignored - type info cached from Rust)
+ * @param stat - If true, isFile/isDirectory return actual values; otherwise return false (like PathScurry)
  * @returns Array of GloblinPath objects
  */
 function convertToPathObjects(
   data: NativePathData[],
   cwd: string,
-  _performLstat: boolean = false
+  stat: boolean = false
 ): GloblinPath[] {
-  return data.map(d => new GloblinPath(d.path, cwd, d.isDirectory, d.isFile, d.isSymlink))
+  return data.map(d => new GloblinPath(d.path, cwd, d.isDirectory, d.isFile, d.isSymlink, stat))
 }
 
 /**
