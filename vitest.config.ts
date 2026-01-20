@@ -9,7 +9,7 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 30000,
     coverage: {
-      enabled: true,
+      enabled: false,
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov', 'html'],
       reportsDirectory: './coverage',
