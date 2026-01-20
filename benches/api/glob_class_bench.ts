@@ -16,7 +16,7 @@
  */
 
 import { Glob as OgGlob } from 'glob'
-import { Glob, globSync, glob } from '../../js/index.js'
+import { Glob, globSync } from '../../js/index.js'
 
 const SMALL_CWD = './benches/fixtures/small'
 const MEDIUM_CWD = './benches/fixtures/medium'
@@ -350,10 +350,10 @@ async function benchmarkWalkMethods(): Promise<MethodComparisonResult[]> {
 
     // Benchmark walk (async)
     const asyncTimes: number[] = []
-    let asyncResults: string[] = []
+    let _asyncResults: string[] = []
     for (let i = 0; i < runs; i++) {
       const start = performance.now()
-      asyncResults = await g.walk()
+      _asyncResults = await g.walk()
       asyncTimes.push(performance.now() - start)
     }
 
@@ -442,10 +442,10 @@ async function benchmarkStreamMethods(): Promise<MethodComparisonResult[]> {
 
     // Benchmark stream (async)
     const asyncTimes: number[] = []
-    let asyncResults: string[] = []
+    let _asyncResults: string[] = []
     for (let i = 0; i < runs; i++) {
       const start = performance.now()
-      asyncResults = await consumeStream(g.stream())
+      _asyncResults = await consumeStream(g.stream())
       asyncTimes.push(performance.now() - start)
     }
 
@@ -533,7 +533,7 @@ async function benchmarkIterateMethods(): Promise<MethodComparisonResult[]> {
 
     // Benchmark iterate (async)
     const asyncTimes: number[] = []
-    let asyncCount = 0
+    let _asyncCount = 0
     for (let i = 0; i < runs; i++) {
       const results: string[] = []
       const start = performance.now()
@@ -541,7 +541,7 @@ async function benchmarkIterateMethods(): Promise<MethodComparisonResult[]> {
         results.push(r)
       }
       asyncTimes.push(performance.now() - start)
-      asyncCount = results.length
+      _asyncCount = results.length
     }
 
     const syncMedian = median(syncTimes)
@@ -628,7 +628,7 @@ async function benchmarkSymbolIterators(): Promise<MethodComparisonResult[]> {
 
     // Benchmark for await...of (Symbol.asyncIterator)
     const asyncTimes: number[] = []
-    let asyncCount = 0
+    let _asyncCount = 0
     for (let i = 0; i < runs; i++) {
       const results: string[] = []
       const start = performance.now()
@@ -636,7 +636,7 @@ async function benchmarkSymbolIterators(): Promise<MethodComparisonResult[]> {
         results.push(r)
       }
       asyncTimes.push(performance.now() - start)
-      asyncCount = results.length
+      _asyncCount = results.length
     }
 
     const syncMedian = median(syncTimes)

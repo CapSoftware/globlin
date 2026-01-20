@@ -11,8 +11,10 @@
 //
 // This module is only available on Linux and requires kernel 5.1+.
 // On older kernels or other platforms, the standard walkdir-based walker is used.
-
-#![cfg(target_os = "linux")]
+//
+// Note: The #[cfg(target_os = "linux")] attribute is in lib.rs for this module.
+// Do not add a duplicate #![cfg(...)] attribute here.
+#![allow(unused_imports)]
 
 use std::collections::VecDeque;
 use std::ffi::OsString;

@@ -7,6 +7,13 @@
 //!
 //! All functions have scalar fallbacks for platforms without SIMD support.
 
+// Allow manual indexing in SIMD code for performance-critical fallback paths
+#![allow(
+    clippy::needless_range_loop,
+    clippy::manual_find,
+    clippy::manual_retain
+)]
+
 /// Check if two byte slices are equal using SIMD when available.
 ///
 /// This is optimized for comparing path segments and extensions,

@@ -14,9 +14,8 @@
  *          early termination efficiency
  */
 
-import { glob as ogGlob, globSync as ogGlobSync } from 'glob'
-import type { Glob as OgGlob } from 'glob'
-import { globIterate, globIterateSync, globSync, glob, Glob } from '../../js/index.js'
+import { globSync as ogGlobSync } from 'glob'
+import { globIterate, globIterateSync, globSync, glob } from '../../js/index.js'
 
 const SMALL_CWD = './benches/fixtures/small'
 const MEDIUM_CWD = './benches/fixtures/medium'
