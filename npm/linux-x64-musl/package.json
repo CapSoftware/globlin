@@ -1,10 +1,16 @@
 {
   "name": "@globlin/linux-x64-musl",
-  "version": "1.0.0",
-  "os": ["linux"],
-  "cpu": ["x64"],
+  "version": "1.0.0-beta.1",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "main": "globlin.linux-x64-musl.node",
-  "files": ["globlin.linux-x64-musl.node"],
+  "files": [
+    "globlin.linux-x64-musl.node"
+  ],
   "description": "2-3x faster drop-in replacement for glob v13, built with Rust (Linux x64 musl)",
   "keywords": [
     "glob",
@@ -32,5 +38,7 @@
   "bugs": {
     "url": "https://github.com/capsoftware/globlin/issues"
   },
-  "libc": ["musl"]
+  "libc": [
+    "musl"
+  ]
 }

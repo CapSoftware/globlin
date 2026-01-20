@@ -263,10 +263,10 @@ async function benchmarkPathScurryIntegration(): Promise<BenchmarkResult[]> {
       const globlinMedian = median(globlinTimes)
 
       // Check result match by comparing relative paths
-      const globPaths = new Set(globResults.map((p) => p.relative()))
-      const globlinPaths = new Set(globlinResults.map((p) => p.relative()))
+      const globPaths = new Set(globResults.map(p => p.relative()))
+      const globlinPaths = new Set(globlinResults.map(p => p.relative()))
       const resultMatch =
-        globPaths.size === globlinPaths.size && [...globPaths].every((p) => globlinPaths.has(p))
+        globPaths.size === globlinPaths.size && [...globPaths].every(p => globlinPaths.has(p))
 
       const result: BenchmarkResult = {
         name: `PathScurry integration (${fixture.name})`,
@@ -449,7 +449,9 @@ async function benchmarkMethodCalls(): Promise<MethodCallResult[]> {
     }
     results.push(result)
 
-    console.log(`  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`)
+    console.log(
+      `  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`
+    )
   }
 
   // Benchmark isDirectory()
@@ -476,7 +478,9 @@ async function benchmarkMethodCalls(): Promise<MethodCallResult[]> {
     }
     results.push(result)
 
-    console.log(`  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`)
+    console.log(
+      `  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`
+    )
   }
 
   // Benchmark isSymbolicLink()
@@ -503,7 +507,9 @@ async function benchmarkMethodCalls(): Promise<MethodCallResult[]> {
     }
     results.push(result)
 
-    console.log(`  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`)
+    console.log(
+      `  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`
+    )
   }
 
   // Benchmark fullpath()
@@ -530,7 +536,9 @@ async function benchmarkMethodCalls(): Promise<MethodCallResult[]> {
     }
     results.push(result)
 
-    console.log(`  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`)
+    console.log(
+      `  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`
+    )
   }
 
   // Benchmark relative()
@@ -557,7 +565,9 @@ async function benchmarkMethodCalls(): Promise<MethodCallResult[]> {
     }
     results.push(result)
 
-    console.log(`  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`)
+    console.log(
+      `  ${paths.length} calls in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/call`
+    )
   }
 
   // Benchmark name property access
@@ -584,7 +594,9 @@ async function benchmarkMethodCalls(): Promise<MethodCallResult[]> {
     }
     results.push(result)
 
-    console.log(`  ${paths.length} accesses in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/access`)
+    console.log(
+      `  ${paths.length} accesses in ${totalUs.toFixed(2)}µs = ${perCallUs.toFixed(4)}µs/access`
+    )
   }
 
   return results
@@ -615,7 +627,8 @@ async function benchmarkMemory(): Promise<MemoryProfile[]> {
     const stringResults = globSync(pattern, { cwd: fixture.cwd })
     const stringMemAfter = process.memoryUsage()
     const stringHeapDelta = stringMemAfter.heapUsed - stringMemBefore.heapUsed
-    const stringBytesPerResult = stringResults.length > 0 ? stringHeapDelta / stringResults.length : 0
+    const stringBytesPerResult =
+      stringResults.length > 0 ? stringHeapDelta / stringResults.length : 0
 
     results.push({
       name: `String results (${fixture.name})`,
@@ -629,7 +642,9 @@ async function benchmarkMemory(): Promise<MemoryProfile[]> {
       bytesPerResult: stringBytesPerResult,
     })
 
-    console.log(`  String results: ${stringResults.length} files, ${formatBytes(stringHeapDelta)} total, ${stringBytesPerResult.toFixed(1)} bytes/result`)
+    console.log(
+      `  String results: ${stringResults.length} files, ${formatBytes(stringHeapDelta)} total, ${stringBytesPerResult.toFixed(1)} bytes/result`
+    )
 
     // Path object results memory
     forceGC()
@@ -651,11 +666,15 @@ async function benchmarkMemory(): Promise<MemoryProfile[]> {
       bytesPerResult: pathBytesPerResult,
     })
 
-    console.log(`  Path objects:   ${pathResults.length} files, ${formatBytes(pathHeapDelta)} total, ${pathBytesPerResult.toFixed(1)} bytes/result`)
+    console.log(
+      `  Path objects:   ${pathResults.length} files, ${formatBytes(pathHeapDelta)} total, ${pathBytesPerResult.toFixed(1)} bytes/result`
+    )
 
     // Memory overhead
     const memoryOverhead = pathBytesPerResult - stringBytesPerResult
-    console.log(`  Memory overhead per result: ${memoryOverhead.toFixed(1)} bytes (${((memoryOverhead / stringBytesPerResult) * 100).toFixed(1)}%)`)
+    console.log(
+      `  Memory overhead per result: ${memoryOverhead.toFixed(1)} bytes (${((memoryOverhead / stringBytesPerResult) * 100).toFixed(1)}%)`
+    )
   }
 
   return results
@@ -728,10 +747,10 @@ async function benchmarkLargeResultSets(): Promise<BenchmarkResult[]> {
     const globlinMedian = median(globlinTimes)
 
     // Check result match
-    const globPaths = new Set(globResults.map((p) => p.relative()))
-    const globlinPaths = new Set(globlinResults.map((p) => p.relative()))
+    const globPaths = new Set(globResults.map(p => p.relative()))
+    const globlinPaths = new Set(globlinResults.map(p => p.relative()))
     const resultMatch =
-      globPaths.size === globlinPaths.size && [...globPaths].every((p) => globlinPaths.has(p))
+      globPaths.size === globlinPaths.size && [...globPaths].every(p => globlinPaths.has(p))
 
     const result: BenchmarkResult = {
       name: `Large result set: ${name}`,
@@ -835,10 +854,10 @@ async function benchmarkAsync(): Promise<BenchmarkResult[]> {
       const globlinMedian = median(globlinTimes)
 
       // Check result match
-      const globPaths = new Set(globResults.map((p) => p.relative()))
-      const globlinPaths = new Set(globlinResults.map((p) => p.relative()))
+      const globPaths = new Set(globResults.map(p => p.relative()))
+      const globlinPaths = new Set(globlinResults.map(p => p.relative()))
       const resultMatch =
-        globPaths.size === globlinPaths.size && [...globPaths].every((p) => globlinPaths.has(p))
+        globPaths.size === globlinPaths.size && [...globPaths].every(p => globlinPaths.has(p))
 
       const result: BenchmarkResult = {
         name: `Async withFileTypes (${fixture.name})`,
@@ -885,9 +904,9 @@ async function benchmarkAsync(): Promise<BenchmarkResult[]> {
  * Main entry point
  */
 async function main() {
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log('PHASE 7.7: withFileTypes API DEEP DIVE BENCHMARKING')
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log(`Date: ${new Date().toISOString()}`)
   console.log(`Node: ${process.version}`)
   console.log(`Platform: ${process.platform} ${process.arch}`)
@@ -908,23 +927,32 @@ async function main() {
   console.log('='.repeat(80))
 
   // PathScurry integration summary
-  const pathScurrySpeedups = allResults.pathScurry.map((r) => r.speedupVsGlob)
-  const pathScurryMatches = allResults.pathScurry.filter((r) => r.resultMatch).length
+  const pathScurrySpeedups = allResults.pathScurry.map(r => r.speedupVsGlob)
+  const pathScurryMatches = allResults.pathScurry.filter(r => r.resultMatch).length
   console.log('\nPathScurry integration (globlin vs glob):')
-  console.log(`  Average speedup: ${(pathScurrySpeedups.reduce((a, b) => a + b, 0) / pathScurrySpeedups.length).toFixed(2)}x`)
-  console.log(`  Result accuracy: ${pathScurryMatches}/${allResults.pathScurry.length} patterns match`)
+  console.log(
+    `  Average speedup: ${(pathScurrySpeedups.reduce((a, b) => a + b, 0) / pathScurrySpeedups.length).toFixed(2)}x`
+  )
+  console.log(
+    `  Result accuracy: ${pathScurryMatches}/${allResults.pathScurry.length} patterns match`
+  )
 
   // String vs Path overhead summary
-  const overheadResults = allResults.overhead.filter((r) => r.perResultOverhead !== undefined)
-  const avgOverhead = overheadResults.reduce((a, b) => a + (b.perResultOverhead || 0), 0) / overheadResults.length
+  const overheadResults = allResults.overhead.filter(r => r.perResultOverhead !== undefined)
+  const avgOverhead =
+    overheadResults.reduce((a, b) => a + (b.perResultOverhead || 0), 0) / overheadResults.length
   console.log('\nPath object overhead vs strings:')
   console.log(`  Average per-result overhead: ${avgOverhead.toFixed(2)}µs`)
 
   // stat option summary
   const statResults = allResults.statOption
-  const statOverhead = statResults.map((r) => (r.globlin.median - r.glob.median) / r.glob.median * 100)
+  const statOverhead = statResults.map(
+    r => ((r.globlin.median - r.glob.median) / r.glob.median) * 100
+  )
   console.log('\nstat: true overhead:')
-  console.log(`  Average overhead: ${(statOverhead.reduce((a, b) => a + b, 0) / statOverhead.length).toFixed(1)}%`)
+  console.log(
+    `  Average overhead: ${(statOverhead.reduce((a, b) => a + b, 0) / statOverhead.length).toFixed(1)}%`
+  )
 
   // Method call summary
   console.log('\nPath method call costs:')
@@ -934,42 +962,49 @@ async function main() {
 
   // Memory summary
   const memoryResults = allResults.memory
-  const pathMemory = memoryResults.filter((r) => r.withFileTypes)
-  const stringMemory = memoryResults.filter((r) => !r.withFileTypes)
+  const pathMemory = memoryResults.filter(r => r.withFileTypes)
+  const stringMemory = memoryResults.filter(r => !r.withFileTypes)
   console.log('\nMemory usage:')
   for (let i = 0; i < pathMemory.length; i++) {
     const pathMem = pathMemory[i]
     const strMem = stringMemory[i]
     const overhead = pathMem.bytesPerResult - strMem.bytesPerResult
-    console.log(`  ${pathMem.fixture}: String ${strMem.bytesPerResult.toFixed(0)}B vs Path ${pathMem.bytesPerResult.toFixed(0)}B (+${overhead.toFixed(0)}B overhead)`)
+    console.log(
+      `  ${pathMem.fixture}: String ${strMem.bytesPerResult.toFixed(0)}B vs Path ${pathMem.bytesPerResult.toFixed(0)}B (+${overhead.toFixed(0)}B overhead)`
+    )
   }
 
   // Large result sets summary
-  const largeSpeedups = allResults.largeResults.map((r) => r.speedupVsGlob)
-  const largeMatches = allResults.largeResults.filter((r) => r.resultMatch).length
+  const largeSpeedups = allResults.largeResults.map(r => r.speedupVsGlob)
+  const largeMatches = allResults.largeResults.filter(r => r.resultMatch).length
   console.log('\nLarge result sets (100k files):')
-  console.log(`  Average speedup: ${(largeSpeedups.reduce((a, b) => a + b, 0) / largeSpeedups.length).toFixed(2)}x`)
+  console.log(
+    `  Average speedup: ${(largeSpeedups.reduce((a, b) => a + b, 0) / largeSpeedups.length).toFixed(2)}x`
+  )
   console.log(`  Result accuracy: ${largeMatches}/${allResults.largeResults.length} patterns match`)
 
   // Async summary
-  const asyncSpeedups = allResults.async.map((r) => r.speedupVsGlob)
-  const asyncMatches = allResults.async.filter((r) => r.resultMatch).length
+  const asyncSpeedups = allResults.async.map(r => r.speedupVsGlob)
+  const asyncMatches = allResults.async.filter(r => r.resultMatch).length
   console.log('\nAsync withFileTypes:')
-  console.log(`  Average speedup: ${(asyncSpeedups.reduce((a, b) => a + b, 0) / asyncSpeedups.length).toFixed(2)}x`)
+  console.log(
+    `  Average speedup: ${(asyncSpeedups.reduce((a, b) => a + b, 0) / asyncSpeedups.length).toFixed(2)}x`
+  )
   console.log(`  Result accuracy: ${asyncMatches}/${allResults.async.length} patterns match`)
 
   // Overall
-  const allSpeedups = [
-    ...pathScurrySpeedups,
-    ...largeSpeedups,
-    ...asyncSpeedups,
-  ]
+  const allSpeedups = [...pathScurrySpeedups, ...largeSpeedups, ...asyncSpeedups]
   const allMatches = pathScurryMatches + largeMatches + asyncMatches
-  const totalComparisons = allResults.pathScurry.length + allResults.largeResults.length + allResults.async.length
+  const totalComparisons =
+    allResults.pathScurry.length + allResults.largeResults.length + allResults.async.length
   console.log('\n' + '-'.repeat(80))
   console.log('OVERALL:')
-  console.log(`  Average speedup vs glob: ${(allSpeedups.reduce((a, b) => a + b, 0) / allSpeedups.length).toFixed(2)}x`)
-  console.log(`  Total result accuracy: ${allMatches}/${totalComparisons} comparisons match (${((allMatches / totalComparisons) * 100).toFixed(1)}%)`)
+  console.log(
+    `  Average speedup vs glob: ${(allSpeedups.reduce((a, b) => a + b, 0) / allSpeedups.length).toFixed(2)}x`
+  )
+  console.log(
+    `  Total result accuracy: ${allMatches}/${totalComparisons} comparisons match (${((allMatches / totalComparisons) * 100).toFixed(1)}%)`
+  )
 }
 
 main().catch(console.error)

@@ -26,7 +26,10 @@ function ensureFixtures(): boolean {
   return true
 }
 
-function measureTime(fn: () => void, runs: number = 10): { median: number; min: number; max: number; times: number[] } {
+function measureTime(
+  fn: () => void,
+  runs: number = 10
+): { median: number; min: number; max: number; times: number[] } {
   const times: number[] = []
   for (let i = 0; i < runs; i++) {
     const start = performance.now()
@@ -102,9 +105,15 @@ async function main() {
 
   console.log(`| Approach           | Median       | Per Result    |`)
   console.log(`|--------------------|--------------|---------------|`)
-  console.log(`| String only        | ${formatMs(stringOnlyTimes.median).padStart(12)} | ${formatUs(stringOnlyTimes.median / resultCount).padStart(13)} |`)
-  console.log(`| GloblinPath (NEW)  | ${formatMs(newApproachTimes.median).padStart(12)} | ${formatUs(newApproachTimes.median / resultCount).padStart(13)} |`)
-  console.log(`| PathScurry (OLD)   | ${formatMs(oldApproachTimes.median).padStart(12)} | ${formatUs(oldApproachTimes.median / resultCount).padStart(13)} |`)
+  console.log(
+    `| String only        | ${formatMs(stringOnlyTimes.median).padStart(12)} | ${formatUs(stringOnlyTimes.median / resultCount).padStart(13)} |`
+  )
+  console.log(
+    `| GloblinPath (NEW)  | ${formatMs(newApproachTimes.median).padStart(12)} | ${formatUs(newApproachTimes.median / resultCount).padStart(13)} |`
+  )
+  console.log(
+    `| PathScurry (OLD)   | ${formatMs(oldApproachTimes.median).padStart(12)} | ${formatUs(oldApproachTimes.median / resultCount).padStart(13)} |`
+  )
   console.log()
 
   const newOverhead = newApproachTimes.median - stringOnlyTimes.median
@@ -112,8 +121,12 @@ async function main() {
   const speedupPercent = ((oldOverhead - newOverhead) / oldOverhead) * 100
 
   console.log(`Path creation overhead:`)
-  console.log(`  GloblinPath (NEW):  ${formatMs(newOverhead)} (+${((newOverhead / stringOnlyTimes.median) * 100).toFixed(1)}% over strings)`)
-  console.log(`  PathScurry (OLD):   ${formatMs(oldOverhead)} (+${((oldOverhead / stringOnlyTimes.median) * 100).toFixed(1)}% over strings)`)
+  console.log(
+    `  GloblinPath (NEW):  ${formatMs(newOverhead)} (+${((newOverhead / stringOnlyTimes.median) * 100).toFixed(1)}% over strings)`
+  )
+  console.log(
+    `  PathScurry (OLD):   ${formatMs(oldOverhead)} (+${((oldOverhead / stringOnlyTimes.median) * 100).toFixed(1)}% over strings)`
+  )
   console.log(`  Speedup:            ${speedupPercent.toFixed(1)}% faster path creation`)
   console.log()
 
@@ -132,8 +145,12 @@ async function main() {
 
   console.log(`| Package            | Median       | Per Result    |`)
   console.log(`|--------------------|--------------|---------------|`)
-  console.log(`| glob               | ${formatMs(globPackageTimes.median).padStart(12)} | ${formatUs(globPackageTimes.median / resultCount).padStart(13)} |`)
-  console.log(`| globlin (NEW)      | ${formatMs(newApproachTimes.median).padStart(12)} | ${formatUs(newApproachTimes.median / resultCount).padStart(13)} |`)
+  console.log(
+    `| glob               | ${formatMs(globPackageTimes.median).padStart(12)} | ${formatUs(globPackageTimes.median / resultCount).padStart(13)} |`
+  )
+  console.log(
+    `| globlin (NEW)      | ${formatMs(newApproachTimes.median).padStart(12)} | ${formatUs(newApproachTimes.median / resultCount).padStart(13)} |`
+  )
   console.log()
   console.log(`Speedup vs glob: ${speedupVsGlob.toFixed(2)}x`)
   console.log()
@@ -144,7 +161,10 @@ async function main() {
   console.log('## Section 3: GloblinPath Method Performance')
   console.log()
 
-  const globlinPaths = globSync(pattern, { cwd: MEDIUM_FIXTURE, withFileTypes: true }) as GloblinPath[]
+  const globlinPaths = globSync(pattern, {
+    cwd: MEDIUM_FIXTURE,
+    withFileTypes: true,
+  }) as GloblinPath[]
   const samplePaths = globlinPaths.slice(0, Math.min(1000, globlinPaths.length))
 
   // Measure fast methods (cached values)
@@ -178,20 +198,40 @@ async function main() {
   const toPathTimes = measureTime(() => {
     for (const p of toPathSample) {
       // Create fresh paths to avoid caching benefit
-      const fresh = new GloblinPath(p.path, MEDIUM_FIXTURE, p.isDirectory(), p.isFile(), p.isSymbolicLink())
+      const fresh = new GloblinPath(
+        p.path,
+        MEDIUM_FIXTURE,
+        p.isDirectory(),
+        p.isFile(),
+        p.isSymbolicLink()
+      )
       fresh.toPath()
     }
   }, 10)
 
   console.log(`| Method             | Per Call      | Status        |`)
   console.log(`|--------------------|---------------|---------------|`)
-  console.log(`| isFile()           | ${formatUs(isFileTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`)
-  console.log(`| isDirectory()      | ${formatUs(isDirectoryTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`)
-  console.log(`| isSymbolicLink()   | ${formatUs(isSymlinkTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`)
-  console.log(`| fullpath()         | ${formatUs(fullpathTimes.median / samplePaths.length).padStart(13)} | Fast (string) |`)
-  console.log(`| relative()         | ${formatUs(relativeTimes.median / samplePaths.length).padStart(13)} | Fast (string) |`)
-  console.log(`| name               | ${formatUs(nameTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`)
-  console.log(`| toPath()           | ${formatUs(toPathTimes.median / toPathSample.length).padStart(13)} | Slow (lazy)   |`)
+  console.log(
+    `| isFile()           | ${formatUs(isFileTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`
+  )
+  console.log(
+    `| isDirectory()      | ${formatUs(isDirectoryTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`
+  )
+  console.log(
+    `| isSymbolicLink()   | ${formatUs(isSymlinkTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`
+  )
+  console.log(
+    `| fullpath()         | ${formatUs(fullpathTimes.median / samplePaths.length).padStart(13)} | Fast (string) |`
+  )
+  console.log(
+    `| relative()         | ${formatUs(relativeTimes.median / samplePaths.length).padStart(13)} | Fast (string) |`
+  )
+  console.log(
+    `| name               | ${formatUs(nameTimes.median / samplePaths.length).padStart(13)} | Fast (cached) |`
+  )
+  console.log(
+    `| toPath()           | ${formatUs(toPathTimes.median / toPathSample.length).padStart(13)} | Slow (lazy)   |`
+  )
   console.log()
 
   // ==========================================================================
@@ -205,7 +245,10 @@ async function main() {
   const baselineMemory = process.memoryUsage().heapUsed
 
   // GloblinPath memory
-  const globlinResults = globSync(pattern, { cwd: MEDIUM_FIXTURE, withFileTypes: true }) as GloblinPath[]
+  const globlinResults = globSync(pattern, {
+    cwd: MEDIUM_FIXTURE,
+    withFileTypes: true,
+  }) as GloblinPath[]
   if (global.gc) global.gc()
   const afterGloblinMemory = process.memoryUsage().heapUsed
 
@@ -218,9 +261,15 @@ async function main() {
   const pathScurryMemory = afterPathScurryMemory - afterGloblinMemory
 
   console.log(`Memory for ${resultCount} results:`)
-  console.log(`  GloblinPath:  ${(globlinMemory / 1024).toFixed(1)} KB (${(globlinMemory / globlinResults.length).toFixed(1)} bytes/result)`)
-  console.log(`  PathScurry:   ${(pathScurryMemory / 1024).toFixed(1)} KB (${(pathScurryMemory / pathScurryResults.length).toFixed(1)} bytes/result)`)
-  console.log(`  Ratio:        ${(pathScurryMemory / Math.max(1, globlinMemory)).toFixed(1)}x more memory for PathScurry`)
+  console.log(
+    `  GloblinPath:  ${(globlinMemory / 1024).toFixed(1)} KB (${(globlinMemory / globlinResults.length).toFixed(1)} bytes/result)`
+  )
+  console.log(
+    `  PathScurry:   ${(pathScurryMemory / 1024).toFixed(1)} KB (${(pathScurryMemory / pathScurryResults.length).toFixed(1)} bytes/result)`
+  )
+  console.log(
+    `  Ratio:        ${(pathScurryMemory / Math.max(1, globlinMemory)).toFixed(1)}x more memory for PathScurry`
+  )
   console.log()
 
   // ==========================================================================
@@ -231,13 +280,16 @@ async function main() {
 
   // Verify GloblinPath results match glob package
   const globResults = originalGlob.globSync(pattern, { cwd: MEDIUM_FIXTURE, withFileTypes: true })
-  const globlinResultsCheck = globSync(pattern, { cwd: MEDIUM_FIXTURE, withFileTypes: true }) as GloblinPath[]
+  const globlinResultsCheck = globSync(pattern, {
+    cwd: MEDIUM_FIXTURE,
+    withFileTypes: true,
+  }) as GloblinPath[]
 
   const globPaths = new Set(globResults.map(p => p.relative()))
   const globlinPathsCheck = new Set(globlinResultsCheck.map(p => p.relative()))
 
-  const match = globPaths.size === globlinPathsCheck.size &&
-    [...globPaths].every(p => globlinPathsCheck.has(p))
+  const match =
+    globPaths.size === globlinPathsCheck.size && [...globPaths].every(p => globlinPathsCheck.has(p))
 
   console.log(`Results match glob package: ${match ? 'YES' : 'NO'}`)
   console.log(`  glob count:    ${globPaths.size}`)
@@ -250,10 +302,18 @@ async function main() {
 
   if (sampleGlobPath) {
     console.log(`Type method verification for "${sampleGloblinPath.relative()}":`)
-    console.log(`  isFile():           globlin=${sampleGloblinPath.isFile()}, glob=${sampleGlobPath.isFile()}`)
-    console.log(`  isDirectory():      globlin=${sampleGloblinPath.isDirectory()}, glob=${sampleGlobPath.isDirectory()}`)
-    console.log(`  isSymbolicLink():   globlin=${sampleGloblinPath.isSymbolicLink()}, glob=${sampleGlobPath.isSymbolicLink()}`)
-    console.log(`  name:               globlin="${sampleGloblinPath.name}", glob="${sampleGlobPath.name}"`)
+    console.log(
+      `  isFile():           globlin=${sampleGloblinPath.isFile()}, glob=${sampleGlobPath.isFile()}`
+    )
+    console.log(
+      `  isDirectory():      globlin=${sampleGloblinPath.isDirectory()}, glob=${sampleGlobPath.isDirectory()}`
+    )
+    console.log(
+      `  isSymbolicLink():   globlin=${sampleGloblinPath.isSymbolicLink()}, glob=${sampleGlobPath.isSymbolicLink()}`
+    )
+    console.log(
+      `  name:               globlin="${sampleGloblinPath.name}", glob="${sampleGlobPath.name}"`
+    )
   }
   console.log()
 
@@ -270,17 +330,25 @@ async function main() {
   console.log(`  Result accuracy:        ${match ? 'PASS' : 'FAIL'}`)
   console.log()
   console.log(`Key improvements:`)
-  console.log(`  - Path object creation: ${formatUs(newOverhead / resultCount)} vs ${formatUs(oldOverhead / resultCount)} per result`)
-  console.log(`  - isFile()/isDirectory(): ~${formatUs(isFileTimes.median / samplePaths.length)} (uses cached Rust values)`)
+  console.log(
+    `  - Path object creation: ${formatUs(newOverhead / resultCount)} vs ${formatUs(oldOverhead / resultCount)} per result`
+  )
+  console.log(
+    `  - isFile()/isDirectory(): ~${formatUs(isFileTimes.median / samplePaths.length)} (uses cached Rust values)`
+  )
   console.log(`  - Lazy PathScurry: toPath() only called when advanced features needed`)
   console.log()
 
   // Target check
   const TARGET_SPEEDUP_PERCENT = 50 // Conservative target
   if (speedupPercent >= TARGET_SPEEDUP_PERCENT) {
-    console.log(`TARGET MET: ${speedupPercent.toFixed(1)}% >= ${TARGET_SPEEDUP_PERCENT}% path creation speedup`)
+    console.log(
+      `TARGET MET: ${speedupPercent.toFixed(1)}% >= ${TARGET_SPEEDUP_PERCENT}% path creation speedup`
+    )
   } else {
-    console.log(`TARGET MISSED: ${speedupPercent.toFixed(1)}% < ${TARGET_SPEEDUP_PERCENT}% path creation speedup`)
+    console.log(
+      `TARGET MISSED: ${speedupPercent.toFixed(1)}% < ${TARGET_SPEEDUP_PERCENT}% path creation speedup`
+    )
   }
 }
 

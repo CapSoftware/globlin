@@ -12,14 +12,7 @@
  */
 
 import { glob as ogGlob, globSync as ogGlobSync, Glob as OgGlob } from 'glob'
-import {
-  globIterate,
-  globIterateSync,
-  globSync,
-  glob,
-  Glob,
-  globStream,
-} from '../../js/index.js'
+import { globIterate, globIterateSync, globSync, glob, Glob, globStream } from '../../js/index.js'
 
 const SMALL_CWD = './benches/fixtures/small'
 const MEDIUM_CWD = './benches/fixtures/medium'
@@ -63,11 +56,7 @@ async function measureGeneratorOverhead(
   cwd: string,
   runs = 10
 ): Promise<GeneratorOverheadResult> {
-  const fixtureLabel = cwd.includes('small')
-    ? 'small'
-    : cwd.includes('medium')
-      ? 'medium'
-      : 'large'
+  const fixtureLabel = cwd.includes('small') ? 'small' : cwd.includes('medium') ? 'medium' : 'large'
 
   // Get results array once
   const results = globSync(pattern, { cwd })
@@ -129,8 +118,7 @@ async function measureGeneratorOverhead(
     directIteration: directMedian,
     generatorIteration: syncGenMedian,
     asyncGeneratorIteration: asyncGenMedian,
-    generatorOverhead:
-      directMedian > 0 ? ((syncGenMedian - directMedian) / directMedian) * 100 : 0,
+    generatorOverhead: directMedian > 0 ? ((syncGenMedian - directMedian) / directMedian) * 100 : 0,
     asyncGeneratorOverhead:
       directMedian > 0 ? ((asyncGenMedian - directMedian) / directMedian) * 100 : 0,
   }
@@ -154,11 +142,7 @@ async function measureSymbolIteratorCost(
   cwd: string,
   runs = 5
 ): Promise<SymbolIteratorCostResult> {
-  const fixtureLabel = cwd.includes('small')
-    ? 'small'
-    : cwd.includes('medium')
-      ? 'medium'
-      : 'large'
+  const fixtureLabel = cwd.includes('small') ? 'small' : cwd.includes('medium') ? 'medium' : 'large'
 
   // Glob class Symbol.iterator
   const globIterTimes: number[] = []
@@ -265,11 +249,7 @@ async function measureLazyVsEager(
   cwd: string,
   runs = 3
 ): Promise<LazyVsEagerResult> {
-  const fixtureLabel = cwd.includes('small')
-    ? 'small'
-    : cwd.includes('medium')
-      ? 'medium'
-      : 'large'
+  const fixtureLabel = cwd.includes('small') ? 'small' : cwd.includes('medium') ? 'medium' : 'large'
 
   let resultCount = 0
 
@@ -345,12 +325,9 @@ async function measureLazyVsEager(
       time: currentMedian,
       memoryDelta: currentMemMedian,
     },
-    timeOverhead:
-      eagerMedian > 0 ? ((currentMedian - eagerMedian) / eagerMedian) * 100 : 0,
+    timeOverhead: eagerMedian > 0 ? ((currentMedian - eagerMedian) / eagerMedian) * 100 : 0,
     memoryOverhead:
-      eagerMemMedian > 0
-        ? ((currentMemMedian - eagerMemMedian) / eagerMemMedian) * 100
-        : 0,
+      eagerMemMedian > 0 ? ((currentMemMedian - eagerMemMedian) / eagerMemMedian) * 100 : 0,
   }
 }
 
@@ -376,11 +353,7 @@ async function measureIteratorVsSyncBreakdown(
   cwd: string,
   runs = 5
 ): Promise<IteratorVsSyncBreakdownResult> {
-  const fixtureLabel = cwd.includes('small')
-    ? 'small'
-    : cwd.includes('medium')
-      ? 'medium'
-      : 'large'
+  const fixtureLabel = cwd.includes('small') ? 'small' : cwd.includes('medium') ? 'medium' : 'large'
 
   // Sync baseline (just collection)
   const syncTimes: number[] = []
@@ -430,8 +403,7 @@ async function measureIteratorVsSyncBreakdown(
       yieldingTime: iterationOverArray,
       jsOverhead: iteratorOverhead,
     },
-    overheadPercent:
-      syncMedian > 0 ? ((iteratorMedian - syncMedian) / syncMedian) * 100 : 0,
+    overheadPercent: syncMedian > 0 ? ((iteratorMedian - syncMedian) / syncMedian) * 100 : 0,
   }
 }
 
@@ -453,20 +425,15 @@ function summarizeBottlenecks(
 ): BottleneckSummary {
   // Calculate average overheads
   const avgGeneratorOverhead =
-    generatorResults.reduce((sum, r) => sum + r.generatorOverhead, 0) /
-    generatorResults.length
+    generatorResults.reduce((sum, r) => sum + r.generatorOverhead, 0) / generatorResults.length
   const avgAsyncGeneratorOverhead =
-    generatorResults.reduce((sum, r) => sum + r.asyncGeneratorOverhead, 0) /
-    generatorResults.length
+    generatorResults.reduce((sum, r) => sum + r.asyncGeneratorOverhead, 0) / generatorResults.length
   const avgSymbolOverhead =
-    symbolResults.reduce((sum, r) => sum + r.iteratorProtocolOverhead, 0) /
-    symbolResults.length
+    symbolResults.reduce((sum, r) => sum + r.iteratorProtocolOverhead, 0) / symbolResults.length
   const avgTimeOverhead =
-    lazyEagerResults.reduce((sum, r) => sum + r.timeOverhead, 0) /
-    lazyEagerResults.length
+    lazyEagerResults.reduce((sum, r) => sum + r.timeOverhead, 0) / lazyEagerResults.length
   const avgBreakdownOverhead =
-    breakdownResults.reduce((sum, r) => sum + r.overheadPercent, 0) /
-    breakdownResults.length
+    breakdownResults.reduce((sum, r) => sum + r.overheadPercent, 0) / breakdownResults.length
 
   // Determine primary bottleneck
   let primaryBottleneck = 'Unknown'
@@ -511,9 +478,7 @@ function summarizeBottlenecks(
   recommendations.push(
     'True lazy iteration would require native streaming from Rust (Phase 8+ optimization)'
   )
-  recommendations.push(
-    'Early termination benefits are limited by collect-first architecture'
-  )
+  recommendations.push('Early termination benefits are limited by collect-first architecture')
 
   return {
     primaryBottleneck,
@@ -619,17 +584,9 @@ async function main() {
         const result = await measureLazyVsEager(pattern, cwd, 3)
         lazyEagerResults.push(result)
 
-        const eagerMem = (result.eagerCollect.memoryDelta / 1024 / 1024).toFixed(
-          2
-        )
-        const lazyMem = (result.lazyIteration.memoryDelta / 1024 / 1024).toFixed(
-          2
-        )
-        const currentMem = (
-          result.currentIterator.memoryDelta /
-          1024 /
-          1024
-        ).toFixed(2)
+        const eagerMem = (result.eagerCollect.memoryDelta / 1024 / 1024).toFixed(2)
+        const lazyMem = (result.lazyIteration.memoryDelta / 1024 / 1024).toFixed(2)
+        const currentMem = (result.currentIterator.memoryDelta / 1024 / 1024).toFixed(2)
 
         console.log(
           `  ${pattern.padEnd(20)} | ` +
@@ -700,33 +657,26 @@ async function main() {
   // Calculate averages
   if (generatorResults.length > 0) {
     const avgSyncGen =
-      generatorResults.reduce((s, r) => s + r.generatorOverhead, 0) /
-      generatorResults.length
+      generatorResults.reduce((s, r) => s + r.generatorOverhead, 0) / generatorResults.length
     const avgAsyncGen =
-      generatorResults.reduce((s, r) => s + r.asyncGeneratorOverhead, 0) /
-      generatorResults.length
+      generatorResults.reduce((s, r) => s + r.asyncGeneratorOverhead, 0) / generatorResults.length
     console.log(`\nGenerator Protocol Overhead:`)
     console.log(`  Sync generator: +${avgSyncGen.toFixed(1)}% vs direct iteration`)
-    console.log(
-      `  Async generator: +${avgAsyncGen.toFixed(1)}% vs direct iteration`
-    )
+    console.log(`  Async generator: +${avgAsyncGen.toFixed(1)}% vs direct iteration`)
   }
 
   if (breakdownResults.length > 0) {
     const avgOverhead =
-      breakdownResults.reduce((s, r) => s + r.overheadPercent, 0) /
-      breakdownResults.length
+      breakdownResults.reduce((s, r) => s + r.overheadPercent, 0) / breakdownResults.length
     console.log(`\nIterator vs Sync:`)
     console.log(`  Average overhead: +${avgOverhead.toFixed(1)}%`)
   }
 
   if (lazyEagerResults.length > 0) {
     const avgTimeOverhead =
-      lazyEagerResults.reduce((s, r) => s + r.timeOverhead, 0) /
-      lazyEagerResults.length
+      lazyEagerResults.reduce((s, r) => s + r.timeOverhead, 0) / lazyEagerResults.length
     const avgMemOverhead =
-      lazyEagerResults.reduce((s, r) => s + r.memoryOverhead, 0) /
-      lazyEagerResults.length
+      lazyEagerResults.reduce((s, r) => s + r.memoryOverhead, 0) / lazyEagerResults.length
     console.log(`\nCurrent Iterator vs Eager:`)
     console.log(`  Time overhead: +${avgTimeOverhead.toFixed(1)}%`)
     console.log(`  Memory overhead: +${avgMemOverhead.toFixed(1)}%`)

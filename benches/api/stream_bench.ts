@@ -13,7 +13,11 @@
  *          Minipass overhead, chunk batching behavior
  */
 
-import { glob as ogGlob, globStream as ogGlobStream, globStreamSync as ogGlobStreamSync } from 'glob'
+import {
+  glob as ogGlob,
+  globStream as ogGlobStream,
+  globStreamSync as ogGlobStreamSync,
+} from 'glob'
 import { globStream, globStreamSync, globSync, glob } from '../../js/index.js'
 import { Minipass } from 'minipass'
 
@@ -110,9 +114,12 @@ function forceGC() {
 /**
  * Measure time to first chunk and total time for a stream
  */
-async function measureStreamTiming(
-  streamFn: () => Minipass<string, string>
-): Promise<{ firstChunkTime: number; totalTime: number; resultCount: number; chunksReceived: number }> {
+async function measureStreamTiming(streamFn: () => Minipass<string, string>): Promise<{
+  firstChunkTime: number
+  totalTime: number
+  resultCount: number
+  chunksReceived: number
+}> {
   return new Promise((resolve, reject) => {
     const start = performance.now()
     let firstChunkTime = 0
@@ -169,23 +176,33 @@ async function runStreamBenchmark(
   }
 
   // Benchmark glob stream
-  const globResults: Array<{ firstChunkTime: number; totalTime: number; resultCount: number; chunksReceived: number }> = []
+  const globResults: Array<{
+    firstChunkTime: number
+    totalTime: number
+    resultCount: number
+    chunksReceived: number
+  }> = []
   for (let i = 0; i < runs; i++) {
     const result = await measureStreamTiming(() => ogGlobStream(pattern, { cwd }))
     globResults.push(result)
   }
 
   // Benchmark globlin stream
-  const globlinResults: Array<{ firstChunkTime: number; totalTime: number; resultCount: number; chunksReceived: number }> = []
+  const globlinResults: Array<{
+    firstChunkTime: number
+    totalTime: number
+    resultCount: number
+    chunksReceived: number
+  }> = []
   for (let i = 0; i < runs; i++) {
     const result = await measureStreamTiming(() => globStream(pattern, { cwd }))
     globlinResults.push(result)
   }
 
-  const globFirstChunkMedian = median(globResults.map((r) => r.firstChunkTime))
-  const globTotalMedian = median(globResults.map((r) => r.totalTime))
-  const globlinFirstChunkMedian = median(globlinResults.map((r) => r.firstChunkTime))
-  const globlinTotalMedian = median(globlinResults.map((r) => r.totalTime))
+  const globFirstChunkMedian = median(globResults.map(r => r.firstChunkTime))
+  const globTotalMedian = median(globResults.map(r => r.totalTime))
+  const globlinFirstChunkMedian = median(globlinResults.map(r => r.firstChunkTime))
+  const globlinTotalMedian = median(globlinResults.map(r => r.totalTime))
 
   const globResultCount = globResults[0].resultCount
   const globlinResultCount = globlinResults[0].resultCount
@@ -222,7 +239,13 @@ async function runSyncStreamBenchmark(
   pattern: string,
   cwd: string,
   runs = 5
-): Promise<{ pattern: string; fixture: string; glob: { time: number; count: number }; globlin: { time: number; count: number }; speedup: number }> {
+): Promise<{
+  pattern: string
+  fixture: string
+  glob: { time: number; count: number }
+  globlin: { time: number; count: number }
+  speedup: number
+}> {
   const fixtureLabel = cwd.includes('small')
     ? 'small'
     : cwd.includes('medium')
@@ -267,10 +290,7 @@ async function runSyncStreamBenchmark(
 /**
  * Measure memory usage during streaming vs sync operations
  */
-async function measureMemoryUsage(
-  pattern: string,
-  cwd: string
-): Promise<MemoryBenchmarkResult> {
+async function measureMemoryUsage(pattern: string, cwd: string): Promise<MemoryBenchmarkResult> {
   const fixtureLabel = cwd.includes('small')
     ? 'small'
     : cwd.includes('medium')
@@ -358,7 +378,7 @@ async function measureBackpressure(
     stream.on('data', async () => {
       globResultCount++
       // Simulate slow consumer
-      await new Promise((r) => setTimeout(r, delayMs))
+      await new Promise(r => setTimeout(r, delayMs))
     })
     stream.on('drain', () => {
       globBackpressureEvents++
@@ -379,7 +399,7 @@ async function measureBackpressure(
     stream.on('data', async () => {
       globlinResultCount++
       // Simulate slow consumer
-      await new Promise((r) => setTimeout(r, delayMs))
+      await new Promise(r => setTimeout(r, delayMs))
     })
     stream.on('drain', () => {
       globlinBackpressureEvents++
@@ -441,8 +461,8 @@ async function measureThroughput(
     globlinResults.push({ time: result.totalTime, count: result.resultCount })
   }
 
-  const globMedianTime = median(globResults.map((r) => r.time))
-  const globlinMedianTime = median(globlinResults.map((r) => r.time))
+  const globMedianTime = median(globResults.map(r => r.time))
+  const globlinMedianTime = median(globlinResults.map(r => r.time))
   const globCount = globResults[0].count
   const globlinCount = globlinResults[0].count
 
@@ -473,7 +493,14 @@ async function measureThroughput(
 async function compareStreamVsSync(
   pattern: string,
   cwd: string
-): Promise<{ pattern: string; fixture: string; syncTime: number; streamTime: number; overhead: number; overheadPercent: number }> {
+): Promise<{
+  pattern: string
+  fixture: string
+  syncTime: number
+  streamTime: number
+  overhead: number
+  overheadPercent: number
+}> {
   const fixtureLabel = cwd.includes('small')
     ? 'small'
     : cwd.includes('medium')
@@ -520,10 +547,23 @@ async function main() {
   console.log('='.repeat(80))
 
   const allResults: StreamBenchmarkResult[] = []
-  const syncStreamResults: Array<{ pattern: string; fixture: string; glob: { time: number; count: number }; globlin: { time: number; count: number }; speedup: number }> = []
+  const syncStreamResults: Array<{
+    pattern: string
+    fixture: string
+    glob: { time: number; count: number }
+    globlin: { time: number; count: number }
+    speedup: number
+  }> = []
   const memoryResults: MemoryBenchmarkResult[] = []
   const throughputResults: ThroughputResult[] = []
-  const streamVsSyncResults: Array<{ pattern: string; fixture: string; syncTime: number; streamTime: number; overhead: number; overheadPercent: number }> = []
+  const streamVsSyncResults: Array<{
+    pattern: string
+    fixture: string
+    syncTime: number
+    streamTime: number
+    overhead: number
+    overheadPercent: number
+  }> = []
 
   // ========================================
   // 1. Stream Timing Benchmarks
@@ -538,7 +578,11 @@ async function main() {
     { cwd: LARGE_CWD, label: 'large' },
   ]
 
-  const patterns = [...SIMPLE_PATTERNS.slice(0, 2), ...RECURSIVE_PATTERNS.slice(0, 2), ...SCOPED_PATTERNS.slice(0, 1)]
+  const patterns = [
+    ...SIMPLE_PATTERNS.slice(0, 2),
+    ...RECURSIVE_PATTERNS.slice(0, 2),
+    ...SCOPED_PATTERNS.slice(0, 1),
+  ]
 
   for (const { cwd, label } of fixtures) {
     console.log(`\n[${label.toUpperCase()} FIXTURE]`)
@@ -710,7 +754,7 @@ async function main() {
 
     for (const pattern of ['**/*.js', '**/*']) {
       try {
-        const result = allResults.find((r) => r.pattern === pattern && r.fixture === label)
+        const result = allResults.find(r => r.pattern === pattern && r.fixture === label)
         if (result) {
           console.log(
             `  ${pattern.padEnd(25)} | ` +
@@ -734,14 +778,15 @@ async function main() {
   // Calculate averages
   const avgFirstChunkSpeedup =
     allResults.reduce((sum, r) => sum + r.speedupFirstChunk, 0) / allResults.length
-  const avgTotalSpeedup =
-    allResults.reduce((sum, r) => sum + r.speedupTotal, 0) / allResults.length
-  const resultsMatching = allResults.filter((r) => r.resultMatch).length
+  const avgTotalSpeedup = allResults.reduce((sum, r) => sum + r.speedupTotal, 0) / allResults.length
+  const resultsMatching = allResults.filter(r => r.resultMatch).length
 
   console.log(`\nStream Timing:`)
   console.log(`  Average first chunk speedup: ${avgFirstChunkSpeedup.toFixed(2)}x`)
   console.log(`  Average total time speedup: ${avgTotalSpeedup.toFixed(2)}x`)
-  console.log(`  Results matching: ${resultsMatching}/${allResults.length} (${((resultsMatching / allResults.length) * 100).toFixed(0)}%)`)
+  console.log(
+    `  Results matching: ${resultsMatching}/${allResults.length} (${((resultsMatching / allResults.length) * 100).toFixed(0)}%)`
+  )
 
   const avgSyncStreamSpeedup =
     syncStreamResults.reduce((sum, r) => sum + r.speedup, 0) / syncStreamResults.length
@@ -764,7 +809,8 @@ async function main() {
 
   if (streamVsSyncResults.length > 0) {
     const avgOverhead =
-      streamVsSyncResults.reduce((sum, r) => sum + r.overheadPercent, 0) / streamVsSyncResults.length
+      streamVsSyncResults.reduce((sum, r) => sum + r.overheadPercent, 0) /
+      streamVsSyncResults.length
     console.log(`\nStream vs Sync Overhead:`)
     console.log(`  Average overhead: ${avgOverhead >= 0 ? '+' : ''}${avgOverhead.toFixed(1)}%`)
   }
@@ -772,11 +818,11 @@ async function main() {
   // Performance by fixture size
   console.log('\nPerformance by Fixture Size:')
   for (const label of ['small', 'medium', 'large']) {
-    const fixtureResults = allResults.filter((r) => r.fixture === label)
+    const fixtureResults = allResults.filter(r => r.fixture === label)
     if (fixtureResults.length > 0) {
       const avgSpeedup =
         fixtureResults.reduce((sum, r) => sum + r.speedupTotal, 0) / fixtureResults.length
-      const fasterCount = fixtureResults.filter((r) => r.speedupTotal >= 1).length
+      const fasterCount = fixtureResults.filter(r => r.speedupTotal >= 1).length
       console.log(
         `  ${label.padEnd(8)}: ${avgSpeedup.toFixed(2)}x avg speedup, ` +
           `${fasterCount}/${fixtureResults.length} patterns faster`

@@ -25,14 +25,14 @@ function median(arr: number[]): number {
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
-function percentile(arr: number[], p: number): number {
+function _percentile(arr: number[], p: number): number {
   const sorted = [...arr].sort((a, b) => a - b)
   const idx = Math.ceil((p / 100) * sorted.length) - 1
   return sorted[Math.max(0, idx)]
 }
 
 async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 // ============================================================
@@ -163,12 +163,12 @@ async function measureEventLoopBlocking(
   let running = true
   let expectedTime = 0
 
-  // Monitor event loop in a separate task
-  const monitorPromise = (async () => {
+  // Monitor event loop in a separate task (intentionally not awaited to run concurrently)
+  void (async () => {
     while (running) {
       const before = performance.now()
       expectedTime = sampleIntervalMs
-      await new Promise((resolve) => setTimeout(resolve, sampleIntervalMs))
+      await new Promise(resolve => setTimeout(resolve, sampleIntervalMs))
       const after = performance.now()
       const actualTime = after - before
       const blockTime = actualTime - expectedTime
@@ -302,7 +302,11 @@ interface TokioAnalysisResult {
   napiPercent: number
 }
 
-async function analyzeTokioRuntime(pattern: string, cwd: string, runs = 15): Promise<TokioAnalysisResult> {
+async function analyzeTokioRuntime(
+  pattern: string,
+  cwd: string,
+  runs = 15
+): Promise<TokioAnalysisResult> {
   const opts = { cwd }
 
   // Warmup
@@ -376,7 +380,11 @@ interface AsyncComparisonResult {
   fgAsyncOverhead: number
 }
 
-async function compareAsyncImplementations(pattern: string, cwd: string, runs = 10): Promise<AsyncComparisonResult> {
+async function compareAsyncImplementations(
+  pattern: string,
+  cwd: string,
+  runs = 10
+): Promise<AsyncComparisonResult> {
   const opts = { cwd }
   const fgOpts = { cwd }
 
@@ -509,7 +517,9 @@ async function main() {
           result.syncTime.toFixed(2).padStart(12) +
           result.asyncTime.toFixed(2).padStart(12) +
           `${result.overhead >= 0 ? '+' : ''}${result.overhead.toFixed(2)}ms`.padStart(12) +
-          `${result.overheadPercent >= 0 ? '+' : ''}${result.overheadPercent.toFixed(1)}%`.padStart(8)
+          `${result.overheadPercent >= 0 ? '+' : ''}${result.overheadPercent.toFixed(1)}%`.padStart(
+            8
+          )
       )
     }
   }
@@ -517,7 +527,9 @@ async function main() {
   // Promise creation and scheduling overhead
   console.log('\nPromise/Scheduling Micro-benchmarks:')
   const sampleOverhead = overheadResults[0]
-  console.log(`  Promise.resolve() creation: ~${(sampleOverhead.promiseCreationTime * 1000).toFixed(2)}us`)
+  console.log(
+    `  Promise.resolve() creation: ~${(sampleOverhead.promiseCreationTime * 1000).toFixed(2)}us`
+  )
   console.log(`  .then() scheduling: ~${(sampleOverhead.asyncSchedulingTime * 1000).toFixed(2)}us`)
 
   // === SECTION 2: Event Loop Blocking ===
@@ -640,9 +652,15 @@ async function main() {
           `${result.globlinAsync.toFixed(1)}ms`.padStart(10) +
           `${result.globAsync.toFixed(1)}ms`.padStart(10) +
           `${result.fgAsync.toFixed(1)}ms`.padStart(10) +
-          `${result.globlinAsyncOverhead >= 0 ? '+' : ''}${result.globlinAsyncOverhead.toFixed(0)}%`.padStart(10) +
-          `${result.globAsyncOverhead >= 0 ? '+' : ''}${result.globAsyncOverhead.toFixed(0)}%`.padStart(10) +
-          `${result.fgAsyncOverhead >= 0 ? '+' : ''}${result.fgAsyncOverhead.toFixed(0)}%`.padStart(10)
+          `${result.globlinAsyncOverhead >= 0 ? '+' : ''}${result.globlinAsyncOverhead.toFixed(0)}%`.padStart(
+            10
+          ) +
+          `${result.globAsyncOverhead >= 0 ? '+' : ''}${result.globAsyncOverhead.toFixed(0)}%`.padStart(
+            10
+          ) +
+          `${result.fgAsyncOverhead >= 0 ? '+' : ''}${result.fgAsyncOverhead.toFixed(0)}%`.padStart(
+            10
+          )
       )
     }
   }
@@ -652,13 +670,16 @@ async function main() {
   console.log('BOTTLENECK ANALYSIS SUMMARY')
   console.log('='.repeat(80))
 
-  const avgOverhead = overheadResults.reduce((sum, r) => sum + r.overheadPercent, 0) / overheadResults.length
-  const maxOverhead = Math.max(...overheadResults.map((r) => r.overheadPercent))
-  const minOverhead = Math.min(...overheadResults.map((r) => r.overheadPercent))
+  const avgOverhead =
+    overheadResults.reduce((sum, r) => sum + r.overheadPercent, 0) / overheadResults.length
+  const maxOverhead = Math.max(...overheadResults.map(r => r.overheadPercent))
+  const minOverhead = Math.min(...overheadResults.map(r => r.overheadPercent))
 
   console.log('\n1. ASYNC OVERHEAD:')
   console.log(`   Average: ${avgOverhead >= 0 ? '+' : ''}${avgOverhead.toFixed(1)}%`)
-  console.log(`   Range: ${minOverhead >= 0 ? '+' : ''}${minOverhead.toFixed(1)}% to ${maxOverhead >= 0 ? '+' : ''}${maxOverhead.toFixed(1)}%`)
+  console.log(
+    `   Range: ${minOverhead >= 0 ? '+' : ''}${minOverhead.toFixed(1)}% to ${maxOverhead >= 0 ? '+' : ''}${maxOverhead.toFixed(1)}%`
+  )
   console.log('   Conclusion: Async overhead is MINIMAL (typically <5%)')
 
   console.log('\n2. EVENT LOOP BLOCKING:')

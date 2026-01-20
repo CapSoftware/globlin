@@ -115,7 +115,12 @@ function forceGC() {
 async function measureAsyncIteratorTiming(
   iteratorFn: () => AsyncGenerator<string, void, void>,
   limit?: number
-): Promise<{ firstYieldTime: number; totalTime: number; resultCount: number; perYieldCost: number }> {
+): Promise<{
+  firstYieldTime: number
+  totalTime: number
+  resultCount: number
+  perYieldCost: number
+}> {
   const start = performance.now()
   let firstYieldTime = 0
   let resultCount = 0
@@ -208,7 +213,12 @@ async function runAsyncIteratorBenchmark(
   }
 
   // Benchmark glob iterate
-  const globResults: Array<{ firstYieldTime: number; totalTime: number; resultCount: number; perYieldCost: number }> = []
+  const globResults: Array<{
+    firstYieldTime: number
+    totalTime: number
+    resultCount: number
+    perYieldCost: number
+  }> = []
   for (let i = 0; i < runs; i++) {
     const g = new (await import('glob')).Glob(pattern, { cwd })
     const result = await measureAsyncIteratorTiming(() => g.iterate())
@@ -216,18 +226,23 @@ async function runAsyncIteratorBenchmark(
   }
 
   // Benchmark globlin iterate
-  const globlinResults: Array<{ firstYieldTime: number; totalTime: number; resultCount: number; perYieldCost: number }> = []
+  const globlinResults: Array<{
+    firstYieldTime: number
+    totalTime: number
+    resultCount: number
+    perYieldCost: number
+  }> = []
   for (let i = 0; i < runs; i++) {
     const result = await measureAsyncIteratorTiming(() => globIterate(pattern, { cwd }))
     globlinResults.push(result)
   }
 
-  const globFirstYieldMedian = median(globResults.map((r) => r.firstYieldTime))
-  const globTotalMedian = median(globResults.map((r) => r.totalTime))
-  const globPerYieldMedian = median(globResults.map((r) => r.perYieldCost))
-  const globlinFirstYieldMedian = median(globlinResults.map((r) => r.firstYieldTime))
-  const globlinTotalMedian = median(globlinResults.map((r) => r.totalTime))
-  const globlinPerYieldMedian = median(globlinResults.map((r) => r.perYieldCost))
+  const globFirstYieldMedian = median(globResults.map(r => r.firstYieldTime))
+  const globTotalMedian = median(globResults.map(r => r.totalTime))
+  const globPerYieldMedian = median(globResults.map(r => r.perYieldCost))
+  const globlinFirstYieldMedian = median(globlinResults.map(r => r.firstYieldTime))
+  const globlinTotalMedian = median(globlinResults.map(r => r.totalTime))
+  const globlinPerYieldMedian = median(globlinResults.map(r => r.perYieldCost))
 
   const globResultCount = globResults[0].resultCount
   const globlinResultCount = globlinResults[0].resultCount
@@ -280,7 +295,12 @@ async function runSyncIteratorBenchmark(
   }
 
   // Benchmark glob iterateSync
-  const globResults: Array<{ firstYieldTime: number; totalTime: number; resultCount: number; perYieldCost: number }> = []
+  const globResults: Array<{
+    firstYieldTime: number
+    totalTime: number
+    resultCount: number
+    perYieldCost: number
+  }> = []
   for (let i = 0; i < runs; i++) {
     const g = new (await import('glob')).Glob(pattern, { cwd })
     const result = measureSyncIteratorTiming(() => g.iterateSync())
@@ -288,18 +308,23 @@ async function runSyncIteratorBenchmark(
   }
 
   // Benchmark globlin iterateSync
-  const globlinResults: Array<{ firstYieldTime: number; totalTime: number; resultCount: number; perYieldCost: number }> = []
+  const globlinResults: Array<{
+    firstYieldTime: number
+    totalTime: number
+    resultCount: number
+    perYieldCost: number
+  }> = []
   for (let i = 0; i < runs; i++) {
     const result = measureSyncIteratorTiming(() => globIterateSync(pattern, { cwd }))
     globlinResults.push(result)
   }
 
-  const globFirstYieldMedian = median(globResults.map((r) => r.firstYieldTime))
-  const globTotalMedian = median(globResults.map((r) => r.totalTime))
-  const globPerYieldMedian = median(globResults.map((r) => r.perYieldCost))
-  const globlinFirstYieldMedian = median(globlinResults.map((r) => r.firstYieldTime))
-  const globlinTotalMedian = median(globlinResults.map((r) => r.totalTime))
-  const globlinPerYieldMedian = median(globlinResults.map((r) => r.perYieldCost))
+  const globFirstYieldMedian = median(globResults.map(r => r.firstYieldTime))
+  const globTotalMedian = median(globResults.map(r => r.totalTime))
+  const globPerYieldMedian = median(globResults.map(r => r.perYieldCost))
+  const globlinFirstYieldMedian = median(globlinResults.map(r => r.firstYieldTime))
+  const globlinTotalMedian = median(globlinResults.map(r => r.totalTime))
+  const globlinPerYieldMedian = median(globlinResults.map(r => r.perYieldCost))
 
   const globResultCount = globResults[0].resultCount
   const globlinResultCount = globlinResults[0].resultCount
@@ -366,7 +391,10 @@ async function runEarlyTerminationBenchmark(
   const globlinTimes: number[] = []
   let globlinCount = 0
   for (let i = 0; i < 3; i++) {
-    const result = await measureAsyncIteratorTiming(() => globIterate(pattern, { cwd }), terminateAfter)
+    const result = await measureAsyncIteratorTiming(
+      () => globIterate(pattern, { cwd }),
+      terminateAfter
+    )
     globlinTimes.push(result.totalTime)
     globlinCount = result.resultCount
   }
@@ -378,7 +406,8 @@ async function runEarlyTerminationBenchmark(
   const g2 = new (await import('glob')).Glob(pattern, { cwd })
   const fullGlobResult = await measureAsyncIteratorTiming(() => g2.iterate())
   const fullGloblinResult = await measureAsyncIteratorTiming(() => globIterate(pattern, { cwd }))
-  const timeSavingsPercent = ((fullGloblinResult.totalTime - globlinMedian) / fullGloblinResult.totalTime) * 100
+  const timeSavingsPercent =
+    ((fullGloblinResult.totalTime - globlinMedian) / fullGloblinResult.totalTime) * 100
 
   return {
     pattern,
@@ -456,7 +485,10 @@ async function compareIteratorVsSync(pattern: string, cwd: string): Promise<Iter
 /**
  * Compare iterator vs stream API
  */
-async function compareIteratorVsStream(pattern: string, cwd: string): Promise<IteratorVsStreamResult> {
+async function compareIteratorVsStream(
+  pattern: string,
+  cwd: string
+): Promise<IteratorVsStreamResult> {
   const fixtureLabel = cwd.includes('small')
     ? 'small'
     : cwd.includes('medium')
@@ -543,7 +575,8 @@ async function measureIteratorMemory(pattern: string, cwd: string): Promise<Memo
   const iterEndHeap = process.memoryUsage().heapUsed
   const iterHeapDelta = iterPeakHeap - iterStartHeap
 
-  const memorySavingsPercent = syncHeapDelta > 0 ? ((syncHeapDelta - iterHeapDelta) / syncHeapDelta) * 100 : 0
+  const memorySavingsPercent =
+    syncHeapDelta > 0 ? ((syncHeapDelta - iterHeapDelta) / syncHeapDelta) * 100 : 0
 
   return {
     pattern,
@@ -585,7 +618,11 @@ async function main() {
     { cwd: LARGE_CWD, label: 'large' },
   ]
 
-  const patterns = [...SIMPLE_PATTERNS.slice(0, 2), ...RECURSIVE_PATTERNS.slice(0, 2), ...SCOPED_PATTERNS.slice(0, 1)]
+  const patterns = [
+    ...SIMPLE_PATTERNS.slice(0, 2),
+    ...RECURSIVE_PATTERNS.slice(0, 2),
+    ...SCOPED_PATTERNS.slice(0, 1),
+  ]
 
   // ========================================
   // 1. Async Iterator Benchmarks
@@ -676,7 +713,9 @@ async function main() {
         earlyTermResults.push(result)
 
         const speedupStr =
-          result.speedup >= 1 ? `${result.speedup.toFixed(2)}x faster` : `${(1 / result.speedup).toFixed(2)}x slower`
+          result.speedup >= 1
+            ? `${result.speedup.toFixed(2)}x faster`
+            : `${(1 / result.speedup).toFixed(2)}x slower`
 
         console.log(
           `  Break after ${count.toString().padEnd(5)} | ` +
@@ -803,7 +842,7 @@ async function main() {
   for (const { cwd, label } of fixtures.slice(1)) {
     console.log(`\n[${label.toUpperCase()} FIXTURE]`)
 
-    for (const result of asyncResults.filter((r) => r.fixture === label)) {
+    for (const result of asyncResults.filter(r => r.fixture === label)) {
       const perYieldUs = result.globlin.perYieldCost * 1000
       console.log(
         `  ${result.pattern.padEnd(25)} | ` +
@@ -823,9 +862,11 @@ async function main() {
 
   // Async iterator summary
   if (asyncResults.length > 0) {
-    const avgFirstYieldSpeedup = asyncResults.reduce((sum, r) => sum + r.speedupFirstYield, 0) / asyncResults.length
-    const avgTotalSpeedup = asyncResults.reduce((sum, r) => sum + r.speedupTotal, 0) / asyncResults.length
-    const resultsMatching = asyncResults.filter((r) => r.resultMatch).length
+    const avgFirstYieldSpeedup =
+      asyncResults.reduce((sum, r) => sum + r.speedupFirstYield, 0) / asyncResults.length
+    const avgTotalSpeedup =
+      asyncResults.reduce((sum, r) => sum + r.speedupTotal, 0) / asyncResults.length
+    const resultsMatching = asyncResults.filter(r => r.resultMatch).length
 
     console.log(`\nAsync Iterator (globIterate):`)
     console.log(`  Average first yield speedup: ${avgFirstYieldSpeedup.toFixed(2)}x`)
@@ -837,38 +878,52 @@ async function main() {
 
   // Sync iterator summary
   if (syncResults.length > 0) {
-    const avgSyncSpeedup = syncResults.reduce((sum, r) => sum + r.speedupTotal, 0) / syncResults.length
+    const avgSyncSpeedup =
+      syncResults.reduce((sum, r) => sum + r.speedupTotal, 0) / syncResults.length
     console.log(`\nSync Iterator (globIterateSync):`)
     console.log(`  Average speedup: ${avgSyncSpeedup.toFixed(2)}x`)
   }
 
   // Early termination summary
   if (earlyTermResults.length > 0) {
-    const avgSavings = earlyTermResults.reduce((sum, r) => sum + r.timeSavingsPercent, 0) / earlyTermResults.length
+    const avgSavings =
+      earlyTermResults.reduce((sum, r) => sum + r.timeSavingsPercent, 0) / earlyTermResults.length
     console.log(`\nEarly Termination:`)
     console.log(`  Average time savings: ${avgSavings.toFixed(1)}%`)
   }
 
   // Iterator vs sync/async overhead
   if (iterVsSyncResults.length > 0) {
-    const avgOverheadVsSync = iterVsSyncResults.reduce((sum, r) => sum + r.iteratorOverheadVsSync, 0) / iterVsSyncResults.length
+    const avgOverheadVsSync =
+      iterVsSyncResults.reduce((sum, r) => sum + r.iteratorOverheadVsSync, 0) /
+      iterVsSyncResults.length
     const avgOverheadVsAsync =
-      iterVsSyncResults.reduce((sum, r) => sum + r.iteratorOverheadVsAsync, 0) / iterVsSyncResults.length
+      iterVsSyncResults.reduce((sum, r) => sum + r.iteratorOverheadVsAsync, 0) /
+      iterVsSyncResults.length
     console.log(`\nIterator Overhead:`)
-    console.log(`  vs Sync API: ${avgOverheadVsSync >= 0 ? '+' : ''}${avgOverheadVsSync.toFixed(1)}%`)
-    console.log(`  vs Async API: ${avgOverheadVsAsync >= 0 ? '+' : ''}${avgOverheadVsAsync.toFixed(1)}%`)
+    console.log(
+      `  vs Sync API: ${avgOverheadVsSync >= 0 ? '+' : ''}${avgOverheadVsSync.toFixed(1)}%`
+    )
+    console.log(
+      `  vs Async API: ${avgOverheadVsAsync >= 0 ? '+' : ''}${avgOverheadVsAsync.toFixed(1)}%`
+    )
   }
 
   // Iterator vs stream
   if (iterVsStreamResults.length > 0) {
-    const avgOverheadVsStream = iterVsStreamResults.reduce((sum, r) => sum + r.overheadPercent, 0) / iterVsStreamResults.length
+    const avgOverheadVsStream =
+      iterVsStreamResults.reduce((sum, r) => sum + r.overheadPercent, 0) /
+      iterVsStreamResults.length
     console.log(`\nIterator vs Stream:`)
-    console.log(`  Average overhead: ${avgOverheadVsStream >= 0 ? '+' : ''}${avgOverheadVsStream.toFixed(1)}%`)
+    console.log(
+      `  Average overhead: ${avgOverheadVsStream >= 0 ? '+' : ''}${avgOverheadVsStream.toFixed(1)}%`
+    )
   }
 
   // Memory summary
   if (memoryResults.length > 0) {
-    const avgMemorySavings = memoryResults.reduce((sum, r) => sum + r.memorySavingsPercent, 0) / memoryResults.length
+    const avgMemorySavings =
+      memoryResults.reduce((sum, r) => sum + r.memorySavingsPercent, 0) / memoryResults.length
     console.log(`\nMemory:`)
     console.log(`  Average memory savings vs sync: ${avgMemorySavings.toFixed(1)}%`)
   }
@@ -876,12 +931,14 @@ async function main() {
   // Performance by fixture size
   console.log('\nPerformance by Fixture Size (Async Iterator):')
   for (const label of ['small', 'medium', 'large']) {
-    const fixtureResults = asyncResults.filter((r) => r.fixture === label)
+    const fixtureResults = asyncResults.filter(r => r.fixture === label)
     if (fixtureResults.length > 0) {
-      const avgSpeedup = fixtureResults.reduce((sum, r) => sum + r.speedupTotal, 0) / fixtureResults.length
-      const fasterCount = fixtureResults.filter((r) => r.speedupTotal >= 1).length
+      const avgSpeedup =
+        fixtureResults.reduce((sum, r) => sum + r.speedupTotal, 0) / fixtureResults.length
+      const fasterCount = fixtureResults.filter(r => r.speedupTotal >= 1).length
       console.log(
-        `  ${label.padEnd(8)}: ${avgSpeedup.toFixed(2)}x avg speedup, ` + `${fasterCount}/${fixtureResults.length} patterns faster`
+        `  ${label.padEnd(8)}: ${avgSpeedup.toFixed(2)}x avg speedup, ` +
+          `${fasterCount}/${fixtureResults.length} patterns faster`
       )
     }
   }

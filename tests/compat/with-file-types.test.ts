@@ -4,20 +4,14 @@ import { globSync, glob } from 'glob'
 import { createTestFixture, cleanupFixture, FixtureConfig } from '../harness'
 
 const FIXTURE_CONFIG: FixtureConfig = {
-  files: [
-    'file.txt',
-    'file.js',
-    'dir/nested.ts',
-    'dir/subdir/deep.md',
-    '.hidden',
-  ],
+  files: ['file.txt', 'file.js', 'dir/nested.ts', 'dir/subdir/deep.md', '.hidden'],
   contents: {
     'file.txt': 'content',
     'file.js': 'code',
     'dir/nested.ts': 'nested',
     'dir/subdir/deep.md': 'deep',
     '.hidden': 'hidden',
-  }
+  },
 }
 
 describe('withFileTypes option', () => {
@@ -98,7 +92,11 @@ describe('withFileTypes option', () => {
 
     it('matches glob v13 result paths', async () => {
       const globResults = await glob('**/*', { cwd: fixture, withFileTypes: true, dot: true })
-      const globlinResults = await globlinGlob('**/*', { cwd: fixture, withFileTypes: true, dot: true })
+      const globlinResults = await globlinGlob('**/*', {
+        cwd: fixture,
+        withFileTypes: true,
+        dot: true,
+      })
 
       const globPaths = globResults.map(p => p.relative()).sort()
       const globlinPaths = globlinResults.map(p => p.relative()).sort()

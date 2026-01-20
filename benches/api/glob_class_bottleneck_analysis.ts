@@ -68,7 +68,9 @@ async function analyzePatternCaching(): Promise<void> {
       firstTimeTimes.push(performance.now() - start)
     }
 
-    console.log(`    Cold cache: ${avg(firstTimeTimes).toFixed(2)}ms avg per batch of ${patterns.length} patterns`)
+    console.log(
+      `    Cold cache: ${avg(firstTimeTimes).toFixed(2)}ms avg per batch of ${patterns.length} patterns`
+    )
   }
 
   // Test 2: Repeated pattern compilation (warm cache)
@@ -92,7 +94,9 @@ async function analyzePatternCaching(): Promise<void> {
       warmCacheTimes.push(performance.now() - start)
     }
 
-    console.log(`    Warm cache: ${avg(warmCacheTimes).toFixed(2)}ms avg per batch of ${patterns.length} patterns`)
+    console.log(
+      `    Warm cache: ${avg(warmCacheTimes).toFixed(2)}ms avg per batch of ${patterns.length} patterns`
+    )
   }
 
   // Test 3: Cache hit ratio estimate
@@ -119,8 +123,12 @@ async function analyzePatternCaching(): Promise<void> {
     const avgWalk = avg(walkTimes)
     const total = avgConstruct + avgWalk
 
-    console.log(`    Construction: ${avgConstruct.toFixed(4)}ms (${((avgConstruct / total) * 100).toFixed(1)}%)`)
-    console.log(`    Walking:      ${avgWalk.toFixed(2)}ms (${((avgWalk / total) * 100).toFixed(1)}%)`)
+    console.log(
+      `    Construction: ${avgConstruct.toFixed(4)}ms (${((avgConstruct / total) * 100).toFixed(1)}%)`
+    )
+    console.log(
+      `    Walking:      ${avgWalk.toFixed(2)}ms (${((avgWalk / total) * 100).toFixed(1)}%)`
+    )
     console.log(`    Total:        ${total.toFixed(2)}ms`)
   }
 }
@@ -562,8 +570,12 @@ async function analyzeIOvsClassOverhead(): Promise<void> {
     const total = avgConstruct + avgWalk
     const avgResults = avg(resultCounts)
 
-    console.log(`    Construction: ${avgConstruct.toFixed(4)}ms (${((avgConstruct / total) * 100).toFixed(2)}%)`)
-    console.log(`    Walking:      ${avgWalk.toFixed(2)}ms (${((avgWalk / total) * 100).toFixed(2)}%)`)
+    console.log(
+      `    Construction: ${avgConstruct.toFixed(4)}ms (${((avgConstruct / total) * 100).toFixed(2)}%)`
+    )
+    console.log(
+      `    Walking:      ${avgWalk.toFixed(2)}ms (${((avgWalk / total) * 100).toFixed(2)}%)`
+    )
     console.log(`    Total:        ${total.toFixed(2)}ms`)
     console.log(`    Results:      ${avgResults.toFixed(0)} files`)
     console.log(`    Per result:   ${((avgWalk / avgResults) * 1000).toFixed(3)}us`)

@@ -98,7 +98,7 @@ async function benchmarkConstruction(): Promise<ConstructionResult[]> {
   console.log('\n1.1 Simple pattern, minimal options:')
   {
     const pattern = '*.js'
-    const options = { cwd: '.' }  // glob requires options
+    const options = { cwd: '.' } // glob requires options
     const globTimes: number[] = []
     const globlinTimes: number[] = []
 
@@ -320,7 +320,14 @@ async function benchmarkWalkMethods(): Promise<MethodComparisonResult[]> {
     { name: 'large', cwd: LARGE_CWD },
   ]
 
-  console.log('\n' + 'Fixture'.padEnd(10) + 'walkSync (ms)'.padStart(15) + 'walk (ms)'.padStart(15) + 'Async Overhead'.padStart(16) + 'Results'.padStart(10))
+  console.log(
+    '\n' +
+      'Fixture'.padEnd(10) +
+      'walkSync (ms)'.padStart(15) +
+      'walk (ms)'.padStart(15) +
+      'Async Overhead'.padStart(16) +
+      'Results'.padStart(10)
+  )
   console.log('-'.repeat(66))
 
   for (const fixture of fixtures) {
@@ -394,7 +401,14 @@ async function benchmarkStreamMethods(): Promise<MethodComparisonResult[]> {
     { name: 'large', cwd: LARGE_CWD },
   ]
 
-  console.log('\n' + 'Fixture'.padEnd(10) + 'streamSync (ms)'.padStart(17) + 'stream (ms)'.padStart(15) + 'Async Overhead'.padStart(16) + 'Results'.padStart(10))
+  console.log(
+    '\n' +
+      'Fixture'.padEnd(10) +
+      'streamSync (ms)'.padStart(17) +
+      'stream (ms)'.padStart(15) +
+      'Async Overhead'.padStart(16) +
+      'Results'.padStart(10)
+  )
   console.log('-'.repeat(68))
 
   for (const fixture of fixtures) {
@@ -479,7 +493,14 @@ async function benchmarkIterateMethods(): Promise<MethodComparisonResult[]> {
     { name: 'large', cwd: LARGE_CWD },
   ]
 
-  console.log('\n' + 'Fixture'.padEnd(10) + 'iterateSync (ms)'.padStart(18) + 'iterate (ms)'.padStart(15) + 'Async Overhead'.padStart(16) + 'Results'.padStart(10))
+  console.log(
+    '\n' +
+      'Fixture'.padEnd(10) +
+      'iterateSync (ms)'.padStart(18) +
+      'iterate (ms)'.padStart(15) +
+      'Async Overhead'.padStart(16) +
+      'Results'.padStart(10)
+  )
   console.log('-'.repeat(69))
 
   for (const fixture of fixtures) {
@@ -567,7 +588,14 @@ async function benchmarkSymbolIterators(): Promise<MethodComparisonResult[]> {
     { name: 'large', cwd: LARGE_CWD },
   ]
 
-  console.log('\n' + 'Fixture'.padEnd(10) + 'for...of (ms)'.padStart(15) + 'for await (ms)'.padStart(17) + 'Async Overhead'.padStart(16) + 'Results'.padStart(10))
+  console.log(
+    '\n' +
+      'Fixture'.padEnd(10) +
+      'for...of (ms)'.padStart(15) +
+      'for await (ms)'.padStart(17) +
+      'Async Overhead'.padStart(16) +
+      'Results'.padStart(10)
+  )
   console.log('-'.repeat(68))
 
   for (const fixture of fixtures) {
@@ -719,7 +747,9 @@ async function benchmarkCacheReuse(): Promise<CacheReuseResult[]> {
     // Update previous result with reuse info
     results[results.length - 1].withReuse = medianTime
     results[results.length - 1].benefit =
-      ((results[results.length - 1].withoutReuse - medianTime) / results[results.length - 1].withoutReuse) * 100
+      ((results[results.length - 1].withoutReuse - medianTime) /
+        results[results.length - 1].withoutReuse) *
+      100
   }
 
   // Test 3: Same pattern multiple times without cache
@@ -788,7 +818,9 @@ async function benchmarkCacheReuse(): Promise<CacheReuseResult[]> {
     // Update previous result
     results[results.length - 1].withReuse = medianTime
     results[results.length - 1].benefit =
-      ((results[results.length - 1].withoutReuse - medianTime) / results[results.length - 1].withoutReuse) * 100
+      ((results[results.length - 1].withoutReuse - medianTime) /
+        results[results.length - 1].withoutReuse) *
+      100
   }
 
   // Test 5: Glob class vs globSync function
@@ -907,7 +939,8 @@ async function benchmarkVsGlobClass(): Promise<BenchmarkResult[]> {
       // Compare results
       const globSet = new Set(globResults)
       const globlinSet = new Set(globlinResults)
-      const resultMatch = globSet.size === globlinSet.size && [...globSet].every(r => globlinSet.has(r))
+      const resultMatch =
+        globSet.size === globlinSet.size && [...globSet].every(r => globlinSet.has(r))
 
       console.log(
         pattern.padEnd(20) +
@@ -1035,7 +1068,9 @@ async function main() {
 
   // Construction summary
   console.log('\nConstruction Overhead:')
-  console.log('  Scenario'.padEnd(35) + 'glob'.padStart(12) + 'globlin'.padStart(12) + 'Speedup'.padStart(10))
+  console.log(
+    '  Scenario'.padEnd(35) + 'glob'.padStart(12) + 'globlin'.padStart(12) + 'Speedup'.padStart(10)
+  )
   console.log('-'.repeat(69))
   for (const r of constructionResults) {
     console.log(
@@ -1049,7 +1084,8 @@ async function main() {
   // Method comparison summary
   console.log('\nMethod Async Overhead (vs sync):')
   const allMethodResults = [...walkResults, ...streamResults, ...iterateResults, ...symbolResults]
-  const avgOverhead = allMethodResults.reduce((sum, r) => sum + r.asyncOverhead, 0) / allMethodResults.length
+  const avgOverhead =
+    allMethodResults.reduce((sum, r) => sum + r.asyncOverhead, 0) / allMethodResults.length
   console.log(`  Average async overhead: ${avgOverhead > 0 ? '+' : ''}${avgOverhead.toFixed(1)}%`)
 
   // Cache reuse summary
@@ -1066,7 +1102,12 @@ async function main() {
     if (!byFixture[r.fixture]) byFixture[r.fixture] = []
     byFixture[r.fixture].push(r)
   }
-  console.log('  Fixture'.padEnd(12) + 'Avg Speedup'.padStart(15) + 'Faster Than glob'.padStart(20) + 'Result Match'.padStart(15))
+  console.log(
+    '  Fixture'.padEnd(12) +
+      'Avg Speedup'.padStart(15) +
+      'Faster Than glob'.padStart(20) +
+      'Result Match'.padStart(15)
+  )
   console.log('-'.repeat(62))
   for (const [fixture, results] of Object.entries(byFixture)) {
     const avgSpeedup = results.reduce((sum, r) => sum + r.speedupVsGlob, 0) / results.length
@@ -1086,7 +1127,9 @@ async function main() {
   const totalMatch = vsGlobResults.filter(r => r.resultMatch).length
   const overallSpeedup = vsGlobResults.reduce((sum, r) => sum + r.speedupVsGlob, 0) / totalPatterns
 
-  console.log(`\nOverall: ${overallSpeedup.toFixed(2)}x average speedup, ${totalFaster}/${totalPatterns} patterns faster, ${totalMatch}/${totalPatterns} results match`)
+  console.log(
+    `\nOverall: ${overallSpeedup.toFixed(2)}x average speedup, ${totalFaster}/${totalPatterns} patterns faster, ${totalMatch}/${totalPatterns} results match`
+  )
 
   console.log('\n' + '='.repeat(80))
   console.log('END OF GLOB CLASS API BENCHMARK')

@@ -31,7 +31,10 @@ function ensureFixtures(): boolean {
 }
 
 // Timing utility
-function measureTime(fn: () => void, runs: number = 5): { median: number; min: number; max: number; times: number[] } {
+function measureTime(
+  fn: () => void,
+  runs: number = 5
+): { median: number; min: number; max: number; times: number[] } {
   const times: number[] = []
   for (let i = 0; i < runs; i++) {
     const start = performance.now()
@@ -47,7 +50,10 @@ function measureTime(fn: () => void, runs: number = 5): { median: number; min: n
   }
 }
 
-async function measureTimeAsync(fn: () => Promise<void>, runs: number = 5): Promise<{ median: number; min: number; max: number }> {
+async function measureTimeAsync(
+  fn: () => Promise<void>,
+  runs: number = 5
+): Promise<{ median: number; min: number; max: number }> {
   const times: number[] = []
   for (let i = 0; i < runs; i++) {
     const start = performance.now()
@@ -75,9 +81,9 @@ async function main() {
     process.exit(1)
   }
 
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log('Phase 7.7.2: withFileTypes Bottleneck Analysis')
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log()
 
   const pattern = '**/*.js'
@@ -180,16 +186,21 @@ async function main() {
     originalGlob.globSync(pattern, { cwd: MEDIUM_FIXTURE, withFileTypes: true })
   }, runs)
 
-  const pathObjectConversionTime = globlinWithFileTypesTimes.median - nativeWithFileTypesTimes.median
+  const pathObjectConversionTime =
+    globlinWithFileTypesTimes.median - nativeWithFileTypesTimes.median
 
   console.log(`Pipeline breakdown (globlin withFileTypes):`)
   console.log(`  1. Native Rust walk + match: ${formatMs(stringResultsTimes.median)}`)
   console.log(`  2. Native PathData creation: ${formatMs(nativeOverhead)}`)
-  console.log(`  3. PathScurry conversion:    ${formatMs(pathObjectConversionTime)} (${((pathObjectConversionTime / globlinWithFileTypesTimes.median) * 100).toFixed(1)}%)`)
+  console.log(
+    `  3. PathScurry conversion:    ${formatMs(pathObjectConversionTime)} (${((pathObjectConversionTime / globlinWithFileTypesTimes.median) * 100).toFixed(1)}%)`
+  )
   console.log(`  ---`)
   console.log(`  Total globlin:               ${formatMs(globlinWithFileTypesTimes.median)}`)
   console.log(`  Total glob:                  ${formatMs(globWithFileTypesTimes.median)}`)
-  console.log(`  Speedup:                     ${(globWithFileTypesTimes.median / globlinWithFileTypesTimes.median).toFixed(2)}x`)
+  console.log(
+    `  Speedup:                     ${(globWithFileTypesTimes.median / globlinWithFileTypesTimes.median).toFixed(2)}x`
+  )
   console.log()
 
   // ==========================================================================
@@ -205,7 +216,9 @@ async function main() {
   console.log(`  Native PathData:         ${formatUs(nativeOverhead / resultCount)}`)
   console.log(`  PathScurry resolve:      ${formatUs(pathObjectConversionTime / resultCount)}`)
   console.log(`  ---`)
-  console.log(`  Total per result:        ${formatUs(globlinWithFileTypesTimes.median / resultCount)}`)
+  console.log(
+    `  Total per result:        ${formatUs(globlinWithFileTypesTimes.median / resultCount)}`
+  )
   console.log()
 
   // ==========================================================================
@@ -226,7 +239,9 @@ async function main() {
 
   console.log(`stat: false: ${formatMs(withoutStatTimes.median)}`)
   console.log(`stat: true:  ${formatMs(withStatTimes.median)}`)
-  console.log(`Overhead:    ${formatMs(statOverhead)} (+${((statOverhead / withoutStatTimes.median) * 100).toFixed(1)}%)`)
+  console.log(
+    `Overhead:    ${formatMs(statOverhead)} (+${((statOverhead / withoutStatTimes.median) * 100).toFixed(1)}%)`
+  )
   console.log(`Per result:  ${formatUs(statOverhead / resultCount)}`)
   console.log()
 
@@ -272,7 +287,9 @@ async function main() {
 
   console.log(`Method call overhead (${samplePathObjs.length} calls each):`)
   console.log(`  isFile():      ${formatUs(isFileTimes.median / samplePathObjs.length)} per call`)
-  console.log(`  isDirectory(): ${formatUs(isDirectoryTimes.median / samplePathObjs.length)} per call`)
+  console.log(
+    `  isDirectory(): ${formatUs(isDirectoryTimes.median / samplePathObjs.length)} per call`
+  )
   console.log(`  fullpath():    ${formatUs(fullpathTimes.median / samplePathObjs.length)} per call`)
   console.log(`  relative():    ${formatUs(relativeTimes.median / samplePathObjs.length)} per call`)
   console.log()
@@ -306,8 +323,12 @@ async function main() {
   const pathMemory = afterPathMemory - afterStringMemory
 
   console.log(`Memory usage for ${stringResults.length} results:`)
-  console.log(`  String results: ${(stringMemory / 1024).toFixed(1)} KB (${(stringMemory / stringResults.length).toFixed(1)} bytes/result)`)
-  console.log(`  Path objects:   ${(pathMemory / 1024).toFixed(1)} KB (${(pathMemory / pathResults.length).toFixed(1)} bytes/result)`)
+  console.log(
+    `  String results: ${(stringMemory / 1024).toFixed(1)} KB (${(stringMemory / stringResults.length).toFixed(1)} bytes/result)`
+  )
+  console.log(
+    `  Path objects:   ${(pathMemory / 1024).toFixed(1)} KB (${(pathMemory / pathResults.length).toFixed(1)} bytes/result)`
+  )
   console.log(`  Ratio:          ${(pathMemory / stringMemory).toFixed(1)}x more memory`)
   console.log()
 
@@ -358,7 +379,9 @@ async function main() {
 
   console.log(`  Creation time: ${formatMs(lazyApproachTimes.median)}`)
   console.log(`  vs Current:    ${formatMs(globlinWithFileTypesTimes.median)}`)
-  console.log(`  Savings:       ${formatMs(globlinWithFileTypesTimes.median - lazyApproachTimes.median)} (${(((globlinWithFileTypesTimes.median - lazyApproachTimes.median) / globlinWithFileTypesTimes.median) * 100).toFixed(1)}%)`)
+  console.log(
+    `  Savings:       ${formatMs(globlinWithFileTypesTimes.median - lazyApproachTimes.median)} (${(((globlinWithFileTypesTimes.median - lazyApproachTimes.median) / globlinWithFileTypesTimes.median) * 100).toFixed(1)}%)`
+  )
   console.log()
 
   // Approach 2: Use Rust metadata directly without PathScurry
@@ -378,15 +401,17 @@ async function main() {
 
   console.log(`  Creation time: ${formatMs(simpleObjectTimes.median)}`)
   console.log(`  vs Current:    ${formatMs(globlinWithFileTypesTimes.median)}`)
-  console.log(`  Savings:       ${formatMs(globlinWithFileTypesTimes.median - simpleObjectTimes.median)} (${(((globlinWithFileTypesTimes.median - simpleObjectTimes.median) / globlinWithFileTypesTimes.median) * 100).toFixed(1)}%)`)
+  console.log(
+    `  Savings:       ${formatMs(globlinWithFileTypesTimes.median - simpleObjectTimes.median)} (${(((globlinWithFileTypesTimes.median - simpleObjectTimes.median) / globlinWithFileTypesTimes.median) * 100).toFixed(1)}%)`
+  )
   console.log()
 
   // ==========================================================================
   // Summary
   // ==========================================================================
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log('## Summary: Bottleneck Identification')
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log()
 
   const totalTime = globlinWithFileTypesTimes.median
@@ -398,17 +423,27 @@ async function main() {
   console.log()
   console.log(`| Component              | Time        | Percentage | Per Result |`)
   console.log(`|------------------------|-------------|------------|------------|`)
-  console.log(`| Rust walk + match      | ${formatMs(rustWalkTime).padStart(10)} | ${((rustWalkTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(rustWalkTime / resultCount).padStart(9)} |`)
-  console.log(`| Native PathData        | ${formatMs(nativePathDataTime).padStart(10)} | ${((nativePathDataTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(nativePathDataTime / resultCount).padStart(9)} |`)
-  console.log(`| PathScurry conversion  | ${formatMs(pathScurryTime).padStart(10)} | ${((pathScurryTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(pathScurryTime / resultCount).padStart(9)} |`)
+  console.log(
+    `| Rust walk + match      | ${formatMs(rustWalkTime).padStart(10)} | ${((rustWalkTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(rustWalkTime / resultCount).padStart(9)} |`
+  )
+  console.log(
+    `| Native PathData        | ${formatMs(nativePathDataTime).padStart(10)} | ${((nativePathDataTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(nativePathDataTime / resultCount).padStart(9)} |`
+  )
+  console.log(
+    `| PathScurry conversion  | ${formatMs(pathScurryTime).padStart(10)} | ${((pathScurryTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(pathScurryTime / resultCount).padStart(9)} |`
+  )
   console.log(`|------------------------|-------------|------------|------------|`)
-  console.log(`| Total                  | ${formatMs(totalTime).padStart(10)} | ${((totalTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(totalTime / resultCount).padStart(9)} |`)
+  console.log(
+    `| Total                  | ${formatMs(totalTime).padStart(10)} | ${((totalTime / totalTime) * 100).toFixed(1).padStart(9)}% | ${formatUs(totalTime / resultCount).padStart(9)} |`
+  )
   console.log()
 
   console.log('**PRIMARY BOTTLENECK: PathScurry conversion**')
   console.log()
   console.log(`The PathScurry conversion step (scurry.cwd.resolve() per result)`)
-  console.log(`accounts for ${((pathScurryTime / totalTime) * 100).toFixed(1)}% of total execution time.`)
+  console.log(
+    `accounts for ${((pathScurryTime / totalTime) * 100).toFixed(1)}% of total execution time.`
+  )
   console.log()
   console.log('Optimization recommendations:')
   console.log('1. Lazy Path creation: Only create Path objects when accessed')

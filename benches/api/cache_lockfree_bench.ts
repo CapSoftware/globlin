@@ -1,6 +1,6 @@
 /**
  * Benchmark to test lock-free cache performance
- * 
+ *
  * Tests:
  * 1. Single-threaded repeated cache access
  * 2. Concurrent cache access (simulated via Promise.all)
@@ -60,7 +60,11 @@ async function benchConcurrent(
   batches: number
 ): Promise<BenchResult> {
   // Warmup
-  await Promise.all(Array(3).fill(0).map(() => fn()))
+  await Promise.all(
+    Array(3)
+      .fill(0)
+      .map(() => fn())
+  )
 
   const times: number[] = []
   let results = 0
@@ -68,7 +72,9 @@ async function benchConcurrent(
   for (let batch = 0; batch < batches; batch++) {
     const start = performance.now()
     const allResults = await Promise.all(
-      Array(concurrency).fill(0).map(() => fn())
+      Array(concurrency)
+        .fill(0)
+        .map(() => fn())
     )
     times.push(performance.now() - start)
     results = allResults[0].length
@@ -83,9 +89,9 @@ async function benchConcurrent(
 }
 
 async function main() {
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log('LOCK-FREE CACHE BENCHMARK')
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log('')
 
   // =========================================================================
@@ -118,11 +124,19 @@ async function main() {
     iterations
   )
 
-  console.log(`${'Library'.padEnd(30)} ${'Median Time'.padStart(12)} ${'Results'.padStart(10)} ${'vs glob'.padStart(10)}`)
+  console.log(
+    `${'Library'.padEnd(30)} ${'Median Time'.padStart(12)} ${'Results'.padStart(10)} ${'vs glob'.padStart(10)}`
+  )
   console.log('-'.repeat(65))
-  console.log(`${globlinCached.name.padEnd(30)} ${globlinCached.time.toFixed(2).padStart(9)}ms ${globlinCached.results.toString().padStart(10)} ${(globOriginal.time / globlinCached.time).toFixed(2).padStart(9)}x`)
-  console.log(`${globlinUncached.name.padEnd(30)} ${globlinUncached.time.toFixed(2).padStart(9)}ms ${globlinUncached.results.toString().padStart(10)} ${(globOriginal.time / globlinUncached.time).toFixed(2).padStart(9)}x`)
-  console.log(`${globOriginal.name.padEnd(30)} ${globOriginal.time.toFixed(2).padStart(9)}ms ${globOriginal.results.toString().padStart(10)} ${'1.00'.padStart(9)}x`)
+  console.log(
+    `${globlinCached.name.padEnd(30)} ${globlinCached.time.toFixed(2).padStart(9)}ms ${globlinCached.results.toString().padStart(10)} ${(globOriginal.time / globlinCached.time).toFixed(2).padStart(9)}x`
+  )
+  console.log(
+    `${globlinUncached.name.padEnd(30)} ${globlinUncached.time.toFixed(2).padStart(9)}ms ${globlinUncached.results.toString().padStart(10)} ${(globOriginal.time / globlinUncached.time).toFixed(2).padStart(9)}x`
+  )
+  console.log(
+    `${globOriginal.name.padEnd(30)} ${globOriginal.time.toFixed(2).padStart(9)}ms ${globOriginal.results.toString().padStart(10)} ${'1.00'.padStart(9)}x`
+  )
 
   const cacheSpeedup = globlinUncached.time / globlinCached.time
   console.log(`\nCache speedup: ${cacheSpeedup.toFixed(2)}x`)
@@ -163,8 +177,12 @@ async function main() {
 
   console.log(`${'Scenario'.padEnd(35)} ${'Median Time'.padStart(12)} ${'Ops'.padStart(8)}`)
   console.log('-'.repeat(60))
-  console.log(`${concurrentCached.name.padEnd(35)} ${concurrentCached.time.toFixed(2).padStart(9)}ms ${concurrentCached.ops.toString().padStart(8)}`)
-  console.log(`${concurrentUncached.name.padEnd(35)} ${concurrentUncached.time.toFixed(2).padStart(9)}ms ${concurrentUncached.ops.toString().padStart(8)}`)
+  console.log(
+    `${concurrentCached.name.padEnd(35)} ${concurrentCached.time.toFixed(2).padStart(9)}ms ${concurrentCached.ops.toString().padStart(8)}`
+  )
+  console.log(
+    `${concurrentUncached.name.padEnd(35)} ${concurrentUncached.time.toFixed(2).padStart(9)}ms ${concurrentUncached.ops.toString().padStart(8)}`
+  )
 
   const concurrentSpeedup = concurrentUncached.time / concurrentCached.time
   console.log(`\nConcurrent cache speedup: ${concurrentSpeedup.toFixed(2)}x`)
@@ -194,11 +212,19 @@ async function main() {
     largeIterations
   )
 
-  console.log(`${'Library'.padEnd(30)} ${'Median Time'.padStart(12)} ${'Results'.padStart(10)} ${'vs glob'.padStart(10)}`)
+  console.log(
+    `${'Library'.padEnd(30)} ${'Median Time'.padStart(12)} ${'Results'.padStart(10)} ${'vs glob'.padStart(10)}`
+  )
   console.log('-'.repeat(65))
-  console.log(`${largeCached.name.padEnd(30)} ${largeCached.time.toFixed(2).padStart(9)}ms ${largeCached.results.toString().padStart(10)} ${(largeGlob.time / largeCached.time).toFixed(2).padStart(9)}x`)
-  console.log(`${largeUncached.name.padEnd(30)} ${largeUncached.time.toFixed(2).padStart(9)}ms ${largeUncached.results.toString().padStart(10)} ${(largeGlob.time / largeUncached.time).toFixed(2).padStart(9)}x`)
-  console.log(`${largeGlob.name.padEnd(30)} ${largeGlob.time.toFixed(2).padStart(9)}ms ${largeGlob.results.toString().padStart(10)} ${'1.00'.padStart(9)}x`)
+  console.log(
+    `${largeCached.name.padEnd(30)} ${largeCached.time.toFixed(2).padStart(9)}ms ${largeCached.results.toString().padStart(10)} ${(largeGlob.time / largeCached.time).toFixed(2).padStart(9)}x`
+  )
+  console.log(
+    `${largeUncached.name.padEnd(30)} ${largeUncached.time.toFixed(2).padStart(9)}ms ${largeUncached.results.toString().padStart(10)} ${(largeGlob.time / largeUncached.time).toFixed(2).padStart(9)}x`
+  )
+  console.log(
+    `${largeGlob.name.padEnd(30)} ${largeGlob.time.toFixed(2).padStart(9)}ms ${largeGlob.results.toString().padStart(10)} ${'1.00'.padStart(9)}x`
+  )
 
   const largeCacheSpeedup = largeUncached.time / largeCached.time
   console.log(`\nLarge fixture cache speedup: ${largeCacheSpeedup.toFixed(2)}x`)

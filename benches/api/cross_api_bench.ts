@@ -20,7 +20,7 @@
  * - Memory usage (peak heap, allocation delta)
  */
 
-import { glob as ogGlob, globSync as ogGlobSync, Glob as OgGlob } from 'glob'
+import { globSync as ogGlobSync } from 'glob'
 import {
   glob,
   globSync,
@@ -157,7 +157,7 @@ async function benchmarkGlobStreamSync(
     let count = 0
     const stream = globStreamSync(pattern, { cwd })
 
-    for (const result of stream) {
+    for (const _result of stream) {
       if (count === 0) {
         firstTime = performance.now() - start
       }
@@ -246,7 +246,7 @@ async function benchmarkGlobIterateSync(
     let firstTime = 0
     let count = 0
 
-    for (const _ of globIterateSync(pattern, { cwd })) {
+    for (const _item of globIterateSync(pattern, { cwd })) {
       if (count === 0) {
         firstTime = performance.now() - start
       }
@@ -288,7 +288,7 @@ async function benchmarkGlobIterate(
     let firstTime = 0
     let count = 0
 
-    for await (const _ of globIterate(pattern, { cwd })) {
+    for await (const _item of globIterate(pattern, { cwd })) {
       if (count === 0) {
         firstTime = performance.now() - start
       }
@@ -834,17 +834,6 @@ Type checking only              | hasMagic                  | ~1us, pattern anal
   console.log('='.repeat(100))
 
   // Calculate overall stats
-  const globlinAPIs = [
-    'globSync',
-    'glob (async)',
-    'globStreamSync',
-    'globStream (async)',
-    'globIterateSync',
-    'globIterate (async)',
-    'Glob.walkSync()',
-    'Glob.walk()',
-  ]
-
   let totalSpeedup = 0
   let speedupCount = 0
 

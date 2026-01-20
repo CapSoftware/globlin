@@ -64,7 +64,9 @@ async function measureNapiOverhead(cwd: string, pattern: string, runs: number = 
   console.log(`Results: ${resultCount}`)
   console.log(`Median time: ${median.toFixed(2)}ms`)
   console.log(`Per-result time: ${perResultTime.toFixed(2)}µs`)
-  console.log(`Estimated serialization overhead: ${(perResultTime * 0.3).toFixed(2)}µs/result (30% estimate)`)
+  console.log(
+    `Estimated serialization overhead: ${(perResultTime * 0.3).toFixed(2)}µs/result (30% estimate)`
+  )
 
   return { median, resultCount, perResultTime }
 }
@@ -123,16 +125,23 @@ async function measureDirectoryTraversal(cwd: string, runs: number = 10) {
     results.push({ pattern, depth, time: median, count })
   }
 
-  console.log('Pattern'.padEnd(25) + 'Depth'.padEnd(20) + 'Time (ms)'.padStart(12) + 'Results'.padStart(10))
+  console.log(
+    'Pattern'.padEnd(25) + 'Depth'.padEnd(20) + 'Time (ms)'.padStart(12) + 'Results'.padStart(10)
+  )
   console.log('-'.repeat(67))
 
   for (const r of results) {
-    console.log(r.pattern.padEnd(25) + r.depth.padEnd(20) + r.time.toFixed(2).padStart(12) + r.count.toString().padStart(10))
+    console.log(
+      r.pattern.padEnd(25) +
+        r.depth.padEnd(20) +
+        r.time.toFixed(2).padStart(12) +
+        r.count.toString().padStart(10)
+    )
   }
 
   // Calculate traversal time delta
-  const rootTime = results.find((r) => r.pattern === '*.js')!.time
-  const fullTime = results.find((r) => r.pattern === '**/*')!.time
+  const rootTime = results.find(r => r.pattern === '*.js')!.time
+  const fullTime = results.find(r => r.pattern === '**/*')!.time
   const traversalTime = fullTime - rootTime
 
   console.log(`\nEstimated traversal time (full - root): ${traversalTime.toFixed(2)}ms`)
@@ -178,21 +187,35 @@ async function measurePatternMatching(cwd: string, runs: number = 10) {
     results.push({ pattern, complexity, time: median, count })
   }
 
-  console.log('Pattern'.padEnd(30) + 'Complexity'.padEnd(20) + 'Time (ms)'.padStart(12) + 'Results'.padStart(10))
+  console.log(
+    'Pattern'.padEnd(30) +
+      'Complexity'.padEnd(20) +
+      'Time (ms)'.padStart(12) +
+      'Results'.padStart(10)
+  )
   console.log('-'.repeat(72))
 
   for (const r of results) {
-    console.log(r.pattern.padEnd(30) + r.complexity.padEnd(20) + r.time.toFixed(2).padStart(12) + r.count.toString().padStart(10))
+    console.log(
+      r.pattern.padEnd(30) +
+        r.complexity.padEnd(20) +
+        r.time.toFixed(2).padStart(12) +
+        r.count.toString().padStart(10)
+    )
   }
 
   // Calculate matching overhead (complex - simple)
-  const simpleTime = results.find((r) => r.complexity === 'simple extension')?.time || 0
-  const braceTime = results.find((r) => r.complexity === 'brace expansion')?.time || 0
-  const charClassTime = results.find((r) => r.complexity === 'character class')?.time || 0
+  const simpleTime = results.find(r => r.complexity === 'simple extension')?.time || 0
+  const braceTime = results.find(r => r.complexity === 'brace expansion')?.time || 0
+  const charClassTime = results.find(r => r.complexity === 'character class')?.time || 0
 
   if (simpleTime > 0) {
-    console.log(`\nBrace expansion overhead: ${(braceTime - simpleTime).toFixed(2)}ms (${(((braceTime - simpleTime) / simpleTime) * 100).toFixed(1)}%)`)
-    console.log(`Character class overhead: ${(charClassTime - simpleTime).toFixed(2)}ms (${(((charClassTime - simpleTime) / simpleTime) * 100).toFixed(1)}%)`)
+    console.log(
+      `\nBrace expansion overhead: ${(braceTime - simpleTime).toFixed(2)}ms (${(((braceTime - simpleTime) / simpleTime) * 100).toFixed(1)}%)`
+    )
+    console.log(
+      `Character class overhead: ${(charClassTime - simpleTime).toFixed(2)}ms (${(((charClassTime - simpleTime) / simpleTime) * 100).toFixed(1)}%)`
+    )
   }
 
   return results
@@ -224,7 +247,12 @@ async function measureMemoryAllocation(cwd: string) {
     results.push({ pattern, heapDelta, count: res.length })
   }
 
-  console.log('Pattern'.padEnd(15) + 'Heap Delta'.padStart(15) + 'Results'.padStart(10) + 'Per-Result'.padStart(15))
+  console.log(
+    'Pattern'.padEnd(15) +
+      'Heap Delta'.padStart(15) +
+      'Results'.padStart(10) +
+      'Per-Result'.padStart(15)
+  )
   console.log('-'.repeat(55))
 
   for (const r of results) {
@@ -282,7 +310,12 @@ async function compareComponents(cwd: string, pattern: string, runs: number = 10
   console.log(`Pattern: ${pattern}`)
   console.log(`Fixture: ${cwd}`)
   console.log('')
-  console.log('Library'.padEnd(15) + 'Time (ms)'.padStart(12) + 'Results'.padStart(10) + 'Per-Result (µs)'.padStart(18))
+  console.log(
+    'Library'.padEnd(15) +
+      'Time (ms)'.padStart(12) +
+      'Results'.padStart(10) +
+      'Per-Result (µs)'.padStart(18)
+  )
   console.log('-'.repeat(55))
   console.log(
     'globlin'.padEnd(15) +
@@ -297,7 +330,10 @@ async function compareComponents(cwd: string, pattern: string, runs: number = 10
       ((globMedian / globCount) * 1000).toFixed(2).padStart(18)
   )
   console.log(
-    'fast-glob'.padEnd(15) + fgMedian.toFixed(2).padStart(12) + fgCount.toString().padStart(10) + ((fgMedian / fgCount) * 1000).toFixed(2).padStart(18)
+    'fast-glob'.padEnd(15) +
+      fgMedian.toFixed(2).padStart(12) +
+      fgCount.toString().padStart(10) +
+      ((fgMedian / fgCount) * 1000).toFixed(2).padStart(18)
   )
 
   console.log('')
@@ -353,7 +389,13 @@ async function main() {
   await measureNapiOverhead(LARGE_CWD, '**/*.js')
 
   // 2. Pattern Compilation
-  await measurePatternCompilation(['*.js', '**/*.js', '**/*.{js,ts,tsx}', '**/+(a|b)/*.js', '**/[a-z][0-9].js'])
+  await measurePatternCompilation([
+    '*.js',
+    '**/*.js',
+    '**/*.{js,ts,tsx}',
+    '**/+(a|b)/*.js',
+    '**/[a-z][0-9].js',
+  ])
 
   // 3. Directory Traversal
   await measureDirectoryTraversal(MEDIUM_CWD)

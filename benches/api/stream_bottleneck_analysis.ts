@@ -9,7 +9,11 @@
  * - Memory allocation patterns
  */
 
-import { glob as ogGlob, globStream as ogGlobStream, globStreamSync as ogGlobStreamSync } from 'glob'
+import {
+  glob as ogGlob,
+  globStream as ogGlobStream,
+  globStreamSync as ogGlobStreamSync,
+} from 'glob'
 import { globStream, globStreamSync, globSync, glob } from '../../js/index.js'
 import { Minipass } from 'minipass'
 
@@ -271,10 +275,7 @@ interface BackpressureAnalysis {
   backpressureHandling: string
 }
 
-async function analyzeBackpressure(
-  pattern: string,
-  cwd: string
-): Promise<BackpressureAnalysis> {
+async function analyzeBackpressure(pattern: string, cwd: string): Promise<BackpressureAnalysis> {
   const fixtureLabel = cwd.includes('small')
     ? 'small'
     : cwd.includes('medium')
@@ -288,7 +289,7 @@ async function analyzeBackpressure(
   // Without backpressure (fast consumer)
   let noDrainEvents = 0
   const noBackpressureStart = performance.now()
-  await new Promise<void>((resolve) => {
+  await new Promise<void>(resolve => {
     const stream = globStream(pattern, { cwd })
     stream.on('data', () => {
       // Fast consumer - no delay
@@ -304,7 +305,7 @@ async function analyzeBackpressure(
   let drainEvents = 0
   let pauseCount = 0
   const withBackpressureStart = performance.now()
-  await new Promise<void>((resolve) => {
+  await new Promise<void>(resolve => {
     const stream = globStream(pattern, { cwd })
     let count = 0
     stream.on('data', () => {
@@ -357,10 +358,7 @@ interface WriteBufferAnalysis {
   bufferEfficiency: string
 }
 
-async function analyzeWriteBuffer(
-  pattern: string,
-  cwd: string
-): Promise<WriteBufferAnalysis> {
+async function analyzeWriteBuffer(pattern: string, cwd: string): Promise<WriteBufferAnalysis> {
   const fixtureLabel = cwd.includes('small')
     ? 'small'
     : cwd.includes('medium')
@@ -447,7 +445,7 @@ async function compareStreamingArchitectures(
   let resultCount = 0
   const collectFirstStart = performance.now()
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>(resolve => {
     const stream = globStream(pattern, { cwd })
     let first = true
     stream.on('data', () => {
@@ -475,10 +473,8 @@ async function compareStreamingArchitectures(
     nativeStreaming: {
       description:
         'True native streaming would use NAPI ThreadsafeFunction to emit results as they are found in Rust',
-      potentialFirstResultLatency:
-        '< 1ms (immediate on first result found)',
-      potentialMemorySavings:
-        'Bounded by batch size instead of full result set',
+      potentialFirstResultLatency: '< 1ms (immediate on first result found)',
+      potentialMemorySavings: 'Bounded by batch size instead of full result set',
     },
     recommendation:
       resultCount > 10000
@@ -535,7 +531,7 @@ async function analyzeTimeBreakdown(
   let resultCount = 0
   for (let i = 0; i < runs; i++) {
     const start = performance.now()
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       const stream = globStream(pattern, { cwd })
       stream.on('data', () => {
         resultCount++
@@ -597,7 +593,8 @@ async function analyzeTimeBreakdown(
   const napiSerialization = syncTime * 0.08 // NAPI is ~8%
   const jsOverhead = totalStreamTime - syncTime - minipassWriteTime // Remaining JS overhead
 
-  const total = rustIo + napiSerialization + minipassWriteTime + minipassReadTime + Math.max(0, jsOverhead)
+  const total =
+    rustIo + napiSerialization + minipassWriteTime + minipassReadTime + Math.max(0, jsOverhead)
 
   return {
     fixture: fixtureLabel,

@@ -105,7 +105,7 @@ function median(arr: number[]): number {
   return percentile(arr, 50)
 }
 
-function forceGC() {
+function _forceGC() {
   if (global.gc) {
     global.gc()
   }
@@ -163,7 +163,7 @@ async function runAsyncBenchmark(
   // Check result consistency (use sets for comparison)
   const globSet = new Set(globResults)
   const globlinSet = new Set(globlinResults)
-  const resultMatch = globSet.size === globlinSet.size && [...globSet].every((r) => globlinSet.has(r))
+  const resultMatch = globSet.size === globlinSet.size && [...globSet].every(r => globlinSet.has(r))
 
   const fixtureLabel = cwd.includes('small')
     ? 'small'
@@ -218,21 +218,37 @@ async function runConcurrencyBenchmark(
   const fgOptions = { cwd }
 
   // Warmup
-  await Promise.all([ogGlob(pattern, ogOptions), glob(pattern, globlinOptions), fg(pattern, fgOptions)])
+  await Promise.all([
+    ogGlob(pattern, ogOptions),
+    glob(pattern, globlinOptions),
+    fg(pattern, fgOptions),
+  ])
 
   // Benchmark glob - concurrent operations
   const globStart = performance.now()
-  await Promise.all(Array(concurrency).fill(0).map(() => ogGlob(pattern, ogOptions)))
+  await Promise.all(
+    Array(concurrency)
+      .fill(0)
+      .map(() => ogGlob(pattern, ogOptions))
+  )
   const globTotal = performance.now() - globStart
 
   // Benchmark globlin - concurrent operations
   const globlinStart = performance.now()
-  await Promise.all(Array(concurrency).fill(0).map(() => glob(pattern, globlinOptions)))
+  await Promise.all(
+    Array(concurrency)
+      .fill(0)
+      .map(() => glob(pattern, globlinOptions))
+  )
   const globlinTotal = performance.now() - globlinStart
 
   // Benchmark fast-glob - concurrent operations
   const fgStart = performance.now()
-  await Promise.all(Array(concurrency).fill(0).map(() => fg(pattern, fgOptions)))
+  await Promise.all(
+    Array(concurrency)
+      .fill(0)
+      .map(() => fg(pattern, fgOptions))
+  )
   const fgTotal = performance.now() - fgStart
 
   const fixtureLabel = cwd.includes('small')
@@ -325,19 +341,20 @@ async function measureEventLoopLatency(
     while (running) {
       const expected = intervalMs
       const start = performance.now()
-      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      await new Promise(resolve => setTimeout(resolve, intervalMs))
       const actual = performance.now() - start
       latencies.push(actual - expected)
     }
   }
 
-  const monitorPromise = monitor()
+  // Start monitor (intentionally not awaited to run concurrently)
+  void monitor()
 
   // Run the glob operation
   await glob(pattern, { cwd })
 
   running = false
-  await new Promise((resolve) => setTimeout(resolve, 20)) // Allow monitor to exit
+  await new Promise(resolve => setTimeout(resolve, 20)) // Allow monitor to exit
 
   return {
     avgLatency: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
@@ -586,7 +603,12 @@ async function main() {
   console.log('-'.repeat(80))
 
   console.log('\nMeasuring event loop latency during async glob operations...\n')
-  console.log('Pattern'.padEnd(25) + 'Avg Latency'.padStart(15) + 'Max Latency'.padStart(15) + 'Samples'.padStart(10))
+  console.log(
+    'Pattern'.padEnd(25) +
+      'Avg Latency'.padStart(15) +
+      'Max Latency'.padStart(15) +
+      'Samples'.padStart(10)
+  )
   console.log('-'.repeat(65))
 
   const eventLoopPatterns = ['**/*.js', '**/*']
@@ -606,7 +628,13 @@ async function main() {
   console.log('-'.repeat(80))
 
   const percentilePatterns = ['**/*.js', '*.js', 'level0/**/*.js']
-  console.log('\nPattern'.padEnd(25) + 'Median'.padStart(10) + 'P95'.padStart(10) + 'P99'.padStart(10) + 'Max'.padStart(10))
+  console.log(
+    '\nPattern'.padEnd(25) +
+      'Median'.padStart(10) +
+      'P95'.padStart(10) +
+      'P99'.padStart(10) +
+      'Max'.padStart(10)
+  )
   console.log('-'.repeat(65))
 
   for (const pattern of percentilePatterns) {
@@ -628,7 +656,12 @@ async function main() {
   // Import sync version for comparison
   const { globSync } = await import('../../js/index.js')
 
-  console.log('\n[Globlin] Pattern'.padEnd(25) + 'Sync (ms)'.padStart(12) + 'Async (ms)'.padStart(12) + 'Overhead'.padStart(12))
+  console.log(
+    '\n[Globlin] Pattern'.padEnd(25) +
+      'Sync (ms)'.padStart(12) +
+      'Async (ms)'.padStart(12) +
+      'Overhead'.padStart(12)
+  )
   console.log('-'.repeat(61))
 
   for (const pattern of ['**/*.js', '*.js', 'level0/**/*.js']) {
@@ -674,13 +707,18 @@ async function main() {
   }
 
   console.log('\nAggregate by fixture:')
-  console.log('Fixture'.padEnd(10) + 'Avg vs Glob'.padStart(15) + 'Avg vs FG'.padStart(15) + 'Faster than Glob'.padStart(20))
+  console.log(
+    'Fixture'.padEnd(10) +
+      'Avg vs Glob'.padStart(15) +
+      'Avg vs FG'.padStart(15) +
+      'Faster than Glob'.padStart(20)
+  )
   console.log('-'.repeat(60))
 
   for (const [fixture, results] of Object.entries(byFixture)) {
     const avgVsGlob = results.reduce((sum, r) => sum + r.speedupVsGlob, 0) / results.length
     const avgVsFg = results.reduce((sum, r) => sum + r.speedupVsFg, 0) / results.length
-    const fasterCount = results.filter((r) => r.speedupVsGlob > 1).length
+    const fasterCount = results.filter(r => r.speedupVsGlob > 1).length
     console.log(
       fixture.padEnd(10) +
         `${avgVsGlob.toFixed(2)}x`.padStart(15) +
@@ -690,18 +728,21 @@ async function main() {
   }
 
   // Result accuracy
-  const totalMatches = allResults.filter((r) => r.resultMatch).length
+  const totalMatches = allResults.filter(r => r.resultMatch).length
   console.log(`\nResult accuracy: ${totalMatches}/${allResults.length} patterns match glob results`)
 
   // Concurrency summary
   console.log('\nConcurrency scaling (medium fixture, **/*.js):')
-  const mediumConcurrency = concurrencyResults.filter((r) => r.fixture === 'medium')
+  const mediumConcurrency = concurrencyResults.filter(r => r.fixture === 'medium')
   for (const r of mediumConcurrency) {
-    console.log(`  ${r.concurrency.toString().padEnd(3)} concurrent: ${r.speedupVsGlob.toFixed(2)}x vs glob, throughput ${r.globlin.throughput.toFixed(0)}/s`)
+    console.log(
+      `  ${r.concurrency.toString().padEnd(3)} concurrent: ${r.speedupVsGlob.toFixed(2)}x vs glob, throughput ${r.globlin.throughput.toFixed(0)}/s`
+    )
   }
 
   // AbortSignal overhead summary
-  const avgAbortOverhead = abortResults.reduce((sum, r) => sum + r.overheadPercent, 0) / abortResults.length
+  const avgAbortOverhead =
+    abortResults.reduce((sum, r) => sum + r.overheadPercent, 0) / abortResults.length
   console.log(`\nAbortSignal average overhead: ${avgAbortOverhead.toFixed(1)}%`)
 
   // Best and worst patterns

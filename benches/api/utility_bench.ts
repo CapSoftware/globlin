@@ -580,7 +580,7 @@ async function benchmarkUnescape(): Promise<BenchmarkResult[]> {
   console.log('\n3.1 Escaped patterns:')
   {
     // Create escaped patterns to unescape
-    const patterns = PATHS_WITH_SPECIAL_CHARS.map((p) => ogEscape(p))
+    const patterns = PATHS_WITH_SPECIAL_CHARS.map(p => ogEscape(p))
     const globTimes: number[] = []
     const globlinTimes: number[] = []
 
@@ -820,7 +820,7 @@ async function benchmarkBatchOperations(): Promise<BatchBenchmarkResult[]> {
   // Test 4.2: Batch escape
   console.log('\n4.2 Batch escape():')
   for (const size of batchSizes) {
-    const paths = generatePatterns(size).map((p) => p.replace('*', 'x').replace('?', 'y'))
+    const paths = generatePatterns(size).map(p => p.replace('*', 'x').replace('?', 'y'))
     const runs = 5
 
     // glob batch
@@ -870,7 +870,7 @@ async function benchmarkBatchOperations(): Promise<BatchBenchmarkResult[]> {
   // Test 4.3: Batch unescape
   console.log('\n4.3 Batch unescape():')
   for (const size of batchSizes) {
-    const paths = generatePatterns(size).map((p) => ogEscape(p))
+    const paths = generatePatterns(size).map(p => ogEscape(p))
     const runs = 5
 
     // glob batch
@@ -944,7 +944,9 @@ async function benchmarkAnalyzePattern(): Promise<void> {
       }
     }
 
-    console.log(`  Median: ${median(times).toFixed(3)}µs | P95: ${percentile(times, 95).toFixed(3)}µs`)
+    console.log(
+      `  Median: ${median(times).toFixed(3)}µs | P95: ${percentile(times, 95).toFixed(3)}µs`
+    )
   }
 
   // Test 5.2: Patterns with potential issues
@@ -967,7 +969,9 @@ async function benchmarkAnalyzePattern(): Promise<void> {
       }
     }
 
-    console.log(`  Median: ${median(times).toFixed(3)}µs | P95: ${percentile(times, 95).toFixed(3)}µs`)
+    console.log(
+      `  Median: ${median(times).toFixed(3)}µs | P95: ${percentile(times, 95).toFixed(3)}µs`
+    )
   }
 
   // Test 5.3: analyzePatterns batch
@@ -1032,7 +1036,9 @@ async function verifyAccuracy(): Promise<AccuracyResult[]> {
       console.log(`  MISMATCH: "${pattern}" - glob: ${globResult}, globlin: ${globlinResult}`)
     }
   }
-  console.log(`  ${hasMagicMatches}/${hasMagicTestPatterns.length} patterns match (${((hasMagicMatches / hasMagicTestPatterns.length) * 100).toFixed(1)}%)`)
+  console.log(
+    `  ${hasMagicMatches}/${hasMagicTestPatterns.length} patterns match (${((hasMagicMatches / hasMagicTestPatterns.length) * 100).toFixed(1)}%)`
+  )
 
   // Test escape accuracy
   console.log('\n6.2 escape() accuracy:')
@@ -1057,11 +1063,13 @@ async function verifyAccuracy(): Promise<AccuracyResult[]> {
       console.log(`  MISMATCH: "${path}" - glob: "${globResult}", globlin: "${globlinResult}"`)
     }
   }
-  console.log(`  ${escapeMatches}/${escapeTestPaths.length} paths match (${((escapeMatches / escapeTestPaths.length) * 100).toFixed(1)}%)`)
+  console.log(
+    `  ${escapeMatches}/${escapeTestPaths.length} paths match (${((escapeMatches / escapeTestPaths.length) * 100).toFixed(1)}%)`
+  )
 
   // Test unescape accuracy
   console.log('\n6.3 unescape() accuracy:')
-  const unescapeTestPatterns = escapeTestPaths.map((p) => ogEscape(p))
+  const unescapeTestPatterns = escapeTestPaths.map(p => ogEscape(p))
 
   let unescapeMatches = 0
   for (const pattern of unescapeTestPatterns) {
@@ -1082,7 +1090,9 @@ async function verifyAccuracy(): Promise<AccuracyResult[]> {
       console.log(`  MISMATCH: "${pattern}" - glob: "${globResult}", globlin: "${globlinResult}"`)
     }
   }
-  console.log(`  ${unescapeMatches}/${unescapeTestPatterns.length} patterns match (${((unescapeMatches / unescapeTestPatterns.length) * 100).toFixed(1)}%)`)
+  console.log(
+    `  ${unescapeMatches}/${unescapeTestPatterns.length} patterns match (${((unescapeMatches / unescapeTestPatterns.length) * 100).toFixed(1)}%)`
+  )
 
   return results
 }
@@ -1091,9 +1101,9 @@ async function verifyAccuracy(): Promise<AccuracyResult[]> {
  * Main entry point
  */
 async function main() {
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log('PHASE 7.6: UTILITY FUNCTIONS BENCHMARKING')
-  console.log('=' .repeat(80))
+  console.log('='.repeat(80))
   console.log(`Date: ${new Date().toISOString()}`)
   console.log(`Node: ${process.version}`)
   console.log(`Platform: ${process.platform} ${process.arch}`)
@@ -1114,40 +1124,63 @@ async function main() {
   console.log('='.repeat(80))
 
   // Calculate averages by category
-  const hasMagicSpeedups = allResults.hasMagic.map((r) => r.speedupVsGlob)
-  const escapeSpeedups = allResults.escape.map((r) => r.speedupVsGlob)
-  const unescapeSpeedups = allResults.unescape.map((r) => r.speedupVsGlob)
-  const batchSpeedups = allResults.batch.map((r) => r.speedupVsGlob)
+  const hasMagicSpeedups = allResults.hasMagic.map(r => r.speedupVsGlob)
+  const escapeSpeedups = allResults.escape.map(r => r.speedupVsGlob)
+  const unescapeSpeedups = allResults.unescape.map(r => r.speedupVsGlob)
+  const batchSpeedups = allResults.batch.map(r => r.speedupVsGlob)
 
   console.log('\nAverage speedups vs glob:')
-  console.log(`  hasMagic(): ${(hasMagicSpeedups.reduce((a, b) => a + b, 0) / hasMagicSpeedups.length).toFixed(2)}x`)
-  console.log(`  escape():   ${(escapeSpeedups.reduce((a, b) => a + b, 0) / escapeSpeedups.length).toFixed(2)}x`)
-  console.log(`  unescape(): ${(unescapeSpeedups.reduce((a, b) => a + b, 0) / unescapeSpeedups.length).toFixed(2)}x`)
-  console.log(`  Batch:      ${(batchSpeedups.reduce((a, b) => a + b, 0) / batchSpeedups.length).toFixed(2)}x`)
+  console.log(
+    `  hasMagic(): ${(hasMagicSpeedups.reduce((a, b) => a + b, 0) / hasMagicSpeedups.length).toFixed(2)}x`
+  )
+  console.log(
+    `  escape():   ${(escapeSpeedups.reduce((a, b) => a + b, 0) / escapeSpeedups.length).toFixed(2)}x`
+  )
+  console.log(
+    `  unescape(): ${(unescapeSpeedups.reduce((a, b) => a + b, 0) / unescapeSpeedups.length).toFixed(2)}x`
+  )
+  console.log(
+    `  Batch:      ${(batchSpeedups.reduce((a, b) => a + b, 0) / batchSpeedups.length).toFixed(2)}x`
+  )
 
-  const allSpeedups = [...hasMagicSpeedups, ...escapeSpeedups, ...unescapeSpeedups, ...batchSpeedups]
-  console.log(`\nOverall average: ${(allSpeedups.reduce((a, b) => a + b, 0) / allSpeedups.length).toFixed(2)}x`)
+  const allSpeedups = [
+    ...hasMagicSpeedups,
+    ...escapeSpeedups,
+    ...unescapeSpeedups,
+    ...batchSpeedups,
+  ]
+  console.log(
+    `\nOverall average: ${(allSpeedups.reduce((a, b) => a + b, 0) / allSpeedups.length).toFixed(2)}x`
+  )
 
   // Accuracy summary
   const accuracyResults = allResults.accuracy
   const totalTests = accuracyResults.length
-  const passingTests = accuracyResults.filter((r) => r.match).length
-  console.log(`\nAccuracy: ${passingTests}/${totalTests} tests match (${((passingTests / totalTests) * 100).toFixed(1)}%)`)
+  const passingTests = accuracyResults.filter(r => r.match).length
+  console.log(
+    `\nAccuracy: ${passingTests}/${totalTests} tests match (${((passingTests / totalTests) * 100).toFixed(1)}%)`
+  )
 
   // Per-call overhead summary
   console.log('\nPer-call overhead (globlin):')
-  const hasMagicPerCall = allResults.hasMagic.filter((r) => r.perCallUs).map((r) => r.perCallUs!)
-  const escapePerCall = allResults.escape.filter((r) => r.perCallUs).map((r) => r.perCallUs!)
-  const unescapePerCall = allResults.unescape.filter((r) => r.perCallUs).map((r) => r.perCallUs!)
+  const hasMagicPerCall = allResults.hasMagic.filter(r => r.perCallUs).map(r => r.perCallUs!)
+  const escapePerCall = allResults.escape.filter(r => r.perCallUs).map(r => r.perCallUs!)
+  const unescapePerCall = allResults.unescape.filter(r => r.perCallUs).map(r => r.perCallUs!)
 
   if (hasMagicPerCall.length > 0) {
-    console.log(`  hasMagic(): ${(hasMagicPerCall.reduce((a, b) => a + b, 0) / hasMagicPerCall.length).toFixed(3)}µs/call`)
+    console.log(
+      `  hasMagic(): ${(hasMagicPerCall.reduce((a, b) => a + b, 0) / hasMagicPerCall.length).toFixed(3)}µs/call`
+    )
   }
   if (escapePerCall.length > 0) {
-    console.log(`  escape():   ${(escapePerCall.reduce((a, b) => a + b, 0) / escapePerCall.length).toFixed(3)}µs/call`)
+    console.log(
+      `  escape():   ${(escapePerCall.reduce((a, b) => a + b, 0) / escapePerCall.length).toFixed(3)}µs/call`
+    )
   }
   if (unescapePerCall.length > 0) {
-    console.log(`  unescape(): ${(unescapePerCall.reduce((a, b) => a + b, 0) / unescapePerCall.length).toFixed(3)}µs/call`)
+    console.log(
+      `  unescape(): ${(unescapePerCall.reduce((a, b) => a + b, 0) / unescapePerCall.length).toFixed(3)}µs/call`
+    )
   }
 }
 

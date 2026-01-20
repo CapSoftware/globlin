@@ -142,7 +142,7 @@ async function runBenchmark(
   // Check result consistency (use sets for comparison)
   const globSet = new Set(globResults)
   const globlinSet = new Set(globlinResults)
-  const resultMatch = globSet.size === globlinSet.size && [...globSet].every((r) => globlinSet.has(r))
+  const resultMatch = globSet.size === globlinSet.size && [...globSet].every(r => globlinSet.has(r))
 
   const fixtureLabel = cwd.includes('small')
     ? 'small'
@@ -479,7 +479,13 @@ async function main() {
   console.log('-'.repeat(80))
 
   const percentilePatterns = ['**/*.js', '*.js', 'level0/**/*.js']
-  console.log('\nPattern'.padEnd(25) + 'Median'.padStart(10) + 'P95'.padStart(10) + 'P99'.padStart(10) + 'Max'.padStart(10))
+  console.log(
+    '\nPattern'.padEnd(25) +
+      'Median'.padStart(10) +
+      'P95'.padStart(10) +
+      'P99'.padStart(10) +
+      'Max'.padStart(10)
+  )
   console.log('-'.repeat(65))
 
   for (const pattern of percentilePatterns) {
@@ -506,13 +512,18 @@ async function main() {
   }
 
   console.log('\nAggregate by fixture:')
-  console.log('Fixture'.padEnd(10) + 'Avg vs Glob'.padStart(15) + 'Avg vs FG'.padStart(15) + 'Faster than Glob'.padStart(20))
+  console.log(
+    'Fixture'.padEnd(10) +
+      'Avg vs Glob'.padStart(15) +
+      'Avg vs FG'.padStart(15) +
+      'Faster than Glob'.padStart(20)
+  )
   console.log('-'.repeat(60))
 
   for (const [fixture, results] of Object.entries(byFixture)) {
     const avgVsGlob = results.reduce((sum, r) => sum + r.speedupVsGlob, 0) / results.length
     const avgVsFg = results.reduce((sum, r) => sum + r.speedupVsFg, 0) / results.length
-    const fasterCount = results.filter((r) => r.speedupVsGlob > 1).length
+    const fasterCount = results.filter(r => r.speedupVsGlob > 1).length
     console.log(
       fixture.padEnd(10) +
         `${avgVsGlob.toFixed(2)}x`.padStart(15) +
@@ -522,7 +533,7 @@ async function main() {
   }
 
   // Result accuracy
-  const totalMatches = allResults.filter((r) => r.resultMatch).length
+  const totalMatches = allResults.filter(r => r.resultMatch).length
   console.log(`\nResult accuracy: ${totalMatches}/${allResults.length} patterns match glob results`)
 
   // Best and worst patterns
