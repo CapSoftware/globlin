@@ -1943,8 +1943,11 @@ impl Glob {
                 let full_path = self.cwd.join(&static_path);
 
                 // Check if the file exists
+                // When follow is true, first try metadata() which follows symlinks.
+                // If that fails (e.g., broken symlink), fall back to symlink_metadata().
+                // This matches glob's behavior of returning broken symlinks even with follow: true.
                 let metadata = if self.follow {
-                    fs::metadata(&full_path)
+                    fs::metadata(&full_path).or_else(|_| fs::symlink_metadata(&full_path))
                 } else {
                     fs::symlink_metadata(&full_path)
                 };

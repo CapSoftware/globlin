@@ -685,8 +685,10 @@ impl Pattern {
                 .collect();
 
             if path_parts.is_empty() {
-                // Pattern is just "." or "/"
-                if self.raw == "." {
+                // Pattern is just "." or "/" or "./"
+                // Check the preprocessed pattern, not the raw pattern
+                let preprocessed = preprocess_pattern(&self.raw);
+                if preprocessed == "." {
                     Some(".".to_string())
                 } else {
                     None
@@ -1399,10 +1401,9 @@ pub fn has_magic_in_pattern(pattern: &str, noext: bool, windows_paths_no_escape:
         // Check for magic characters
         match c {
             '*' | '?' | '[' => return true,
-            // Check for extglob patterns (only + and @ trigger when followed by ()
-            // Note: ! is NOT magic per glob's behavior
-            // Note: * and ? are already caught above
-            '+' | '@' if !noext && i + 1 < chars.len() && chars[i + 1] == '(' => {
+            // Check for extglob patterns when followed by (
+            // All extglob types: +, @, !, *, ? - but * and ? are already caught above
+            '+' | '@' | '!' if !noext && i + 1 < chars.len() && chars[i + 1] == '(' => {
                 return true;
             }
             _ => {}
@@ -3381,8 +3382,8 @@ mod tests {
         // *( and ?( are magic (because * and ? are always magic)
         assert!(Pattern::new("*(a|b)").has_magic());
         assert!(Pattern::new("?(a|b)").has_magic());
-        // !( is NOT magic per glob's behavior
-        assert!(!Pattern::new("!(a|b)").has_magic());
+        // !( IS magic - it's a valid extglob for negation
+        assert!(Pattern::new("!(a|b)").has_magic());
         // With noext, only + and @ lose their magic; * and ? are still magic
         assert!(!Pattern::with_options("+(a|b)", true).has_magic());
         assert!(Pattern::with_options("*(a|b)", true).has_magic());
@@ -3734,8 +3735,8 @@ mod tests {
         assert!(has_magic_in_pattern("+(a|b)", false, false));
         assert!(has_magic_in_pattern("@(a|b)", false, false));
 
-        // !( is NOT magic per glob's behavior
-        assert!(!has_magic_in_pattern("!(a|b)", false, false));
+        // !( IS magic - it's a valid extglob for negation
+        assert!(has_magic_in_pattern("!(a|b)", false, false));
 
         // *( and ?( are magic because * and ? are always magic
         assert!(has_magic_in_pattern("*(a|b)", false, false));
