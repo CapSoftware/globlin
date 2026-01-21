@@ -2023,12 +2023,15 @@ impl Glob {
 
     /// Check if backslashes should be normalized to forward slashes.
     ///
-    /// glob v13 uses forward slashes by default on all platforms.
-    /// Only when posix is explicitly set to false on Windows are backslashes used.
+    /// On Windows with posix: false (the default), glob v13 outputs backslashes.
+    /// On Windows with posix: true, glob v13 outputs forward slashes.
+    /// On non-Windows, glob v13 always outputs forward slashes.
     #[inline]
     fn should_normalize_backslashes(&self) -> bool {
-        // Use forward slashes unless posix was explicitly set to false on Windows
-        !cfg!(target_os = "windows") || !self.posix_explicit_false
+        // Use forward slashes when:
+        // - On non-Windows platforms (always)
+        // - On Windows with posix: true
+        self.posix_explicit_true || !cfg!(target_os = "windows")
     }
 
     /// Normalize path separators based on platform and posix option.

@@ -42,7 +42,8 @@ describe('parallel option', () => {
 
   describe('basic functionality', () => {
     it('parallel: false returns correct results (default)', () => {
-      const results = globSync('**/*.ts', { cwd: fixture, parallel: false })
+      // Use posix: true for predictable forward slashes in test assertions
+      const results = globSync('**/*.ts', { cwd: fixture, parallel: false, posix: true })
 
       expect(results).toContain('src/index.ts')
       expect(results).toContain('src/util.ts')
@@ -54,7 +55,8 @@ describe('parallel option', () => {
     })
 
     it('parallel: true returns correct results', () => {
-      const results = globSync('**/*.ts', { cwd: fixture, parallel: true })
+      // Use posix: true for predictable forward slashes in test assertions
+      const results = globSync('**/*.ts', { cwd: fixture, parallel: true, posix: true })
 
       expect(results).toContain('src/index.ts')
       expect(results).toContain('src/util.ts')
@@ -114,11 +116,12 @@ describe('parallel option', () => {
     })
 
     it('parallel works with maxDepth', () => {
+      // Use posix: true for predictable path separators
       const serialResults = new Set(
-        globSync('**/*', { cwd: fixture, parallel: false, maxDepth: 2 })
+        globSync('**/*', { cwd: fixture, parallel: false, maxDepth: 2, posix: true })
       )
       const parallelResults = new Set(
-        globSync('**/*', { cwd: fixture, parallel: true, maxDepth: 2 })
+        globSync('**/*', { cwd: fixture, parallel: true, maxDepth: 2, posix: true })
       )
 
       expect(parallelResults).toEqual(serialResults)
@@ -144,11 +147,13 @@ describe('parallel option', () => {
     })
 
     it('parallel works with ignore patterns', () => {
+      // Use posix: true for predictable path separators
       const serialResults = new Set(
         globSync('**/*', {
           cwd: fixture,
           parallel: false,
           ignore: ['**/node_modules/**'],
+          posix: true,
         })
       )
       const parallelResults = new Set(
@@ -156,6 +161,7 @@ describe('parallel option', () => {
           cwd: fixture,
           parallel: true,
           ignore: ['**/node_modules/**'],
+          posix: true,
         })
       )
 
@@ -165,9 +171,12 @@ describe('parallel option', () => {
     })
 
     it('parallel works with mark: true', () => {
-      const serialResults = new Set(globSync('**/*', { cwd: fixture, parallel: false, mark: true }))
+      // Use posix: true for predictable path separators
+      const serialResults = new Set(
+        globSync('**/*', { cwd: fixture, parallel: false, mark: true, posix: true })
+      )
       const parallelResults = new Set(
-        globSync('**/*', { cwd: fixture, parallel: true, mark: true })
+        globSync('**/*', { cwd: fixture, parallel: true, mark: true, posix: true })
       )
 
       expect(parallelResults).toEqual(serialResults)
@@ -177,11 +186,12 @@ describe('parallel option', () => {
     })
 
     it('parallel works with dotRelative: true', () => {
+      // Use posix: true for predictable path separators
       const serialResults = new Set(
-        globSync('**/*.md', { cwd: fixture, parallel: false, dotRelative: true })
+        globSync('**/*.md', { cwd: fixture, parallel: false, dotRelative: true, posix: true })
       )
       const parallelResults = new Set(
-        globSync('**/*.md', { cwd: fixture, parallel: true, dotRelative: true })
+        globSync('**/*.md', { cwd: fixture, parallel: true, dotRelative: true, posix: true })
       )
 
       expect(parallelResults).toEqual(serialResults)
@@ -194,7 +204,8 @@ describe('parallel option', () => {
 
   describe('Glob class with parallel', () => {
     it('Glob class accepts parallel option', () => {
-      const g = new Glob('**/*.ts', { cwd: fixture, parallel: true })
+      // Use posix: true for predictable path separators
+      const g = new Glob('**/*.ts', { cwd: fixture, parallel: true, posix: true })
       const results = g.walkSync()
 
       expect(results).toContain('src/index.ts')
@@ -212,7 +223,8 @@ describe('parallel option', () => {
     })
 
     it('Glob class async walk with parallel', async () => {
-      const g = new Glob('**/*.md', { cwd: fixture, parallel: true })
+      // Use posix: true for predictable path separators
+      const g = new Glob('**/*.md', { cwd: fixture, parallel: true, posix: true })
       const results = await g.walk()
 
       expect(results).toContain('docs/readme.md')
