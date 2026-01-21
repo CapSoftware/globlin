@@ -3487,7 +3487,11 @@ mod tests {
         let results = glob.walk_sync();
 
         // All results should start with "./" or ".\\" on Windows
-        let expected_prefix = if cfg!(target_os = "windows") { ".\\" } else { "./" };
+        let expected_prefix = if cfg!(target_os = "windows") {
+            ".\\"
+        } else {
+            "./"
+        };
         for result in &results {
             assert!(
                 result.starts_with(expected_prefix),

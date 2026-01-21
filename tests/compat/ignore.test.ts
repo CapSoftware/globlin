@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { glob as nodeGlob } from 'glob'
-import { loadGloblin, createTestFixture, cleanupFixture, FixtureConfig } from '../harness'
+import {
+  loadGloblin,
+  createTestFixture,
+  cleanupFixture,
+  FixtureConfig,
+  platformPaths,
+} from '../harness'
 import * as path from 'path'
 
 describe('ignore option compatibility', () => {
@@ -418,7 +424,7 @@ describe('ignore option compatibility', () => {
 
         const results = await globlin.glob(tc.pattern, options)
         const sorted = results.sort()
-        const expected = tc.expected.sort()
+        const expected = platformPaths(tc.expected).sort()
 
         expect(sorted).toEqual(expected)
       })
@@ -433,7 +439,7 @@ describe('ignore option compatibility', () => {
 
         const results = globlin.globSync(tc.pattern, options)
         const sorted = results.sort()
-        const expected = tc.expected.sort()
+        const expected = platformPaths(tc.expected).sort()
 
         expect(sorted).toEqual(expected)
       })
