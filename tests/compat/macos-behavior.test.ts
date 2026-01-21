@@ -135,11 +135,12 @@ describe('macOS behavior', () => {
         nocase: false,
         posix: true,
       })
-      // On macOS (case-insensitive FS), SRC still matches src at the filesystem level
+      // On macOS and Windows (case-insensitive FS), SRC still matches src at the filesystem level
       // The nocase option controls pattern matching, not filesystem behavior
       // So even with nocase: false, the file is found because the FS resolves SRC -> src
-      if (isMacOS) {
-        // On macOS, expect to find the file (FS is case-insensitive)
+      const isCaseInsensitiveFS = process.platform === 'darwin' || process.platform === 'win32'
+      if (isCaseInsensitiveFS) {
+        // On macOS/Windows, expect to find the file (FS is case-insensitive)
         expect(result.some(r => r.toLowerCase() === 'src/index.ts')).toBe(true)
       } else {
         // On case-sensitive FS (Linux), expect no match
