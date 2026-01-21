@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { basename } from 'path'
+import { basename, isAbsolute } from 'path'
 import { glob as globOriginal, globSync as globSyncOriginal, type IgnoreLike } from 'glob'
 import { glob, globSync, IgnorePattern, Path } from '../../js/index.js'
 import { createTestFixture, cleanupFixture, FixtureConfig } from '../harness.js'
@@ -344,11 +344,11 @@ describe('custom ignore objects', () => {
 
       const results = globSync('*', { cwd: fixture, ignore, absolute: true })
 
-      // Should not include 'a' file
-      expect(results.some(r => r.endsWith('/a'))).toBe(false)
+      // Should not include 'a' file (check with both forward and back slashes for cross-platform)
+      expect(results.some(r => r.endsWith('/a') || r.endsWith('\\a'))).toBe(false)
 
-      // Paths should be absolute
-      expect(results.every(r => r.startsWith('/'))).toBe(true)
+      // Paths should be absolute (use Node's isAbsolute for cross-platform check)
+      expect(results.every(r => isAbsolute(r))).toBe(true)
     })
 
     it('should work with mark option', () => {

@@ -9,6 +9,10 @@ import { createTestFixture, cleanupFixture, loadGloblin, type GloblinModule } fr
 let fixtureDir: string
 let globlin: GloblinModule
 
+// Normalize paths for cross-platform comparison (replace backslashes with forward slashes)
+const normalize = (paths: string[]): string[] => paths.map(p => p.replace(/\\/g, '/'))
+const normalizeStr = (path: string): string => path.replace(/\\/g, '/')
+
 // Fixture with dotfiles
 const DOT_FILE_FIXTURE = {
   files: [
@@ -75,13 +79,17 @@ describe('Dot file handling', () => {
       const globResults = await glob('nested/**/*', { cwd: fixtureDir })
       const globlinResults = await globlin.glob('nested/**/*', { cwd: fixtureDir })
 
+      // Normalize paths for cross-platform comparison
+      const normalizedGlob = normalize(globResults)
+      const normalizedGloblin = normalize(globlinResults)
+
       // Should include visible files
-      expect(globResults).toContain('nested/visible')
-      expect(globResults).toContain('nested/visible/file.txt')
+      expect(normalizedGlob).toContain('nested/visible')
+      expect(normalizedGlob).toContain('nested/visible/file.txt')
 
       // Globlin should match
-      expect(globlinResults).toContain('nested/visible')
-      expect(globlinResults).toContain('nested/visible/file.txt')
+      expect(normalizedGloblin).toContain('nested/visible')
+      expect(normalizedGloblin).toContain('nested/visible/file.txt')
     })
   })
 
@@ -104,29 +112,37 @@ describe('Dot file handling', () => {
       const globResults = await glob('**/*', { cwd: fixtureDir, dot: true })
       const globlinResults = await globlin.glob('**/*', { cwd: fixtureDir, dot: true })
 
-      // Should include dotfiles
-      expect(globResults).toContain('.hidden')
-      expect(globResults).toContain('.git/config')
-      expect(globResults).toContain('src/.env')
-      expect(globResults).toContain('nested/.config')
+      // Normalize paths for cross-platform comparison
+      const normalizedGlob = normalize(globResults)
+      const normalizedGloblin = normalize(globlinResults)
 
-      expect(globlinResults).toContain('.hidden')
-      expect(globlinResults).toContain('.git/config')
-      expect(globlinResults).toContain('src/.env')
-      expect(globlinResults).toContain('nested/.config')
+      // Should include dotfiles
+      expect(normalizedGlob).toContain('.hidden')
+      expect(normalizedGlob).toContain('.git/config')
+      expect(normalizedGlob).toContain('src/.env')
+      expect(normalizedGlob).toContain('nested/.config')
+
+      expect(normalizedGloblin).toContain('.hidden')
+      expect(normalizedGloblin).toContain('.git/config')
+      expect(normalizedGloblin).toContain('src/.env')
+      expect(normalizedGloblin).toContain('nested/.config')
     })
 
     it('should include files inside dotdirs with **/*', async () => {
       const globResults = await glob('**/*', { cwd: fixtureDir, dot: true })
       const globlinResults = await globlin.glob('**/*', { cwd: fixtureDir, dot: true })
 
-      expect(globResults).toContain('.git/config')
-      expect(globResults).toContain('.git/HEAD')
-      expect(globResults).toContain('nested/.config/settings.json')
+      // Normalize paths for cross-platform comparison
+      const normalizedGlob = normalize(globResults)
+      const normalizedGloblin = normalize(globlinResults)
 
-      expect(globlinResults).toContain('.git/config')
-      expect(globlinResults).toContain('.git/HEAD')
-      expect(globlinResults).toContain('nested/.config/settings.json')
+      expect(normalizedGlob).toContain('.git/config')
+      expect(normalizedGlob).toContain('.git/HEAD')
+      expect(normalizedGlob).toContain('nested/.config/settings.json')
+
+      expect(normalizedGloblin).toContain('.git/config')
+      expect(normalizedGloblin).toContain('.git/HEAD')
+      expect(normalizedGloblin).toContain('nested/.config/settings.json')
     })
   })
 
@@ -143,24 +159,27 @@ describe('Dot file handling', () => {
       const globResults = await glob('.git/*', { cwd: fixtureDir })
       const globlinResults = await globlin.glob('.git/*', { cwd: fixtureDir })
 
-      expect(globResults.sort()).toEqual(['.git/HEAD', '.git/config'].sort())
-      expect(globlinResults.sort()).toEqual(['.git/HEAD', '.git/config'].sort())
+      // Normalize paths for cross-platform comparison
+      expect(normalize(globResults).sort()).toEqual(['.git/HEAD', '.git/config'].sort())
+      expect(normalize(globlinResults).sort()).toEqual(['.git/HEAD', '.git/config'].sort())
     })
 
     it('should match **/.env without dot option', async () => {
       const globResults = await glob('**/.env', { cwd: fixtureDir })
       const globlinResults = await globlin.glob('**/.env', { cwd: fixtureDir })
 
-      expect(globResults).toContain('src/.env')
-      expect(globlinResults).toContain('src/.env')
+      // Normalize paths for cross-platform comparison
+      expect(normalize(globResults)).toContain('src/.env')
+      expect(normalize(globlinResults)).toContain('src/.env')
     })
 
     it('should match nested dotdir pattern without dot option', async () => {
       const globResults = await glob('nested/.config/*', { cwd: fixtureDir })
       const globlinResults = await globlin.glob('nested/.config/*', { cwd: fixtureDir })
 
-      expect(globResults).toContain('nested/.config/settings.json')
-      expect(globlinResults).toContain('nested/.config/settings.json')
+      // Normalize paths for cross-platform comparison
+      expect(normalize(globResults)).toContain('nested/.config/settings.json')
+      expect(normalize(globlinResults)).toContain('nested/.config/settings.json')
     })
   })
 

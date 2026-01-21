@@ -9,6 +9,12 @@ import { sep } from 'path'
 import { glob as globOriginal, globSync as globSyncOriginal, Glob as GlobOriginal } from 'glob'
 import { createTestFixture, cleanupFixture, loadGloblin, DEFAULT_FIXTURE } from '../harness.js'
 
+// Helper to check if path starts with ./ or .\ (cross-platform dotRelative prefix)
+const startsWithDotSlash = (path: string): boolean =>
+  path.startsWith('./') || path.startsWith('.\\')
+// Normalize path to use forward slashes
+const normalize = (path: string): string => path.replace(/\\/g, '/')
+
 describe('dot-relative - prepend ./ to relative paths', () => {
   let fixturePath: string
   let globlin: Awaited<ReturnType<typeof loadGloblin>>
@@ -66,7 +72,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
 
       expect(results.length).toBeGreaterThan(0)
       for (const m of results) {
-        expect(m.startsWith('./')).toBe(true)
+        expect(startsWithDotSlash(m)).toBe(true)
       }
     })
 
@@ -79,7 +85,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
 
       expect(results.length).toBeGreaterThan(0)
       for (const m of results) {
-        expect(m.startsWith('./')).toBe(true)
+        expect(startsWithDotSlash(m)).toBe(true)
       }
     })
 
@@ -92,7 +98,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
 
       expect(results.length).toBeGreaterThan(0)
       for (const m of results) {
-        expect(m.startsWith('./')).toBe(false)
+        expect(startsWithDotSlash(m)).toBe(false)
       }
     })
 
@@ -105,7 +111,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
 
       expect(results.length).toBeGreaterThan(0)
       for (const m of results) {
-        expect(m.startsWith('./')).toBe(false)
+        expect(startsWithDotSlash(m)).toBe(false)
       }
     })
   })
@@ -145,7 +151,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
       }
       const results = await globlin.glob('a/b/c/d', { cwd: fixturePath, dotRelative: true })
       expect(results.length).toBe(1)
-      expect(results[0]).toBe('./a/b/c/d')
+      expect(normalize(results[0])).toBe('./a/b/c/d')
     })
 
     it('works with ** pattern', async () => {
@@ -155,7 +161,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
       }
       const results = await globlin.glob('**/*.txt', { cwd: fixturePath, dotRelative: true })
       for (const m of results) {
-        expect(m.startsWith('./')).toBe(true)
+        expect(startsWithDotSlash(m)).toBe(true)
       }
     })
 
@@ -172,7 +178,7 @@ describe('dot-relative - prepend ./ to relative paths', () => {
       })
       for (const m of results) {
         // Absolute paths should not start with ./
-        expect(m.startsWith('./')).toBe(false)
+        expect(startsWithDotSlash(m)).toBe(false)
       }
     })
   })
