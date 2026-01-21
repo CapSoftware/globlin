@@ -45,6 +45,3 @@ Thumbs.db
 
 # Coverage reports
 coverage/
-
-# Website (not part of core package)
-www/
