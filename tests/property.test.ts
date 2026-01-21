@@ -12,7 +12,7 @@ import fc from 'fast-check'
 import * as fs from 'fs'
 import * as path from 'path'
 import { globSync as globOriginal, glob as globOriginalAsync } from 'glob'
-import { loadGloblin, type GloblinModule } from './harness.js'
+import { loadGloblin, type GloblinModule, normalizePath } from './harness.js'
 import { createRandomFixture, createLargeFixture } from './fixtures.js'
 
 const fsp = fs.promises
@@ -47,9 +47,12 @@ describe('Property-based tests', () => {
   })
 
   function setsEqual(a: Set<string>, b: Set<string>): boolean {
-    if (a.size !== b.size) return false
-    for (const item of a) {
-      if (!b.has(item)) return false
+    // Normalize paths for cross-platform comparison
+    const normalizedA = new Set([...a].map(normalizePath))
+    const normalizedB = new Set([...b].map(normalizePath))
+    if (normalizedA.size !== normalizedB.size) return false
+    for (const item of normalizedA) {
+      if (!normalizedB.has(item)) return false
     }
     return true
   }
