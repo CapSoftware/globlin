@@ -1002,10 +1002,27 @@ impl Glob {
     }
 
     /// Format a path according to options (posix, etc.)
+    ///
+    /// When posix: true on Windows, absolute paths are converted to UNC form
+    /// (e.g., `C:\foo\bar` → `//?/C:/foo/bar`) to match glob's behavior.
     fn format_path(&self, path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy().to_string();
         if self.posix {
-            // Convert to POSIX-style paths (forward slashes)
+            // On Windows with posix: true, convert absolute paths to UNC form
+            #[cfg(target_os = "windows")]
+            {
+                let bytes = path_str.as_bytes();
+                if bytes.len() >= 2
+                    && bytes[0].is_ascii_alphabetic()
+                    && (bytes[1] == b':' || bytes[1] == b'\\' || bytes[1] == b'/')
+                {
+                    // Convert to UNC form: //?/C:/...
+                    let drive = bytes[0] as char;
+                    let rest = path_str[2..].replace('\\', "/");
+                    return format!("//?/{drive}:{rest}");
+                }
+            }
+            // Standard POSIX conversion: backslashes to forward slashes
             path_str.replace('\\', "/")
         } else {
             path_str
@@ -1080,12 +1097,38 @@ impl Glob {
 
     /// Format a path into the provided buffer, returning a reference to the result.
     /// This avoids allocations by reusing the buffer across iterations.
+    ///
+    /// When posix: true on Windows, absolute paths are converted to UNC form
+    /// (e.g., `C:\foo\bar` → `//?/C:/foo/bar`) to match glob's behavior.
     #[inline]
     fn format_path_into_buffer<'a>(&self, path: &Path, buffer: &'a mut String) -> &'a str {
         buffer.clear();
         let path_str = path.to_string_lossy();
+
         if self.posix {
-            // Convert backslashes to forward slashes
+            // On Windows with posix: true, convert absolute paths to UNC form
+            // e.g., C:\foo\bar → //?/C:/foo/bar
+            #[cfg(target_os = "windows")]
+            {
+                // Check if this is a Windows absolute path (starts with drive letter)
+                let bytes = path_str.as_bytes();
+                if bytes.len() >= 2
+                    && bytes[0].is_ascii_alphabetic()
+                    && (bytes[1] == b':' || bytes[1] == b'\\' || bytes[1] == b'/')
+                {
+                    // Convert to UNC form: //?/C:/...
+                    buffer.push_str("//?/");
+                    buffer.push(bytes[0] as char);
+                    buffer.push(':');
+                    // Skip the drive letter and colon, convert rest with forward slashes
+                    for c in path_str[2..].chars() {
+                        buffer.push(if c == '\\' { '/' } else { c });
+                    }
+                    return buffer.as_str();
+                }
+            }
+
+            // Standard POSIX conversion: backslashes to forward slashes
             for c in path_str.chars() {
                 buffer.push(if c == '\\' { '/' } else { c });
             }
@@ -2034,11 +2077,7 @@ impl Glob {
             // Build result path
             let result = if self.absolute {
                 let abs_path = abs_cwd.join(&file_name);
-                let formatted = if self.posix {
-                    abs_path.to_string_lossy().replace('\\', "/")
-                } else {
-                    abs_path.to_string_lossy().to_string()
-                };
+                let formatted = self.format_path(&abs_path);
                 if self.mark && is_dir && !is_symlink && !formatted.ends_with('/') {
                     format!("{formatted}/")
                 } else {
@@ -2141,11 +2180,7 @@ impl Glob {
                     // Format the result path
                     let result = if self.absolute {
                         let abs_path = full_path.canonicalize().unwrap_or(full_path.clone());
-                        let formatted = if self.posix {
-                            abs_path.to_string_lossy().replace('\\', "/")
-                        } else {
-                            abs_path.to_string_lossy().to_string()
-                        };
+                        let formatted = self.format_path(&abs_path);
                         if self.mark && is_dir && !is_symlink && !formatted.ends_with('/') {
                             format!("{formatted}/")
                         } else {
