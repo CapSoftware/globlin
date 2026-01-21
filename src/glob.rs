@@ -1016,11 +1016,11 @@ impl Glob {
     fn ensure_trailing_slash(&self, path: &str) -> String {
         if path.ends_with('/') || path.ends_with('\\') {
             path.to_string()
-        } else if self.posix || !cfg!(windows) {
+        } else if self.should_normalize_backslashes() {
             format!("{path}/")
         } else {
             // On Windows without posix option, use the native separator
-            format!("{path}/")
+            format!("{path}\\")
         }
     }
 
@@ -1104,28 +1104,36 @@ impl Glob {
         prefix_to_strip: &Option<String>,
         is_walk_root: bool,
     ) -> Cow<'a, str> {
-        // Fast path: no prefix and no backslashes
-        if prefix_to_strip.is_none() && !rel_str_from_walk_root.contains('\\') {
+        let normalize = self.should_normalize_backslashes();
+        let has_backslash = rel_str_from_walk_root.contains('\\');
+        let needs_backslash_conversion = normalize && has_backslash;
+
+        // Fast path: no prefix and no conversion needed
+        if prefix_to_strip.is_none() && !needs_backslash_conversion {
             return Cow::Borrowed(rel_str_from_walk_root);
         }
+
+        // Determine the separator to use when building paths
+        let sep = if normalize { "/" } else { "\\" };
 
         // Need to construct the path
         match prefix_to_strip {
             Some(prefix) => {
                 if is_walk_root {
                     Cow::Owned(prefix.clone())
-                } else if rel_str_from_walk_root.contains('\\') {
+                } else if needs_backslash_conversion {
                     Cow::Owned(format!(
-                        "{}/{}",
+                        "{}{}{}",
                         prefix,
+                        sep,
                         rel_str_from_walk_root.replace('\\', "/")
                     ))
                 } else {
-                    Cow::Owned(format!("{prefix}/{rel_str_from_walk_root}"))
+                    Cow::Owned(format!("{prefix}{sep}{rel_str_from_walk_root}"))
                 }
             }
             None => {
-                // Has backslashes, needs conversion
+                // Has backslashes and needs conversion
                 Cow::Owned(rel_str_from_walk_root.replace('\\', "/"))
             }
         }
@@ -1138,8 +1146,9 @@ impl Glob {
     /// # Arguments
     /// * `rel_str_from_walk_root` - The path relative to the walk root
     /// * `prefix_to_strip` - The original prefix (without trailing slash)
-    /// * `prefix_with_slash` - Pre-computed "prefix/" for fast concatenation
+    /// * `prefix_with_slash` - Pre-computed "prefix/" or "prefix\\" for fast concatenation
     /// * `is_walk_root` - True if this is the walk root entry itself
+    /// * `normalize_backslashes` - Whether to convert backslashes to forward slashes
     /// * `buffer` - Reusable string buffer
     #[inline]
     fn normalize_path_buffered<'a>(
@@ -1147,20 +1156,21 @@ impl Glob {
         prefix_to_strip: &Option<String>,
         prefix_with_slash: &Option<String>,
         is_walk_root: bool,
+        normalize_backslashes: bool,
         buffer: &'a mut String,
     ) -> &'a str {
-        // Fast path: no prefix and no backslashes - can't return borrowed reference
-        // from the input because we need to return from buffer for consistency
+        let has_backslash = rel_str_from_walk_root.contains('\\');
+        let needs_conversion = normalize_backslashes && has_backslash;
+
+        // Fast path: no prefix and no conversion needed
         if prefix_to_strip.is_none() {
-            if !rel_str_from_walk_root.contains('\\') {
-                buffer.clear();
-                buffer.push_str(rel_str_from_walk_root);
-                return buffer.as_str();
-            }
-            // Has backslashes, needs conversion
             buffer.clear();
-            for c in rel_str_from_walk_root.chars() {
-                buffer.push(if c == '\\' { '/' } else { c });
+            if needs_conversion {
+                for c in rel_str_from_walk_root.chars() {
+                    buffer.push(if c == '\\' { '/' } else { c });
+                }
+            } else {
+                buffer.push_str(rel_str_from_walk_root);
             }
             return buffer.as_str();
         }
@@ -1178,10 +1188,10 @@ impl Glob {
                 buffer.push_str(prefix_slash);
             } else {
                 buffer.push_str(prefix);
-                buffer.push('/');
+                buffer.push(if normalize_backslashes { '/' } else { '\\' });
             }
 
-            if rel_str_from_walk_root.contains('\\') {
+            if needs_conversion {
                 // Convert backslashes while appending
                 for c in rel_str_from_walk_root.chars() {
                     buffer.push(if c == '\\' { '/' } else { c });
@@ -1206,6 +1216,8 @@ impl Glob {
     ) -> String {
         // When mark:true, add trailing slash to directories but NOT to symlinks
         let should_mark_as_dir = is_dir && !is_symlink && self.mark;
+        let sep = if self.should_normalize_backslashes() { '/' } else { '\\' };
+        let dot_prefix = if self.should_normalize_backslashes() { "./" } else { ".\\" };
 
         if self.absolute {
             // Build absolute path
@@ -1215,16 +1227,16 @@ impl Glob {
 
             if should_mark_as_dir && !formatted.ends_with('/') && !formatted.ends_with('\\') {
                 let mut result = formatted.to_string();
-                result.push('/');
+                result.push(sep);
                 result
             } else {
                 formatted.to_string()
             }
         } else {
             // Build relative path
-            let base = if self.dot_relative && !normalized.starts_with("../") {
+            let base = if self.dot_relative && !normalized.starts_with("../") && !normalized.starts_with("..\\") {
                 result_buffer.clear();
-                result_buffer.push_str("./");
+                result_buffer.push_str(dot_prefix);
                 result_buffer.push_str(normalized);
                 result_buffer.as_str()
             } else {
@@ -1233,7 +1245,7 @@ impl Glob {
 
             if should_mark_as_dir && !base.ends_with('/') && !base.ends_with('\\') {
                 let mut result = base.to_string();
-                result.push('/');
+                result.push(sep);
                 result
             } else {
                 base.to_string()
@@ -1254,7 +1266,8 @@ impl Glob {
             let ignored_bytes = ignored_dir.as_bytes();
             normalized_bytes.starts_with(ignored_bytes)
                 && (normalized_bytes.len() == ignored_bytes.len()
-                    || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/'))
+                    || normalized_bytes.get(ignored_bytes.len()) == Some(&b'/')
+                    || normalized_bytes.get(ignored_bytes.len()) == Some(&b'\\'))
         })
     }
 
@@ -1271,7 +1284,8 @@ impl Glob {
             let matched_bytes = matched_path.as_bytes();
             normalized_bytes.starts_with(matched_bytes)
                 && normalized_bytes.len() > matched_bytes.len()
-                && normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+                && (normalized_bytes.get(matched_bytes.len()) == Some(&b'/')
+                    || normalized_bytes.get(matched_bytes.len()) == Some(&b'\\'))
         })
     }
 
@@ -1811,6 +1825,12 @@ impl Glob {
     /// resolve to a single path and can be checked with a direct stat() call
     /// instead of walking the entire directory tree.
     fn all_patterns_static(&self) -> bool {
+        // When nocase is true on a case-sensitive filesystem (Linux), we can't use
+        // the static pattern fast path because we need to scan directories to find
+        // case-insensitive matches.
+        if self.nocase && !self.is_case_insensitive_platform() {
+            return false;
+        }
         !self.patterns.is_empty() && self.patterns.iter().all(|p| p.is_static())
     }
 
@@ -1835,6 +1855,31 @@ impl Glob {
     fn is_case_insensitive_platform(&self) -> bool {
         // macOS (darwin) and Windows (win32) have case-insensitive filesystems by default
         cfg!(target_os = "macos") || cfg!(target_os = "windows")
+    }
+
+    /// Check if backslashes should be normalized to forward slashes.
+    ///
+    /// On Windows, when `posix: false` (the default), paths should use native backslashes
+    /// to match glob's behavior. On all other platforms, or when `posix: true`, we normalize
+    /// to forward slashes.
+    #[inline]
+    fn should_normalize_backslashes(&self) -> bool {
+        // On Windows with posix: false, keep backslashes
+        // Otherwise, normalize to forward slashes
+        self.posix || !cfg!(target_os = "windows")
+    }
+
+    /// Normalize path separators based on platform and posix option.
+    ///
+    /// Returns the original string if no normalization is needed (either no backslashes,
+    /// or on Windows with posix: false where backslashes are kept).
+    #[inline]
+    fn normalize_separators<'a>(&self, path: &'a str) -> Cow<'a, str> {
+        if !self.should_normalize_backslashes() || !path.contains('\\') {
+            Cow::Borrowed(path)
+        } else {
+            Cow::Owned(path.replace('\\', "/"))
+        }
     }
 
     /// Resolve shallow patterns using direct readdir.
@@ -1929,13 +1974,14 @@ impl Glob {
                     formatted
                 }
             } else {
+                let sep = if self.should_normalize_backslashes() { '/' } else { '\\' };
                 let base = if self.dot_relative {
-                    format!("./{file_name}")
+                    format!(".{sep}{file_name}")
                 } else {
                     file_name.clone()
                 };
-                if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
-                    format!("{base}/")
+                if self.mark && is_dir && !is_symlink && !base.ends_with('/') && !base.ends_with('\\') {
+                    format!("{base}{sep}")
                 } else {
                     base
                 }
@@ -2026,13 +2072,14 @@ impl Glob {
                             formatted
                         }
                     } else {
-                        let base = if self.dot_relative && !base_path.starts_with("../") {
-                            format!("./{base_path}")
+                        let sep = if self.should_normalize_backslashes() { '/' } else { '\\' };
+                        let base = if self.dot_relative && !base_path.starts_with("../") && !base_path.starts_with("..\\") {
+                            format!(".{sep}{base_path}")
                         } else {
                             base_path.to_string()
                         };
-                        if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
-                            format!("{base}/")
+                        if self.mark && is_dir && !is_symlink && !base.ends_with('/') && !base.ends_with('\\') {
+                            format!("{base}{sep}")
                         } else {
                             base
                         }
