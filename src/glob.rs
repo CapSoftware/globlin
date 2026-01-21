@@ -779,7 +779,8 @@ impl Glob {
             matched_with_normalized.sort_by_key(|(_, norm)| norm.matches('/').count());
 
             // Filter out children using a set of matched parents
-            let mut parents: AHashSet<&str> = AHashSet::with_capacity(matched_with_normalized.len());
+            let mut parents: AHashSet<&str> =
+                AHashSet::with_capacity(matched_with_normalized.len());
             let mut filtered_results: Vec<String> =
                 Vec::with_capacity(matched_with_normalized.len());
 
@@ -1039,7 +1040,8 @@ impl Glob {
             matched_with_normalized.sort_by_key(|(_, norm)| norm.matches('/').count());
 
             // Filter out children using a set of matched parents
-            let mut parents: AHashSet<&str> = AHashSet::with_capacity(matched_with_normalized.len());
+            let mut parents: AHashSet<&str> =
+                AHashSet::with_capacity(matched_with_normalized.len());
             let mut filtered_results: Vec<PathData> =
                 Vec::with_capacity(matched_with_normalized.len());
 
