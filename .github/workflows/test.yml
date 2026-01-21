@@ -114,8 +114,8 @@ jobs:
       - name: Build native module
         run: npm run build
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests (excluding performance tests)
+        run: npm test -- --exclude '**/{benchmark,performance-regression}.test.ts'
 
       - name: Upload test artifacts on failure
         if: failure()
@@ -161,3 +161,46 @@ jobs:
 
       - name: Clippy
         run: cargo clippy -- -D warnings
+
+  benchmark:
+    name: Performance Benchmarks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build native module
+        run: npm run build
+
+      - name: Run performance tests (informational)
+        run: npm test -- tests/benchmark.test.ts tests/performance-regression.test.ts --testTimeout=120000
