@@ -36,7 +36,8 @@ pub struct Glob {
     /// Patterns stored in Arc for cheap cloning into closures
     patterns: Arc<[Pattern]>,
     absolute: bool,
-    posix: bool,
+    posix_explicit_true: bool,
+    posix_explicit_false: bool,
     #[allow(dead_code)]
     nobrace: bool,
     #[allow(dead_code)]
@@ -242,7 +243,8 @@ impl Glob {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
         let absolute = options.absolute.unwrap_or(false);
-        let posix = options.posix.unwrap_or(false);
+        let posix_explicit_true = options.posix == Some(true);
+        let posix_explicit_false = options.posix == Some(false);
         let nobrace = options.nobrace.unwrap_or(false);
         let noext = options.noext.unwrap_or(false);
         let dot = options.dot.unwrap_or(false);
@@ -435,7 +437,8 @@ impl Glob {
             cwd,
             patterns,
             absolute,
-            posix,
+            posix_explicit_true,
+            posix_explicit_false,
             nobrace,
             noext,
             dot,
@@ -499,11 +502,12 @@ impl Glob {
         let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8); // Most globs have few ignored dirs
 
-        // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
-            AHashSet::new() // Empty, won't be used
+        // When includeChildMatches is false, track (result, normalized) pairs for post-filtering
+        // This is needed because filesystem order may cause children to be seen before parents on Linux
+        let mut matched_with_normalized: Vec<(String, String)> = if self.include_child_matches {
+            Vec::new() // Empty, won't be used
         } else {
-            AHashSet::with_capacity(estimated_capacity / 4)
+            Vec::with_capacity(estimated_capacity)
         };
 
         // Pre-allocate a reusable buffer for path formatting
@@ -716,13 +720,6 @@ impl Glob {
                 continue;
             }
 
-            // When includeChildMatches is false, skip paths that are children of already-matched paths
-            if !self.include_child_matches
-                && self.is_child_of_matched(&normalized, &matched_parents)
-            {
-                continue;
-            }
-
             // Check if any pattern matches
             // For patterns that end with /, only match if entry is a directory
             let is_dir = entry.is_dir();
@@ -766,13 +763,43 @@ impl Glob {
 
                 // Deduplicate results (important for overlapping brace expansions)
                 if seen.insert(result.clone()) {
-                    // When includeChildMatches is false, track this path to exclude its children
+                    // When includeChildMatches is false, track (result, normalized) for post-filtering
                     if !self.include_child_matches {
-                        matched_parents.insert(normalized.into_owned());
+                        matched_with_normalized.push((result.clone(), normalized.into_owned()));
                     }
                     results.push(result);
                 }
             }
+        }
+
+        // When includeChildMatches is false, post-process to filter out children
+        // This handles cases where filesystem order causes children to be seen before parents
+        if !self.include_child_matches && !matched_with_normalized.is_empty() {
+            // Sort by path depth (number of segments) - shorter paths first
+            matched_with_normalized.sort_by_key(|(_, norm)| norm.matches('/').count());
+
+            // Filter out children using a set of matched parents
+            let mut parents: AHashSet<&str> = AHashSet::with_capacity(matched_with_normalized.len());
+            let mut filtered_results: Vec<String> =
+                Vec::with_capacity(matched_with_normalized.len());
+
+            for (result, normalized) in &matched_with_normalized {
+                // Check if this path is a child of any already-matched parent
+                let is_child = parents.iter().any(|parent| {
+                    let parent_bytes = parent.as_bytes();
+                    let norm_bytes = normalized.as_bytes();
+                    norm_bytes.starts_with(parent_bytes)
+                        && norm_bytes.len() > parent_bytes.len()
+                        && norm_bytes.get(parent_bytes.len()) == Some(&b'/')
+                });
+
+                if !is_child {
+                    parents.insert(normalized.as_str());
+                    filtered_results.push(result.clone());
+                }
+            }
+
+            return filtered_results;
         }
 
         results
@@ -795,11 +822,11 @@ impl Glob {
         let mut seen: AHashSet<String> = AHashSet::with_capacity(estimated_capacity);
         let mut ignored_dirs: AHashSet<String> = AHashSet::with_capacity(8);
 
-        // When includeChildMatches is false, track matched paths to exclude their children
-        let mut matched_parents: AHashSet<String> = if self.include_child_matches {
-            AHashSet::new()
+        // When includeChildMatches is false, track (result, normalized) pairs for post-filtering
+        let mut matched_with_normalized: Vec<(PathData, String)> = if self.include_child_matches {
+            Vec::new()
         } else {
-            AHashSet::with_capacity(estimated_capacity / 4)
+            Vec::with_capacity(estimated_capacity)
         };
 
         // Check if any pattern matches the cwd itself ("**" or ".").
@@ -954,13 +981,6 @@ impl Glob {
                 continue;
             }
 
-            // When includeChildMatches is false, skip paths that are children of already-matched paths
-            if !self.include_child_matches
-                && self.is_child_of_matched(&normalized, &matched_parents)
-            {
-                continue;
-            }
-
             // Check if any pattern matches
             let is_dir = entry.is_dir();
 
@@ -995,20 +1015,51 @@ impl Glob {
                     normalized.replace('/', "\\")
                 };
                 if seen.insert(output_path.clone()) {
-                    // When includeChildMatches is false, track this path to exclude its children
-                    // (use the normalized path with forward slashes for internal tracking)
-                    if !self.include_child_matches {
-                        matched_parents.insert(output_path.replace('\\', "/"));
-                    }
-
-                    results.push(PathData {
-                        path: output_path,
+                    let path_data = PathData {
+                        path: output_path.clone(),
                         is_directory: is_dir,
                         is_file: entry.is_file(),
                         is_symlink: entry.is_symlink(),
-                    });
+                    };
+
+                    // When includeChildMatches is false, track for post-filtering
+                    if !self.include_child_matches {
+                        let norm_path = output_path.replace('\\', "/");
+                        matched_with_normalized.push((path_data.clone(), norm_path));
+                    }
+
+                    results.push(path_data);
                 }
             }
+        }
+
+        // When includeChildMatches is false, post-process to filter out children
+        if !self.include_child_matches && !matched_with_normalized.is_empty() {
+            // Sort by path depth (number of segments) - shorter paths first
+            matched_with_normalized.sort_by_key(|(_, norm)| norm.matches('/').count());
+
+            // Filter out children using a set of matched parents
+            let mut parents: AHashSet<&str> = AHashSet::with_capacity(matched_with_normalized.len());
+            let mut filtered_results: Vec<PathData> =
+                Vec::with_capacity(matched_with_normalized.len());
+
+            for (path_data, normalized) in &matched_with_normalized {
+                // Check if this path is a child of any already-matched parent
+                let is_child = parents.iter().any(|parent| {
+                    let parent_bytes = parent.as_bytes();
+                    let norm_bytes = normalized.as_bytes();
+                    norm_bytes.starts_with(parent_bytes)
+                        && norm_bytes.len() > parent_bytes.len()
+                        && norm_bytes.get(parent_bytes.len()) == Some(&b'/')
+                });
+
+                if !is_child {
+                    parents.insert(normalized.as_str());
+                    filtered_results.push(path_data.clone());
+                }
+            }
+
+            return filtered_results;
         }
 
         results
@@ -1020,7 +1071,7 @@ impl Glob {
     /// (e.g., `C:\foo\bar` → `//?/C:/foo/bar`) to match glob's behavior.
     fn format_path(&self, path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy().to_string();
-        if self.posix {
+        if self.posix_explicit_true {
             // On Windows with posix: true, convert absolute paths to UNC form
             #[cfg(target_os = "windows")]
             {
@@ -1118,7 +1169,7 @@ impl Glob {
         buffer.clear();
         let path_str = path.to_string_lossy();
 
-        if self.posix {
+        if self.posix_explicit_true {
             // On Windows with posix: true, convert absolute paths to UNC form
             // e.g., C:\foo\bar → //?/C:/foo/bar
             #[cfg(target_os = "windows")]
@@ -1970,15 +2021,12 @@ impl Glob {
 
     /// Check if backslashes should be normalized to forward slashes.
     ///
-    /// On Windows with posix: false (the default), glob v13 outputs backslashes.
-    /// On Windows with posix: true, glob v13 outputs forward slashes.
-    /// On Unix, glob v13 always outputs forward slashes.
+    /// glob v13 uses forward slashes by default on all platforms.
+    /// Only when posix is explicitly set to false on Windows are backslashes used.
     #[inline]
     fn should_normalize_backslashes(&self) -> bool {
-        // Use forward slashes when:
-        // - On Unix (always)
-        // - On Windows with posix: true
-        self.posix || !cfg!(target_os = "windows")
+        // Use forward slashes unless posix was explicitly set to false on Windows
+        !cfg!(target_os = "windows") || !self.posix_explicit_false
     }
 
     /// Normalize path separators based on platform and posix option.
