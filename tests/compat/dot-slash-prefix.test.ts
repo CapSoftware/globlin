@@ -14,7 +14,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { sep } from 'path'
 import { glob as globOriginal, globSync as globSyncOriginal } from 'glob'
-import { createTestFixture, cleanupFixture, loadGloblin, DEFAULT_FIXTURE } from '../harness.js'
+import {
+  createTestFixture,
+  cleanupFixture,
+  loadGloblin,
+  DEFAULT_FIXTURE,
+  normalizePath,
+  normalizePaths,
+  platformPath,
+} from '../harness.js'
 
 describe('./ prefix patterns', () => {
   let fixturePath: string
@@ -137,7 +145,7 @@ describe('./ prefix patterns', () => {
 
     it('glob: . with mark: true returns ./', async () => {
       const results = await globOriginal('.', { cwd: fixturePath, mark: true })
-      expect(results).toEqual(['./'])
+      expect(results).toEqual([`.${sep}`])
     })
 
     it('glob: ./ without mark returns .', async () => {
@@ -147,7 +155,7 @@ describe('./ prefix patterns', () => {
 
     it('glob: ./ with mark: true returns ./', async () => {
       const results = await globOriginal('./', { cwd: fixturePath, mark: true })
-      expect(results).toEqual(['./'])
+      expect(results).toEqual([`.${sep}`])
     })
 
     it('globlin: . matches cwd', async () => {
@@ -159,7 +167,7 @@ describe('./ prefix patterns', () => {
     it('globlin: . with mark: true returns ./', async () => {
       if (!globlin) return
       const results = await globlin.glob('.', { cwd: fixturePath, mark: true })
-      expect(results).toEqual(['./'])
+      expect(results).toEqual([`.${sep}`])
     })
 
     it('globlin: ./ without mark returns .', async () => {
@@ -171,7 +179,7 @@ describe('./ prefix patterns', () => {
     it('globlin: ./ with mark: true returns ./', async () => {
       if (!globlin) return
       const results = await globlin.glob('./', { cwd: fixturePath, mark: true })
-      expect(results).toEqual(['./'])
+      expect(results).toEqual([`.${sep}`])
     })
   })
 
@@ -179,8 +187,8 @@ describe('./ prefix patterns', () => {
     it('./**/h results should not start with ./', async () => {
       const results = await globOriginal('./**/h', { cwd: fixturePath })
       for (const r of results) {
-        // Results should not start with ./ (unless its the cwd itself which would be just ".")
-        expect(r).not.toMatch(/^\.\/(.)/) // ./ followed by something
+        // Results should not start with ./ or .\ (unless its the cwd itself which would be just ".")
+        expect(r.startsWith('./') || r.startsWith('.\\')).toBe(false)
       }
     })
 
@@ -188,7 +196,7 @@ describe('./ prefix patterns', () => {
       if (!globlin) return
       const results = await globlin.glob('./**/h', { cwd: fixturePath })
       for (const r of results) {
-        expect(r).not.toMatch(/^\.\/(.)/)
+        expect(r.startsWith('./') || r.startsWith('.\\')).toBe(false)
       }
     })
 
@@ -223,7 +231,7 @@ describe('./ prefix patterns', () => {
       if (!globlin) return
       const results = await globlin.glob('./**/h', { cwd: fixturePath, dotRelative: true })
       for (const r of results) {
-        expect(r.startsWith('./')).toBe(true)
+        expect(r.startsWith('.' + sep)).toBe(true)
       }
     })
 
@@ -250,7 +258,7 @@ describe('./ prefix patterns', () => {
       if (!globlin) return
       const results = await globlin.glob('./**', { cwd: fixturePath, mark: true })
       expect(results.length).toBeGreaterThan(0)
-      const dirs = results.filter(r => r.endsWith('/'))
+      const dirs = results.filter(r => r.endsWith('/') || r.endsWith('\\'))
       expect(dirs.length).toBeGreaterThan(0)
     })
 

@@ -1960,15 +1960,15 @@ impl Glob {
 
     /// Check if backslashes should be normalized to forward slashes.
     ///
-    /// This function always returns true because glob v13 outputs forward slashes
-    /// on all platforms for cross-platform consistency. The `posix` option affects
-    /// pattern matching semantics (e.g., whether backslashes are escape characters),
-    /// not the output format.
+    /// On Windows with posix: false (the default), glob v13 outputs backslashes.
+    /// On Windows with posix: true, glob v13 outputs forward slashes.
+    /// On Unix, glob v13 always outputs forward slashes.
     #[inline]
     fn should_normalize_backslashes(&self) -> bool {
-        // Always use forward slashes for output - this matches glob v13 behavior
-        // which outputs forward slashes on all platforms for consistency
-        true
+        // Use forward slashes when:
+        // - On Unix (always)
+        // - On Windows with posix: true
+        self.posix || !cfg!(target_os = "windows")
     }
 
     /// Normalize path separators based on platform and posix option.
@@ -2657,6 +2657,20 @@ mod tests {
     use std::fs::{self, File};
     use tempfile::TempDir;
 
+    /// Convert a forward-slash path to platform-appropriate separators for test assertions.
+    /// On Windows without posix mode, glob outputs backslashes.
+    /// On Unix, glob outputs forward slashes.
+    fn p(path: &str) -> String {
+        #[cfg(target_os = "windows")]
+        {
+            path.replace('/', "\\")
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            path.to_string()
+        }
+    }
+
     fn create_test_fixture() -> TempDir {
         let temp = TempDir::new().unwrap();
         let base = temp.path();
@@ -2766,9 +2780,9 @@ mod tests {
         let results = glob.walk_sync();
 
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
         assert!(!results.contains(&"foo.txt".to_string()));
     }
 
@@ -2794,9 +2808,9 @@ mod tests {
         );
         let results = glob.walk_sync();
 
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -2808,9 +2822,9 @@ mod tests {
         );
         let results = glob.walk_sync();
 
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -2886,9 +2900,9 @@ mod tests {
         let results = glob.walk_sync();
 
         // src/ matches
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -2979,11 +2993,11 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should include regular nested files
-        assert!(results.contains(&"src/main.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
 
         // Should NOT include files inside .git
-        assert!(!results.contains(&".git/config".to_string()));
-        assert!(!results.contains(&".git/HEAD".to_string()));
+        assert!(!results.contains(&p(".git/config")));
+        assert!(!results.contains(&p(".git/HEAD")));
     }
 
     #[test]
@@ -2996,8 +3010,8 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should include files inside .git
-        assert!(results.contains(&".git/config".to_string()));
-        assert!(results.contains(&".git/HEAD".to_string()));
+        assert!(results.contains(&p(".git/config")));
+        assert!(results.contains(&p(".git/HEAD")));
     }
 
     #[test]
@@ -3023,8 +3037,8 @@ mod tests {
         let results = glob.walk_sync();
 
         // Explicit .git/* pattern should match even with dot:false
-        assert!(results.contains(&".git/config".to_string()));
-        assert!(results.contains(&".git/HEAD".to_string()));
+        assert!(results.contains(&p(".git/config")));
+        assert!(results.contains(&p(".git/HEAD")));
     }
 
     #[test]
@@ -3037,7 +3051,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // **/.env should match src/.env even with dot:false
-        assert!(results.contains(&"src/.env".to_string()));
+        assert!(results.contains(&p("src/.env")));
     }
 
     #[test]
@@ -3086,8 +3100,8 @@ mod tests {
         let results = glob.walk_sync();
 
         // Without follow, we should only get files in a/b/, not through symlink
-        assert!(results.contains(&"a/b/c/file.txt".to_string()));
-        assert!(results.contains(&"a/b/file2.txt".to_string()));
+        assert!(results.contains(&p("a/b/c/file.txt")));
+        assert!(results.contains(&p("a/b/file2.txt")));
 
         // We should NOT see files through the symlink (symlink/...)
         assert!(!results.iter().any(|r| r.contains("symlink")));
@@ -3104,12 +3118,12 @@ mod tests {
         let results = glob.walk_sync();
 
         // With follow, we should see files through the symlink too
-        assert!(results.contains(&"a/b/c/file.txt".to_string()));
-        assert!(results.contains(&"a/b/file2.txt".to_string()));
+        assert!(results.contains(&p("a/b/c/file.txt")));
+        assert!(results.contains(&p("a/b/file2.txt")));
 
         // We should also see the same files through the symlink
-        assert!(results.contains(&"a/symlink/c/file.txt".to_string()));
-        assert!(results.contains(&"a/symlink/file2.txt".to_string()));
+        assert!(results.contains(&p("a/symlink/c/file.txt")));
+        assert!(results.contains(&p("a/symlink/file2.txt")));
     }
 
     #[cfg(unix)]
@@ -3123,7 +3137,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should include the broken symlink itself (not crash)
-        assert!(results.contains(&"broken/link".to_string()));
+        assert!(results.contains(&p("broken/link")));
     }
 
     #[cfg(unix)]
@@ -3138,7 +3152,7 @@ mod tests {
 
         // Should include the directory and symlink, not crash
         assert!(results.contains(&"broken".to_string()));
-        assert!(results.contains(&"broken/link".to_string()));
+        assert!(results.contains(&p("broken/link")));
     }
 
     #[cfg(unix)]
@@ -3217,8 +3231,8 @@ mod tests {
         assert!(results.contains(&"src".to_string()));
 
         // Should NOT include nested files
-        assert!(!results.contains(&"src/main.js".to_string()));
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/main.js")));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3232,11 +3246,11 @@ mod tests {
 
         // maxDepth: 2 should include depth 1 and 2
         assert!(results.contains(&"baz.js".to_string())); // depth 1
-        assert!(results.contains(&"src/main.js".to_string())); // depth 2
-        assert!(results.contains(&"src/util.js".to_string())); // depth 2
+        assert!(results.contains(&p("src/main.js"))); // depth 2
+        assert!(results.contains(&p("src/util.js"))); // depth 2
 
         // Should NOT include depth 3+
-        assert!(!results.contains(&"src/lib/helper.js".to_string())); // depth 3
+        assert!(!results.contains(&p("src/lib/helper.js"))); // depth 3
     }
 
     #[test]
@@ -3250,9 +3264,9 @@ mod tests {
 
         // Without maxDepth, should include all levels
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3265,11 +3279,11 @@ mod tests {
         let results = glob.walk_sync();
 
         // maxDepth: 2 with src/** should get src/* (depth 2)
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
 
         // Should NOT include src/lib/* (depth 3)
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     // nodir tests
@@ -3287,12 +3301,12 @@ mod tests {
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"bar.txt".to_string()));
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
 
         // Should NOT include directories
         assert!(!results.contains(&"src".to_string()));
-        assert!(!results.contains(&"src/lib".to_string()));
+        assert!(!results.contains(&p("src/lib")));
     }
 
     #[test]
@@ -3307,7 +3321,7 @@ mod tests {
         // Should include both files and directories
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"src".to_string()));
-        assert!(results.contains(&"src/lib".to_string()));
+        assert!(results.contains(&p("src/lib")));
     }
 
     #[test]
@@ -3321,7 +3335,7 @@ mod tests {
 
         // Default behavior should include directories
         assert!(results.contains(&"src".to_string()));
-        assert!(results.contains(&"src/lib".to_string()));
+        assert!(results.contains(&p("src/lib")));
     }
 
     #[test]
@@ -3369,12 +3383,12 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should include nested files
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
 
         // Should NOT include directory entries
         assert!(!results.contains(&"src".to_string()));
-        assert!(!results.contains(&"src/lib".to_string()));
+        assert!(!results.contains(&p("src/lib")));
     }
 
     #[cfg(unix)]
@@ -3472,15 +3486,16 @@ mod tests {
         );
         let results = glob.walk_sync();
 
-        // All results should start with "./"
+        // All results should start with "./" or ".\\" on Windows
+        let expected_prefix = if cfg!(target_os = "windows") { ".\\" } else { "./" };
         for result in &results {
             assert!(
-                result.starts_with("./"),
-                "Path should start with './': {result}"
+                result.starts_with(expected_prefix),
+                "Path should start with '{expected_prefix}': {result}"
             );
         }
-        assert!(results.contains(&"./foo.txt".to_string()));
-        assert!(results.contains(&"./bar.txt".to_string()));
+        assert!(results.contains(&p("./foo.txt")));
+        assert!(results.contains(&p("./bar.txt")));
     }
 
     #[test]
@@ -3492,13 +3507,13 @@ mod tests {
         );
         let results = glob.walk_sync();
 
-        // Results should NOT start with "./"
+        // Results should NOT start with "./" or ".\"
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"bar.txt".to_string()));
         for result in &results {
             assert!(
-                !result.starts_with("./"),
-                "Path should not start with './': {result}"
+                !result.starts_with("./") && !result.starts_with(".\\"),
+                "Path should not start with './' or '.\\': {result}"
             );
         }
     }
@@ -3513,10 +3528,10 @@ mod tests {
         let results = glob.walk_sync();
 
         // All results should start with "./"
-        assert!(results.contains(&"./baz.js".to_string()));
-        assert!(results.contains(&"./src/main.js".to_string()));
-        assert!(results.contains(&"./src/util.js".to_string()));
-        assert!(results.contains(&"./src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("./baz.js")));
+        assert!(results.contains(&p("./src/main.js")));
+        assert!(results.contains(&p("./src/util.js")));
+        assert!(results.contains(&p("./src/lib/helper.js")));
     }
 
     #[test]
@@ -3530,7 +3545,7 @@ mod tests {
 
         // Default should not have "./" prefix
         assert!(results.contains(&"foo.txt".to_string()));
-        assert!(!results.contains(&"./foo.txt".to_string()));
+        assert!(!results.contains(&p("./foo.txt")));
     }
 
     // mark tests
@@ -3545,12 +3560,12 @@ mod tests {
         let results = glob.walk_sync();
 
         // Directories should end with "/"
-        assert!(results.contains(&"src/".to_string()));
+        assert!(results.contains(&p("src/")));
 
         // Files should NOT end with "/"
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"bar.txt".to_string()));
-        assert!(!results.contains(&"foo.txt/".to_string()));
+        assert!(!results.contains(&p("foo.txt/")));
     }
 
     #[test]
@@ -3564,7 +3579,7 @@ mod tests {
 
         // Directories should NOT end with "/"
         assert!(results.contains(&"src".to_string()));
-        assert!(!results.contains(&"src/".to_string()));
+        assert!(!results.contains(&p("src/")));
     }
 
     #[test]
@@ -3577,12 +3592,12 @@ mod tests {
         let results = glob.walk_sync();
 
         // Nested directories should also have trailing slash
-        assert!(results.contains(&"src/".to_string()));
-        assert!(results.contains(&"src/lib/".to_string()));
+        assert!(results.contains(&p("src/")));
+        assert!(results.contains(&p("src/lib/")));
 
         // Files should not have trailing slash
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(!results.contains(&"src/main.js/".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(!results.contains(&p("src/main.js/")));
     }
 
     #[test]
@@ -3595,7 +3610,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // "." (cwd) should become "./" with mark:true
-        assert!(results.contains(&"./".to_string()));
+        assert!(results.contains(&p("./")));
         assert!(!results.contains(&".".to_string()));
     }
 
@@ -3607,7 +3622,7 @@ mod tests {
 
         // Default should not have trailing slash on directories
         assert!(results.contains(&"src".to_string()));
-        assert!(!results.contains(&"src/".to_string()));
+        assert!(!results.contains(&p("src/")));
     }
 
     #[test]
@@ -3625,11 +3640,11 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should have both "./" prefix and "/" suffix for directories
-        assert!(results.contains(&"./src/".to_string()));
+        assert!(results.contains(&p("./src/")));
 
         // Files should have "./" prefix but not "/" suffix
-        assert!(results.contains(&"./foo.txt".to_string()));
-        assert!(!results.contains(&"./foo.txt/".to_string()));
+        assert!(results.contains(&p("./foo.txt")));
+        assert!(!results.contains(&p("./foo.txt/")));
     }
 
     // matchBase tests
@@ -3653,9 +3668,9 @@ mod tests {
 
         // With matchBase: true, *.js should match files at any depth
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3669,8 +3684,8 @@ mod tests {
 
         // With matchBase: false, *.js should only match at root level
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(!results.contains(&"src/main.js".to_string()));
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/main.js")));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3683,10 +3698,10 @@ mod tests {
         let results = glob.walk_sync();
 
         // Pattern with / is used as-is even with matchBase: true
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
         // Should NOT match nested files (pattern has / so no **/ prepended)
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3700,7 +3715,7 @@ mod tests {
 
         // Default behavior should match only at root
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(!results.contains(&"src/main.js".to_string()));
+        assert!(!results.contains(&p("src/main.js")));
     }
 
     #[test]
@@ -3713,7 +3728,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Brace expansion with / in all parts - no matchBase transformation
-        assert!(results.contains(&"src/main.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
     }
 
     #[test]
@@ -3764,9 +3779,9 @@ mod tests {
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"bar.txt".to_string()));
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3818,12 +3833,12 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should match src/*.js and root *.txt
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"bar.txt".to_string()));
         // Should NOT match nested files
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     // Depth-limited walking optimization tests (Task 2.5.1.3)
@@ -3856,10 +3871,10 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find src/*.js files
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
         // Should NOT find deeply nested files
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3873,10 +3888,10 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find src/lib/*.js files
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/lib/helper.js")));
         // Should NOT find files at other depths
         assert!(!results.contains(&"baz.js".to_string()));
-        assert!(!results.contains(&"src/main.js".to_string()));
+        assert!(!results.contains(&p("src/main.js")));
     }
 
     #[test]
@@ -3891,9 +3906,9 @@ mod tests {
 
         // Should find files at ALL depths
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3909,9 +3924,9 @@ mod tests {
         // Should find root .txt and src/*.js
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"bar.txt".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
         // Should NOT find deeply nested files
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3927,8 +3942,8 @@ mod tests {
         // Should find files at all depths due to **/*.js pattern
         assert!(results.contains(&"foo.txt".to_string()));
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -3943,7 +3958,7 @@ mod tests {
 
         // Even though pattern has **, maxDepth: 1 should limit to root only
         assert!(results.contains(&"baz.js".to_string()));
-        assert!(!results.contains(&"src/main.js".to_string()));
+        assert!(!results.contains(&p("src/main.js")));
     }
 
     // Prefix-based walk root optimization tests (Task 2.5.2.3)
@@ -3959,9 +3974,9 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find all js files under src/
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
         // Should NOT find root-level js
         assert!(!results.contains(&"baz.js".to_string()));
     }
@@ -3977,9 +3992,9 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files under src/lib/
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/lib/helper.js")));
         // Should NOT find files at other locations
-        assert!(!results.contains(&"src/main.js".to_string()));
+        assert!(!results.contains(&p("src/main.js")));
         assert!(!results.contains(&"baz.js".to_string()));
     }
 
@@ -4007,8 +4022,8 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find js files under src/
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/lib/helper.js")));
         // Should NOT find root-level files
         assert!(!results.contains(&"baz.js".to_string()));
     }
@@ -4032,8 +4047,8 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files from both directories
-        assert!(results.contains(&"dir1/file.js".to_string()));
-        assert!(results.contains(&"dir2/file.ts".to_string()));
+        assert!(results.contains(&p("dir1/file.js")));
+        assert!(results.contains(&p("dir2/file.ts")));
         // Should NOT match root files
         assert!(!results.contains(&"root.txt".to_string()));
     }
@@ -4050,10 +4065,10 @@ mod tests {
 
         // maxDepth: 2 means up to depth 2 from cwd
         // src is depth 1, src/* is depth 2, src/lib/* is depth 3
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"src/util.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("src/util.js")));
         // src/lib/helper.js is depth 3, should be excluded
-        assert!(!results.contains(&"src/lib/helper.js".to_string()));
+        assert!(!results.contains(&p("src/lib/helper.js")));
     }
 
     #[test]
@@ -4095,12 +4110,12 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files under src/lib/
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
-        assert!(results.contains(&"src/lib/deep/nested.js".to_string()));
+        assert!(results.contains(&p("src/lib/helper.js")));
+        assert!(results.contains(&p("src/lib/deep/nested.js")));
 
         // Should NOT find files in other directories
-        assert!(!results.contains(&"test/unit/test.js".to_string()));
-        assert!(!results.contains(&"docs/readme.js".to_string()));
+        assert!(!results.contains(&p("test/unit/test.js")));
+        assert!(!results.contains(&p("docs/readme.js")));
     }
 
     #[test]
@@ -4124,11 +4139,11 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files matching either pattern
-        assert!(results.contains(&"src/main.js".to_string()));
-        assert!(results.contains(&"test/test.ts".to_string()));
+        assert!(results.contains(&p("src/main.js")));
+        assert!(results.contains(&p("test/test.ts")));
 
         // Should NOT find files that don't match any pattern
-        assert!(!results.contains(&"docs/readme.md".to_string()));
+        assert!(!results.contains(&p("docs/readme.md")));
     }
 
     #[test]
@@ -4150,8 +4165,8 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files in both paths since ** matches anything
-        assert!(results.contains(&"a/b/c/file.js".to_string()));
-        assert!(results.contains(&"x/y/z/file.js".to_string()));
+        assert!(results.contains(&p("a/b/c/file.js")));
+        assert!(results.contains(&p("x/y/z/file.js")));
     }
 
     #[test]
@@ -4178,13 +4193,13 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files under packages/*/src
-        assert!(results.contains(&"packages/foo/src/index.ts".to_string()));
-        assert!(results.contains(&"packages/foo/src/utils/helper.ts".to_string()));
-        assert!(results.contains(&"packages/bar/src/main.ts".to_string()));
+        assert!(results.contains(&p("packages/foo/src/index.ts")));
+        assert!(results.contains(&p("packages/foo/src/utils/helper.ts")));
+        assert!(results.contains(&p("packages/bar/src/main.ts")));
 
         // Should NOT find files outside of packages/*/src
-        assert!(!results.contains(&"packages/foo/test/test.ts".to_string()));
-        assert!(!results.contains(&"other/file.ts".to_string()));
+        assert!(!results.contains(&p("packages/foo/test/test.ts")));
+        assert!(!results.contains(&p("other/file.ts")));
     }
 
     // Multi-pattern optimization tests (Task 2.5.6.3)
@@ -4502,11 +4517,11 @@ mod tests {
         let results = glob.walk_sync();
 
         assert!(
-            results.contains(&"test/a.test.ts".to_string()),
+            results.contains(&p("test/a.test.ts")),
             "Should contain test/a.test.ts"
         );
         assert!(
-            !results.contains(&"test/b.test.tsx".to_string()),
+            !results.contains(&p("test/b.test.tsx")),
             "Should not contain test/b.test.tsx"
         );
     }
@@ -4537,7 +4552,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find the nested file
-        assert!(results.contains(&"src/main.js".to_string()));
+        assert!(results.contains(&p("src/main.js")));
         assert_eq!(results.len(), 1);
     }
 
@@ -4551,7 +4566,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find the deeply nested file
-        assert!(results.contains(&"src/lib/helper.js".to_string()));
+        assert!(results.contains(&p("src/lib/helper.js")));
         assert_eq!(results.len(), 1);
     }
 
@@ -4617,7 +4632,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should include trailing slash for directory
-        assert!(results.contains(&"src/".to_string()));
+        assert!(results.contains(&p("src/")));
     }
 
     #[test]
@@ -4630,7 +4645,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should include ./ prefix
-        assert!(results.contains(&"./foo.txt".to_string()));
+        assert!(results.contains(&p("./foo.txt")));
     }
 
     #[test]
@@ -4863,16 +4878,16 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files in both src and test
-        assert!(results.contains(&"src/main.ts".to_string()));
-        assert!(results.contains(&"src/util.ts".to_string()));
-        assert!(results.contains(&"src/lib/helper.ts".to_string()));
-        assert!(results.contains(&"test/main.test.ts".to_string()));
-        assert!(results.contains(&"test/util.test.ts".to_string()));
-        assert!(results.contains(&"test/fixtures/data.ts".to_string()));
+        assert!(results.contains(&p("src/main.ts")));
+        assert!(results.contains(&p("src/util.ts")));
+        assert!(results.contains(&p("src/lib/helper.ts")));
+        assert!(results.contains(&p("test/main.test.ts")));
+        assert!(results.contains(&p("test/util.test.ts")));
+        assert!(results.contains(&p("test/fixtures/data.ts")));
 
         // Should NOT find files in other directories (node_modules, lib)
         assert!(!results.iter().any(|r| r.contains("node_modules")));
-        assert!(!results.contains(&"lib/index.ts".to_string()));
+        assert!(!results.contains(&p("lib/index.ts")));
 
         // Should have exactly 6 results
         assert_eq!(results.len(), 6);
@@ -4895,9 +4910,9 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should find files in all three directories
-        assert!(results.contains(&"src/main.ts".to_string()));
-        assert!(results.contains(&"test/main.test.ts".to_string()));
-        assert!(results.contains(&"lib/index.ts".to_string()));
+        assert!(results.contains(&p("src/main.ts")));
+        assert!(results.contains(&p("test/main.test.ts")));
+        assert!(results.contains(&p("lib/index.ts")));
 
         // Should have exactly 7 results (3 in src, 3 in test, 1 in lib)
         assert_eq!(results.len(), 7);
@@ -4915,7 +4930,7 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should only contain files, not directories
-        assert!(results.contains(&"src/main.ts".to_string()));
+        assert!(results.contains(&p("src/main.ts")));
         assert!(!results
             .iter()
             .any(|r| r == "src" || r == "src/" || r == "test" || r == "test/"));
@@ -5032,10 +5047,10 @@ mod tests {
         let results = glob.walk_sync();
 
         // Should have files except util-related ones
-        assert!(results.contains(&"src/main.ts".to_string()));
-        assert!(!results.contains(&"src/util.ts".to_string())); // ignored
-        assert!(results.contains(&"test/main.test.ts".to_string()));
-        assert!(!results.contains(&"test/util.test.ts".to_string())); // ignored
+        assert!(results.contains(&p("src/main.ts")));
+        assert!(!results.contains(&p("src/util.ts"))); // ignored
+        assert!(results.contains(&p("test/main.test.ts")));
+        assert!(!results.contains(&p("test/util.test.ts"))); // ignored
     }
 
     #[test]
@@ -5077,9 +5092,9 @@ mod tests {
         // Walk just the src group (indices 0 and 1)
         let results = glob.walk_single_base_group(&[0, 1], &abs_cwd);
 
-        assert!(results.contains(&"src/main.ts".to_string()));
-        assert!(results.contains(&"src/util.ts".to_string()));
-        assert!(results.contains(&"src/lib/helper.ts".to_string()));
-        assert!(!results.contains(&"test/main.test.ts".to_string())); // Not in this group
+        assert!(results.contains(&p("src/main.ts")));
+        assert!(results.contains(&p("src/util.ts")));
+        assert!(results.contains(&p("src/lib/helper.ts")));
+        assert!(!results.contains(&p("test/main.test.ts"))); // Not in this group
     }
 }

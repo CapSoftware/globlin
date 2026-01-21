@@ -519,6 +519,7 @@ export function shouldPreserveOrder(_options: GlobOptions): boolean {
 
 /**
  * Normalize path separators for cross-platform comparison
+ * Converts platform separators to forward slashes
  */
 export function normalizePath(p: string): string {
   return p.split(path.sep).join('/')
@@ -529,4 +530,19 @@ export function normalizePath(p: string): string {
  */
 export function normalizePaths(paths: string[]): string[] {
   return paths.map(normalizePath).sort()
+}
+
+/**
+ * Convert forward slashes to platform-specific separators
+ * Use this for expected values in tests
+ */
+export function platformPath(p: string): string {
+  return p.split('/').join(path.sep)
+}
+
+/**
+ * Convert an array of paths to platform-specific format
+ */
+export function platformPaths(paths: string[]): string[] {
+  return paths.map(platformPath)
 }

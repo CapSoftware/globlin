@@ -17,7 +17,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { resolve } from 'path'
 import { glob as globOriginal, globSync as globSyncOriginal } from 'glob'
-import { createTestFixture, cleanupFixture, loadGloblin } from '../harness.js'
+import {
+  createTestFixture,
+  cleanupFixture,
+  loadGloblin,
+  platformPath,
+  platformPaths,
+  normalizePath,
+  normalizePaths,
+} from '../harness.js'
 
 describe('parent navigation patterns (../**)', () => {
   let fixturePath: string
@@ -79,13 +87,13 @@ describe('parent navigation patterns (../**)', () => {
     it('../test/*.ts from src directory finds test files (async)', async () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../test/*.ts', { cwd: srcCwd })
-      expect(results).toEqual(['../test/main.test.ts'])
+      expect(results).toEqual([platformPath('../test/main.test.ts')])
     })
 
     it('../test/*.ts from src directory finds test files (sync)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = globSyncOriginal('../test/*.ts', { cwd: srcCwd })
-      expect(results).toEqual(['../test/main.test.ts'])
+      expect(results).toEqual([platformPath('../test/main.test.ts')])
     })
 
     it('../*/*.ts from src directory finds all nested ts files (async)', async () => {
@@ -94,7 +102,7 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../*/*.ts', { cwd: srcCwd })
       // Results include 'main.ts' (normalized ../src/main.ts) and '../test/main.test.ts'
-      expect(results.sort()).toEqual(['../test/main.test.ts', 'main.ts'].sort())
+      expect(normalizePaths(results)).toEqual(normalizePaths(['../test/main.test.ts', 'main.ts']))
     })
   })
 
@@ -105,33 +113,35 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../**/*.ts', { cwd: srcCwd })
       // Files from ../test/ keep the ../ prefix, files from ../src/ are normalized
-      expect(results.sort()).toEqual(
-        [
+      expect(normalizePaths(results)).toEqual(
+        normalizePaths([
           '../test/main.test.ts',
           '../test/utils/helpers.test.ts',
           'main.ts',
           'utils/helpers.ts',
-        ].sort()
+        ])
       )
     })
 
     it('../**/*.ts from src directory finds all ts files (sync)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = globSyncOriginal('../**/*.ts', { cwd: srcCwd })
-      expect(results.sort()).toEqual(
-        [
+      expect(normalizePaths(results)).toEqual(
+        normalizePaths([
           '../test/main.test.ts',
           '../test/utils/helpers.test.ts',
           'main.ts',
           'utils/helpers.ts',
-        ].sort()
+        ])
       )
     })
 
     it('../**/*.js from src directory finds all js files (async)', async () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../**/*.js', { cwd: srcCwd })
-      expect(results.sort()).toEqual(['../lib/core/api.js', '../lib/index.js'].sort())
+      expect(normalizePaths(results)).toEqual(
+        normalizePaths(['../lib/core/api.js', '../lib/index.js'])
+      )
     })
   })
 
@@ -139,13 +149,13 @@ describe('parent navigation patterns (../**)', () => {
     it('../{src,test}/**/*.ts from lib directory (async)', async () => {
       const libCwd = resolve(fixturePath, 'lib')
       const results = await globOriginal('../{src,test}/**/*.ts', { cwd: libCwd })
-      expect(results.sort()).toEqual(
-        [
+      expect(normalizePaths(results)).toEqual(
+        normalizePaths([
           '../src/main.ts',
           '../src/utils/helpers.ts',
           '../test/main.test.ts',
           '../test/utils/helpers.test.ts',
-        ].sort()
+        ])
       )
     })
 
@@ -155,7 +165,7 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../*/../lib/*.js', { cwd: srcCwd })
       // Should resolve to ../lib/*.js effectively
-      expect(results).toContain('../lib/index.js')
+      expect(normalizePaths(results)).toContain('../lib/index.js')
     })
 
     it('*/../*/*/helpers.ts from project root (async)', async () => {
@@ -174,10 +184,10 @@ describe('parent navigation patterns (../**)', () => {
         cwd: srcCwd,
         dotRelative: true,
       })
-      // Should NOT start with './../' - just '../'
+      // Should NOT start with './../' or '.\..\' - just '../' or '..\'
       for (const r of results) {
-        expect(r.startsWith('./')).toBe(false)
-        expect(r.startsWith('../')).toBe(true)
+        expect(r.startsWith('./') || r.startsWith('.\\')).toBe(false)
+        expect(r.startsWith('../') || r.startsWith('..\\')).toBe(true)
       }
     })
 
@@ -188,8 +198,8 @@ describe('parent navigation patterns (../**)', () => {
         dotRelative: true,
       })
       for (const r of results) {
-        expect(r.startsWith('./')).toBe(false)
-        expect(r.startsWith('../')).toBe(true)
+        expect(r.startsWith('./') || r.startsWith('.\\')).toBe(false)
+        expect(r.startsWith('../') || r.startsWith('..\\')).toBe(true)
       }
     })
   })
@@ -212,7 +222,7 @@ describe('parent navigation patterns (../**)', () => {
       }
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globlin.glob('../test/*.ts', { cwd: srcCwd })
-      expect(results).toEqual(['../test/main.test.ts'])
+      expect(normalizePaths(results)).toEqual(['../test/main.test.ts'])
     })
 
     // SKIPPED: globlin doesn't normalize paths through parent that resolve back to cwd
@@ -265,8 +275,8 @@ describe('parent navigation patterns (../**)', () => {
         dotRelative: true,
       })
       for (const r of results) {
-        expect(r.startsWith('./')).toBe(false)
-        expect(r.startsWith('../')).toBe(true)
+        expect(r.startsWith('./') || r.startsWith('.\\')).toBe(false)
+        expect(r.startsWith('../') || r.startsWith('..\\')).toBe(true)
       }
     })
   })
@@ -346,7 +356,9 @@ describe('parent navigation patterns (../**)', () => {
     it('../../**/*.js from nested directory', async () => {
       const utilsCwd = resolve(fixturePath, 'src/utils')
       const results = await globOriginal('../../**/*.js', { cwd: utilsCwd })
-      expect(results.sort()).toEqual(['../../lib/core/api.js', '../../lib/index.js'].sort())
+      expect(normalizePaths(results)).toEqual(
+        normalizePaths(['../../lib/core/api.js', '../../lib/index.js'])
+      )
     })
 
     it('globlin: ../../**/*.js from nested directory', async () => {
@@ -356,13 +368,15 @@ describe('parent navigation patterns (../**)', () => {
       }
       const utilsCwd = resolve(fixturePath, 'src/utils')
       const results = await globlin.glob('../../**/*.js', { cwd: utilsCwd })
-      expect(results.sort()).toEqual(['../../lib/core/api.js', '../../lib/index.js'].sort())
+      expect(normalizePaths(results)).toEqual(
+        normalizePaths(['../../lib/core/api.js', '../../lib/index.js'])
+      )
     })
 
     it('pattern with .. in the middle: src/../test/*.ts', async () => {
       // glob normalizes the path - src/../test becomes test
       const results = await globOriginal('src/../test/*.ts', { cwd: fixturePath })
-      expect(results).toEqual(['test/main.test.ts'])
+      expect(normalizePaths(results)).toEqual([platformPath('test/main.test.ts')])
     })
 
     // SKIPPED: globlin doesn't normalize patterns with .. in the middle
@@ -390,7 +404,7 @@ describe('parent navigation patterns (../**)', () => {
     it('pattern with multiple .. segments: src/../test/../lib/*.js', async () => {
       // glob normalizes the path - src/../test/../lib becomes lib
       const results = await globOriginal('src/../test/../lib/*.js', { cwd: fixturePath })
-      expect(results).toEqual(['lib/index.js'])
+      expect(normalizePaths(results)).toEqual([platformPath('lib/index.js')])
     })
 
     // SKIPPED: path normalization difference
@@ -467,7 +481,7 @@ describe('parent navigation patterns (../**)', () => {
     it('../test/ should match directory only (async)', async () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../test/', { cwd: srcCwd })
-      expect(results).toEqual(['../test'])
+      expect(normalizePaths(results)).toEqual([platformPath('../test')])
     })
 
     it('globlin: ../test/ should match directory only', async () => {
@@ -477,7 +491,7 @@ describe('parent navigation patterns (../**)', () => {
       }
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globlin.glob('../test/', { cwd: srcCwd })
-      expect(results).toEqual(['../test'])
+      expect(normalizePaths(results)).toEqual(['../test'])
     })
 
     it('../*/ matches all sibling directories (async)', async () => {
@@ -485,7 +499,7 @@ describe('parent navigation patterns (../**)', () => {
       const srcCwd = resolve(fixturePath, 'src')
       const results = await globOriginal('../*/', { cwd: srcCwd })
       // '../src/' becomes '.', other dirs keep '../' prefix
-      expect(results.sort()).toEqual(['.', '../docs', '../lib', '../test'].sort())
+      expect(normalizePaths(results)).toEqual(normalizePaths(['.', '../docs', '../lib', '../test']))
     })
 
     // SKIPPED: path normalization difference (../src/ from src/ becomes '.' in glob)
