@@ -388,8 +388,10 @@ function applyCustomIgnoreFilter(
     const allParentDirs = new Set<string>()
 
     // Collect all unique parent directories from the results
+    // Normalize to forward slashes for cross-platform compatibility
     for (const relPath of results) {
-      const parts = relPath.split('/')
+      const normalized = relPath.replace(/\\/g, '/')
+      const parts = normalized.split('/')
       let current = ''
       for (let i = 0; i < parts.length - 1; i++) {
         current = current ? current + '/' + parts[i] : parts[i]
@@ -425,10 +427,13 @@ function applyCustomIgnoreFilter(
 
   // Now filter the results
   return results.filter(relPath => {
+    // Normalize path for comparison (cross-platform)
+    const normalizedPath = relPath.replace(/\\/g, '/')
+
     // Check if path is under an ignored directory (childrenIgnored)
     for (const prefix of ignoredDirPrefixes) {
       // Child paths should be filtered out
-      if (relPath.startsWith(prefix + '/')) {
+      if (normalizedPath.startsWith(prefix + '/')) {
         return false
       }
     }
@@ -455,6 +460,7 @@ function applyCustomIgnoreFilterForPaths(pathObjs: Path[], ignorePattern: Ignore
   }
 
   // Build a set of ignored directories (for childrenIgnored)
+  // Use normalized (forward slash) paths for cross-platform comparison
   const ignoredDirPrefixes = new Set<string>()
 
   // If we have childrenIgnored, pre-check all unique parent directories
@@ -465,7 +471,8 @@ function applyCustomIgnoreFilterForPaths(pathObjs: Path[], ignorePattern: Ignore
     for (const pathObj of pathObjs) {
       let current = pathObj.parent
       while (current && current.relative() !== '.') {
-        const relPath = current.relative()
+        // Normalize path for cross-platform compatibility
+        const relPath = current.relative().replace(/\\/g, '/')
         if (!allParentDirs.has(relPath)) {
           allParentDirs.set(relPath, current)
         }
@@ -500,7 +507,8 @@ function applyCustomIgnoreFilterForPaths(pathObjs: Path[], ignorePattern: Ignore
 
   // Now filter the results
   return pathObjs.filter(pathObj => {
-    const relPath = pathObj.relative()
+    // Normalize path for cross-platform comparison
+    const relPath = pathObj.relative().replace(/\\/g, '/')
 
     // Check if path is under an ignored directory (childrenIgnored)
     for (const prefix of ignoredDirPrefixes) {
@@ -535,6 +543,7 @@ function applyCustomIgnoreFilterForGloblinPaths(
   }
 
   // Build a set of ignored directories (for childrenIgnored)
+  // Use normalized (forward slash) paths for cross-platform comparison
   const ignoredDirPrefixes = new Set<string>()
 
   // If we have childrenIgnored, pre-check all unique parent directories
@@ -546,7 +555,8 @@ function applyCustomIgnoreFilterForGloblinPaths(
       // GloblinPath.parent returns a GloblinPath or undefined
       let current = pathObj.parent
       while (current && current.relative() !== '.') {
-        const relPath = current.relative()
+        // Normalize path for cross-platform compatibility
+        const relPath = current.relative().replace(/\\/g, '/')
         if (!allParentDirs.has(relPath)) {
           allParentDirs.set(relPath, current)
         }
@@ -582,7 +592,8 @@ function applyCustomIgnoreFilterForGloblinPaths(
 
   // Now filter the results
   return pathObjs.filter(pathObj => {
-    const relPath = pathObj.relative()
+    // Normalize path for cross-platform comparison
+    const relPath = pathObj.relative().replace(/\\/g, '/')
 
     // Check if path is under an ignored directory (childrenIgnored)
     for (const prefix of ignoredDirPrefixes) {

@@ -132,12 +132,14 @@ describe('custom ignore objects', () => {
       }
 
       const results = globSync('**', { cwd: fixture, ignore, nodir: true })
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
 
       // Should NOT include files under abcdef/
-      expect(results.some(r => r.startsWith('abcdef/'))).toBe(false)
+      expect(normalized.some(r => r.startsWith('abcdef/'))).toBe(false)
 
       // Should include files in other directories
-      expect(results.some(r => r.startsWith('other/'))).toBe(true)
+      expect(normalized.some(r => r.startsWith('other/'))).toBe(true)
     })
 
     it('should skip directory contents (async)', async () => {
@@ -148,9 +150,11 @@ describe('custom ignore objects', () => {
       }
 
       const results = await glob('**', { cwd: fixture, ignore, nodir: true })
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
 
       // Should NOT include files under abcdef/
-      expect(results.some(r => r.startsWith('abcdef/'))).toBe(false)
+      expect(normalized.some(r => r.startsWith('abcdef/'))).toBe(false)
     })
 
     it('should ignore symlink and abcdef directories', () => {
@@ -161,9 +165,11 @@ describe('custom ignore objects', () => {
       }
 
       const results = globSync('**', { cwd: fixture, ignore, nodir: true })
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
 
       // Results should not contain paths under ignored directories
-      for (const r of results) {
+      for (const r of normalized) {
         expect(r).not.toMatch(/\bsymlink\//)
         expect(r).not.toMatch(/\babcdef\//)
       }
@@ -175,11 +181,13 @@ describe('custom ignore objects', () => {
       }
 
       const results = globSync('**', { cwd: fixture, ignore })
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
 
       // The 'other' directory itself should be included (unless nodir)
-      expect(results).toContain('other')
+      expect(normalized).toContain('other')
       // But children should NOT be included
-      expect(results.some(r => r.startsWith('other/'))).toBe(false)
+      expect(normalized.some(r => r.startsWith('other/'))).toBe(false)
     })
   })
 
@@ -193,18 +201,20 @@ describe('custom ignore objects', () => {
       }
 
       const results = globSync('**', { cwd: fixture, ignore, nodir: true })
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
 
       // Should NOT include single-char files
-      expect(results).not.toContain('a')
-      expect(results).not.toContain('b')
+      expect(normalized).not.toContain('a')
+      expect(normalized).not.toContain('b')
 
       // Should NOT include abcdef contents
-      expect(results.some(r => r.startsWith('abcdef/'))).toBe(false)
+      expect(normalized.some(r => r.startsWith('abcdef/'))).toBe(false)
 
       // Should include longer-named files in root and other/
-      expect(results).toContain('ab')
-      expect(results).toContain('symlink')
-      expect(results.some(r => r.startsWith('other/'))).toBe(true)
+      expect(normalized).toContain('ab')
+      expect(normalized).toContain('symlink')
+      expect(normalized.some(r => r.startsWith('other/'))).toBe(true)
     })
   })
 

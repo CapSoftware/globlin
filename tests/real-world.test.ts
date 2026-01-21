@@ -65,7 +65,12 @@ describe('Real-world scenarios', () => {
 
       expect(new Set(globlinResults)).toEqual(new Set(globResults))
       expect(globlinResults.length).toBeGreaterThan(0)
-      expect(globlinResults.every(r => r.includes('/src/') && r.endsWith('.ts'))).toBe(true)
+      // Normalize paths for cross-platform comparison (paths contain /src/ or \src\)
+      expect(
+        globlinResults.every(
+          r => (r.includes('/src/') || r.includes('\\src\\')) && r.endsWith('.ts')
+        )
+      ).toBe(true)
     })
 
     it('should handle pattern with ignore for node_modules', async () => {

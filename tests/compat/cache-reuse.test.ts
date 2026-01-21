@@ -61,7 +61,9 @@ describe('Glob cache reuse', () => {
       const g2 = new GloblinGlob('**/*.md', g1)
 
       const results = g2.walkSync()
-      expect(results).toContain('docs/readme.md')
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
+      expect(normalized).toContain('docs/readme.md')
     })
 
     it('should inherit all relevant options', () => {
@@ -127,7 +129,9 @@ describe('Glob cache reuse', () => {
         results.push(file)
       }
 
-      expect(results).toContain('docs/readme.md')
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
+      expect(normalized).toContain('docs/readme.md')
     })
 
     it('should work with iterate API when reusing options', async () => {
@@ -139,7 +143,9 @@ describe('Glob cache reuse', () => {
         results.push(file)
       }
 
-      expect(results).toContain('docs/readme.md')
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
+      expect(normalized).toContain('docs/readme.md')
     })
 
     it('should work with iterateSync API when reusing options', () => {
@@ -151,7 +157,9 @@ describe('Glob cache reuse', () => {
         results.push(file)
       }
 
-      expect(results).toContain('docs/readme.md')
+      // Normalize paths for cross-platform comparison
+      const normalized = results.map(r => r.replace(/\\/g, '/'))
+      expect(normalized).toContain('docs/readme.md')
     })
   })
 

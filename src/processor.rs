@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::pattern::{preprocess_pattern, Pattern};
+use crate::util::strip_windows_extended_prefix;
 use crate::walker::{WalkEntry, WalkOptions, Walker};
 
 /// Options for the GlobWalker
@@ -135,7 +136,10 @@ impl GlobWalker {
             .any(|p| preprocess_pattern(p.raw()) == "**");
 
         // Get the absolute cwd path, canonicalized
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
 
         // Create walker
         let walker = Walker::new(self.cwd.clone(), self.walk_options.clone());
@@ -164,7 +168,10 @@ impl GlobWalker {
         }
 
         // Get the absolute cwd path, canonicalized
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
 
         // Check if any pattern is just "**"
         let include_cwd = self

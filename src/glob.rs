@@ -11,6 +11,7 @@ use crate::cache::get_or_compile_pattern;
 use crate::ignore::IgnoreFilter;
 use crate::options::{validate_options, GlobOptions};
 use crate::pattern::{expand_braces, preprocess_pattern, Pattern, PatternOptions};
+use crate::util::strip_windows_extended_prefix;
 use crate::walker::{WalkOptions, Walker};
 
 /// Path data returned by glob with withFileTypes: true.
@@ -520,7 +521,10 @@ impl Glob {
         });
 
         // Get the absolute cwd path, canonicalized
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
 
         // Calculate the walk root based on literal prefixes of all patterns.
         // If all patterns share a common literal prefix, we can start walking from there
@@ -808,7 +812,10 @@ impl Glob {
         });
 
         // Get the absolute cwd path, canonicalized
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
 
         // Calculate the walk root based on literal prefixes
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
@@ -1625,7 +1632,10 @@ impl Glob {
     /// with deduplication at the end.
     fn walk_multi_base(&self) -> Vec<String> {
         let groups = self.group_patterns_by_base();
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
 
         // Convert groups to a Vec for parallel iteration
         let groups_vec: Vec<(Option<String>, Vec<usize>)> = groups.into_iter().collect();
@@ -2013,7 +2023,10 @@ impl Glob {
             Err(_) => return results,
         };
 
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
 
         for entry_result in entries {
             let entry = match entry_result {
@@ -2179,7 +2192,10 @@ impl Glob {
 
                     // Format the result path
                     let result = if self.absolute {
-                        let abs_path = full_path.canonicalize().unwrap_or(full_path.clone());
+                        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+                        let abs_path = strip_windows_extended_prefix(
+                            full_path.canonicalize().unwrap_or(full_path.clone()),
+                        );
                         let formatted = self.format_path(&abs_path);
                         if self.mark && is_dir && !is_symlink && !formatted.ends_with('/') {
                             format!("{formatted}/")
@@ -2262,7 +2278,10 @@ impl Glob {
             }
         });
 
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
 
         // Pre-compute the prefix with trailing slash for efficient path concatenation
@@ -2478,7 +2497,10 @@ impl Glob {
             }
         });
 
-        let abs_cwd = self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone());
+        // Strip Windows extended-length prefix (\\?\) to match glob v13 behavior
+        let abs_cwd = strip_windows_extended_prefix(
+            self.cwd.canonicalize().unwrap_or_else(|_| self.cwd.clone()),
+        );
         let (walk_root, prefix_to_strip) = self.calculate_walk_root();
 
         let adjusted_walk_options = if let Some(ref prefix) = prefix_to_strip {
@@ -5082,7 +5104,7 @@ mod tests {
     fn test_walk_single_base_group_returns_correct_results() {
         let temp = create_multi_base_fixture();
         let cwd = temp.path();
-        let abs_cwd = cwd.canonicalize().unwrap();
+        let abs_cwd = strip_windows_extended_prefix(cwd.canonicalize().unwrap());
 
         let glob = Glob::new_multi(
             vec![
