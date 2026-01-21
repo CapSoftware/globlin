@@ -69,8 +69,16 @@ describe('matchBase option', () => {
 
     it('pattern with / is used as-is even with matchBase:true', async () => {
       const pattern = 'a/b*'
-      const globResult = await globOriginal(pattern, { cwd: fixturePath, matchBase: true })
-      const globlinResult = await globlin.glob(pattern, { cwd: fixturePath, matchBase: true })
+      const globResult = await globOriginal(pattern, {
+        cwd: fixturePath,
+        matchBase: true,
+        posix: true,
+      })
+      const globlinResult = await globlin.glob(pattern, {
+        cwd: fixturePath,
+        matchBase: true,
+        posix: true,
+      })
 
       expect(new Set(globlinResult)).toEqual(new Set(globResult))
       // Should match 'a/b' and 'a/bc' - not nested versions

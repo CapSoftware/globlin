@@ -112,7 +112,7 @@ describe('Extglob Patterns', () => {
     it('should exclude exact matches in paths', async () => {
       if (!globlin) throw new Error('globlin not loaded')
       // src/!(lib)/*.js should NOT match src/lib/*.js
-      const results = await globlin.glob('src/!(lib)/*.js', { cwd: fixture })
+      const results = await globlin.glob('src/!(lib)/*.js', { cwd: fixture, posix: true })
       expect(results).toContain('src/utils/tool.js')
       expect(results).toContain('src/other/file.js')
       expect(results).not.toContain('src/lib/helper.js')
@@ -122,13 +122,13 @@ describe('Extglob Patterns', () => {
   describe('Extglob with paths', () => {
     it('should work with directory patterns', async () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const results = await globlin.glob('src/+(lib|utils)/*.js', { cwd: fixture })
+      const results = await globlin.glob('src/+(lib|utils)/*.js', { cwd: fixture, posix: true })
       expect(results.sort()).toEqual(['src/lib/helper.js', 'src/utils/tool.js'])
     })
 
     it('should work with negation in paths', async () => {
       if (!globlin) throw new Error('globlin not loaded')
-      const results = await globlin.glob('src/!(symlink)/*.js', { cwd: fixture })
+      const results = await globlin.glob('src/!(symlink)/*.js', { cwd: fixture, posix: true })
       expect(results).toContain('src/lib/helper.js')
       expect(results).toContain('src/utils/tool.js')
       expect(results).toContain('src/other/file.js')

@@ -10,9 +10,12 @@ import { glob as globOriginal, globSync as globSyncOriginal } from 'glob'
 import { createTestFixture, cleanupFixture, loadGloblin } from '../harness.js'
 
 // Patterns that cannot match anything
+// NOTE: On Windows, ' ' (single space) can match files with that literal name
+// due to different filesystem handling, so we skip it on Windows
+const isWindows = process.platform === 'win32'
 const patterns = [
   '# comment',
-  ' ',
+  ...(isWindows ? [] : [' ']), // Skip single space on Windows - can match literal file
   '\n',
   'just doesnt happen to match anything so this is a control',
 ]

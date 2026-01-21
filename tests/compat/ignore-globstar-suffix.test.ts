@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { glob as nodeGlob } from 'glob'
-import { loadGloblin, createTestFixture, cleanupFixture, FixtureConfig } from '../harness'
+import {
+  loadGloblin,
+  createTestFixture,
+  cleanupFixture,
+  FixtureConfig,
+  normalizePaths,
+} from '../harness'
 import * as path from 'path'
 
 describe('ignore with /** suffix behavior', () => {
@@ -46,6 +52,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**', {
         cwd: fixturePath,
         ignore: 'node_modules/**',
+        posix: true,
       })
       const sorted = results.sort()
 
@@ -63,6 +70,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**', {
         cwd: fixturePath,
         ignore: 'node_modules',
+        posix: true,
       })
       const sorted = results.sort()
 
@@ -80,6 +88,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**/*.js', {
         cwd: fixturePath,
         ignore: 'dist/**',
+        posix: true,
       })
       const sorted = results.sort()
 
@@ -94,6 +103,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**/*.js', {
         cwd: fixturePath,
         ignore: 'dist',
+        posix: true,
       })
       const sorted = results.sort()
 
@@ -108,6 +118,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**', {
         cwd: fixturePath,
         ignore: ['node_modules/**', 'dist/**', 'tmp/**'],
+        posix: true,
       })
       const sorted = results.sort()
 
@@ -144,6 +155,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**/*.ts', {
         cwd: fixturePath,
         ignore: 'src/components/**',
+        posix: true,
       })
       const sorted = results.sort()
 
@@ -159,6 +171,7 @@ describe('ignore with /** suffix behavior', () => {
       const results = await globlin.glob('**/*.js', {
         cwd: fixturePath,
         ignore: '**/lodash/**',
+        posix: true,
       })
       const sorted = results.sort()
 

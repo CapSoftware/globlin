@@ -397,8 +397,8 @@ describe('filesystem errors', () => {
       await fsp.writeFile(path.join(fixtureDir, 'subdir1', 'good2.txt'), 'good2')
       await fsp.writeFile(path.join(fixtureDir, 'good3.txt'), 'good3')
 
-      // Should find all accessible files
-      const results = await globlin.glob('**/*.txt', { cwd: fixtureDir })
+      // Should find all accessible files (use posix: true for cross-platform assertions)
+      const results = await globlin.glob('**/*.txt', { cwd: fixtureDir, posix: true })
       expect(results).toContain('good1.txt')
       expect(results).toContain('subdir1/good2.txt')
       expect(results).toContain('good3.txt')

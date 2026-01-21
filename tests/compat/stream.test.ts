@@ -484,6 +484,7 @@ describe('Stream with options', () => {
       globlin.globStream('./**', {
         cwd: fixturePath,
         mark: true,
+        posix: true,
       }) as unknown as NodeJS.ReadableStream
     )
 

@@ -97,6 +97,7 @@ describe('macOS behavior', () => {
       const result = await globlin.glob('**/*.TS', {
         cwd: fixturePath,
         nocase: true,
+        posix: true,
       })
       expect(result).toContain('src/index.ts')
     })
@@ -122,6 +123,7 @@ describe('macOS behavior', () => {
       const result = await globlin.glob('SRC/*.ts', {
         cwd: fixturePath,
         nocase: true,
+        posix: true,
       })
       // The result uses the pattern's case (SRC) not the filesystem's (src)
       expect(result.some(r => r.toLowerCase() === 'src/index.ts')).toBe(true)
@@ -131,6 +133,7 @@ describe('macOS behavior', () => {
       const result = await globlin.glob('SRC/*.ts', {
         cwd: fixturePath,
         nocase: false,
+        posix: true,
       })
       // On macOS (case-insensitive FS), SRC still matches src at the filesystem level
       // The nocase option controls pattern matching, not filesystem behavior

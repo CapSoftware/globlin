@@ -356,7 +356,7 @@ describe('custom ignore objects', () => {
         ignored: (p: Path) => p.name === 'a',
       }
 
-      const results = globSync('*', { cwd: fixture, ignore, mark: true })
+      const results = globSync('*', { cwd: fixture, ignore, mark: true, posix: true })
 
       // Directories should have trailing slash
       expect(results.some(r => r.endsWith('/'))).toBe(true)

@@ -37,7 +37,9 @@ describe('withFileTypes option', () => {
     it('returns Path objects with fullpath() method', () => {
       const results = globlinSync('*.txt', { cwd: fixture, withFileTypes: true })
       expect(results[0].fullpath()).toContain('file.txt')
-      expect(results[0].fullpath().startsWith('/')).toBe(true)
+      // fullpath() returns absolute path - starts with / on unix, drive letter on Windows
+      const isAbsolute = require('path').isAbsolute
+      expect(isAbsolute(results[0].fullpath())).toBe(true)
     })
 
     it('returns Path objects with relative() method', () => {
@@ -46,7 +48,7 @@ describe('withFileTypes option', () => {
     })
 
     it('works with recursive patterns', () => {
-      const results = globlinSync('**/*.ts', { cwd: fixture, withFileTypes: true })
+      const results = globlinSync('**/*.ts', { cwd: fixture, withFileTypes: true, posix: true })
       expect(results).toHaveLength(1)
       expect(results[0].relative()).toBe('dir/nested.ts')
     })

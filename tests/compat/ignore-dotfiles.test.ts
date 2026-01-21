@@ -78,6 +78,7 @@ describe('ignore option with dotfiles', () => {
         cwd: fixturePath,
         dot: true,
         ignore: ['**/.*'],
+        posix: true,
       })
 
       // Files ending in dotname should be excluded (like .dotfile, .config, .env, .secret)
@@ -99,6 +100,7 @@ describe('ignore option with dotfiles', () => {
         cwd: fixturePath,
         dot: false,
         ignore: ['.hidden/**'],
+        posix: true,
       })
 
       // With dot: false, .hidden files are not matched anyway
@@ -112,6 +114,7 @@ describe('ignore option with dotfiles', () => {
         cwd: fixturePath,
         dot: true,
         ignore: ['.hidden/**'],
+        posix: true,
       })
 
       // .hidden/a.txt and .hidden/b.txt should be excluded by ignore
@@ -127,6 +130,7 @@ describe('ignore option with dotfiles', () => {
         cwd: fixturePath,
         dot: true,
         ignore: ['dir/.*'],
+        posix: true,
       })
 
       // .config and .env should be excluded by ignore

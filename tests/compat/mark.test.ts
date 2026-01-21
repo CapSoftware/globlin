@@ -69,7 +69,7 @@ describe('mark - append / to directories', () => {
         return
       }
       const pattern = '*'
-      const results = await globlin.glob(pattern, { mark: true, cwd: fixturePath })
+      const results = await globlin.glob(pattern, { mark: true, cwd: fixturePath, posix: true })
 
       // Find a directory in the results
       const dirs = results.filter(r => r.endsWith('/'))
@@ -90,7 +90,7 @@ describe('mark - append / to directories', () => {
         return
       }
       const pattern = '*'
-      const results = globlin.globSync(pattern, { mark: true, cwd: fixturePath })
+      const results = globlin.globSync(pattern, { mark: true, cwd: fixturePath, posix: true })
 
       const dirs = results.filter(r => r.endsWith('/'))
       expect(dirs.length).toBeGreaterThan(0)
@@ -156,7 +156,7 @@ describe('mark - append / to directories', () => {
         return
       }
       const pattern = '**/*'
-      const results = await globlin.glob(pattern, { mark: true, cwd: fixturePath })
+      const results = await globlin.glob(pattern, { mark: true, cwd: fixturePath, posix: true })
 
       // Find nested directories
       const nestedDirs = results.filter(r => r.includes('/') && r.endsWith('/'))
@@ -188,7 +188,7 @@ describe('mark - append / to directories', () => {
         return
       }
       const pattern = '.'
-      const results = await globlin.glob(pattern, { mark: true, cwd: fixturePath })
+      const results = await globlin.glob(pattern, { mark: true, cwd: fixturePath, posix: true })
 
       expect(results.length).toBe(1)
       expect(results[0]).toBe('./')
@@ -230,6 +230,7 @@ describe('mark - append / to directories', () => {
         mark: true,
         dotRelative: true,
         cwd: fixturePath,
+        posix: true,
       })
 
       // Directories should have both ./ prefix and / suffix

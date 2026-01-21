@@ -322,6 +322,7 @@ describe('option validation', () => {
         cwd: fixturePath,
         nocase: true,
         matchBase: true,
+        posix: true,
       })
 
       // Should find dir/nested.txt (case-insensitive matchBase)
@@ -336,9 +337,10 @@ describe('option validation', () => {
         absolute: true,
       })
 
-      // All results should be absolute paths
+      // All results should be absolute paths (/ on unix, drive letter on Windows)
+      const isAbsolute = await import('path').then(p => p.isAbsolute)
       for (const r of result) {
-        expect(r.startsWith('/')).toBe(true)
+        expect(isAbsolute(r)).toBe(true)
       }
 
       // Should find file_lower.txt (case-insensitive match)

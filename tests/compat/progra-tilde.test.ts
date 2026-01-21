@@ -88,6 +88,7 @@ describe('windowsPathsNoEscape option', () => {
     const options = {
       cwd: fixturePath,
       windowsPathsNoEscape: true,
+      posix: true,
     }
 
     // With windowsPathsNoEscape, backslash is path separator, not escape

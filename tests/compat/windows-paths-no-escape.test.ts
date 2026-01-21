@@ -144,7 +144,7 @@ describe('windowsPathsNoEscape option', () => {
 
       // Without windowsPathsNoEscape: backslash escapes 'f', so matches "afile.txt"
       // With windowsPathsNoEscape: backslash becomes /, so matches "a/file.txt"
-      const resultsWin = globSync(pattern, { cwd: subdir, windowsPathsNoEscape: true })
+      const resultsWin = globSync(pattern, { cwd: subdir, windowsPathsNoEscape: true, posix: true })
       expect(resultsWin).toContain('a/file.txt')
     })
 
@@ -158,7 +158,7 @@ describe('windowsPathsNoEscape option', () => {
       // Pattern with backslashes: src\**\*.js
       const pattern = 'src\\**\\*.js'
 
-      const results = globSync(pattern, { cwd: subdir, windowsPathsNoEscape: true })
+      const results = globSync(pattern, { cwd: subdir, windowsPathsNoEscape: true, posix: true })
       expect(results.length).toBeGreaterThanOrEqual(2)
       expect(results).toContain('src/lib/util.js')
       expect(results).toContain('src/index.js')
