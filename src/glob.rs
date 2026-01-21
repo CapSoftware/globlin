@@ -1009,26 +1009,29 @@ impl Glob {
 
     /// Format a path according to options (posix, etc.)
     ///
+    /// Always converts backslashes to forward slashes for consistent output.
     /// When posix: true on Windows, absolute paths are converted to UNC form
     /// (e.g., `C:\foo\bar` → `//?/C:/foo/bar`) to match glob's behavior.
     fn format_path(&self, path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy().to_string();
+
+        // On Windows with posix: true, convert absolute paths to UNC form
+        #[cfg(target_os = "windows")]
         if self.posix {
-            // On Windows with posix: true, convert absolute paths to UNC form
-            #[cfg(target_os = "windows")]
+            let bytes = path_str.as_bytes();
+            if bytes.len() >= 2
+                && bytes[0].is_ascii_alphabetic()
+                && (bytes[1] == b':' || bytes[1] == b'\\' || bytes[1] == b'/')
             {
-                let bytes = path_str.as_bytes();
-                if bytes.len() >= 2
-                    && bytes[0].is_ascii_alphabetic()
-                    && (bytes[1] == b':' || bytes[1] == b'\\' || bytes[1] == b'/')
-                {
-                    // Convert to UNC form: //?/C:/...
-                    let drive = bytes[0] as char;
-                    let rest = path_str[2..].replace('\\', "/");
-                    return format!("//?/{drive}:{rest}");
-                }
+                // Convert to UNC form: //?/C:/...
+                let drive = bytes[0] as char;
+                let rest = path_str[2..].replace('\\', "/");
+                return format!("//?/{drive}:{rest}");
             }
-            // Standard POSIX conversion: backslashes to forward slashes
+        }
+
+        // Always convert backslashes to forward slashes for consistent output
+        if path_str.contains('\\') {
             path_str.replace('\\', "/")
         } else {
             path_str
@@ -1039,11 +1042,8 @@ impl Glob {
     fn ensure_trailing_slash(&self, path: &str) -> String {
         if path.ends_with('/') || path.ends_with('\\') {
             path.to_string()
-        } else if self.should_normalize_backslashes() {
-            format!("{path}/")
         } else {
-            // On Windows without posix option, use the native separator
-            format!("{path}\\")
+            format!("{path}/")
         }
     }
 
@@ -1104,6 +1104,7 @@ impl Glob {
     /// Format a path into the provided buffer, returning a reference to the result.
     /// This avoids allocations by reusing the buffer across iterations.
     ///
+    /// Always converts backslashes to forward slashes for consistent output.
     /// When posix: true on Windows, absolute paths are converted to UNC form
     /// (e.g., `C:\foo\bar` → `//?/C:/foo/bar`) to match glob's behavior.
     #[inline]
@@ -1111,30 +1112,30 @@ impl Glob {
         buffer.clear();
         let path_str = path.to_string_lossy();
 
+        // On Windows with posix: true, convert absolute paths to UNC form
+        // e.g., C:\foo\bar → //?/C:/foo/bar
+        #[cfg(target_os = "windows")]
         if self.posix {
-            // On Windows with posix: true, convert absolute paths to UNC form
-            // e.g., C:\foo\bar → //?/C:/foo/bar
-            #[cfg(target_os = "windows")]
+            // Check if this is a Windows absolute path (starts with drive letter)
+            let bytes = path_str.as_bytes();
+            if bytes.len() >= 2
+                && bytes[0].is_ascii_alphabetic()
+                && (bytes[1] == b':' || bytes[1] == b'\\' || bytes[1] == b'/')
             {
-                // Check if this is a Windows absolute path (starts with drive letter)
-                let bytes = path_str.as_bytes();
-                if bytes.len() >= 2
-                    && bytes[0].is_ascii_alphabetic()
-                    && (bytes[1] == b':' || bytes[1] == b'\\' || bytes[1] == b'/')
-                {
-                    // Convert to UNC form: //?/C:/...
-                    buffer.push_str("//?/");
-                    buffer.push(bytes[0] as char);
-                    buffer.push(':');
-                    // Skip the drive letter and colon, convert rest with forward slashes
-                    for c in path_str[2..].chars() {
-                        buffer.push(if c == '\\' { '/' } else { c });
-                    }
-                    return buffer.as_str();
+                // Convert to UNC form: //?/C:/...
+                buffer.push_str("//?/");
+                buffer.push(bytes[0] as char);
+                buffer.push(':');
+                // Skip the drive letter and colon, convert rest with forward slashes
+                for c in path_str[2..].chars() {
+                    buffer.push(if c == '\\' { '/' } else { c });
                 }
+                return buffer.as_str();
             }
+        }
 
-            // Standard POSIX conversion: backslashes to forward slashes
+        // Always convert backslashes to forward slashes for consistent output
+        if path_str.contains('\\') {
             for c in path_str.chars() {
                 buffer.push(if c == '\\' { '/' } else { c });
             }
@@ -1294,7 +1295,7 @@ impl Glob {
     /// Uses the provided buffer to minimize allocations.
     ///
     /// The `normalized` path always uses forward slashes (for internal pattern matching).
-    /// This function converts to backslashes for output on Windows when `posix: false`.
+    /// Output also uses forward slashes for consistent cross-platform behavior.
     #[inline]
     fn build_result_path(
         &self,
@@ -1306,9 +1307,6 @@ impl Glob {
     ) -> String {
         // When mark:true, add trailing slash to directories but NOT to symlinks
         let should_mark_as_dir = is_dir && !is_symlink && self.mark;
-        let use_forward = self.should_normalize_backslashes();
-        let sep = if use_forward { '/' } else { '\\' };
-        let dot_prefix = if use_forward { "./" } else { ".\\" };
 
         if self.absolute {
             // Build absolute path
@@ -1316,37 +1314,27 @@ impl Glob {
             let abs_path = abs_cwd.join(normalized);
             let formatted = self.format_path_into_buffer(&abs_path, result_buffer);
 
-            if should_mark_as_dir && !formatted.ends_with('/') && !formatted.ends_with('\\') {
+            if should_mark_as_dir && !formatted.ends_with('/') {
                 let mut result = formatted.to_string();
-                result.push(sep);
+                result.push('/');
                 result
             } else {
                 formatted.to_string()
             }
         } else {
-            // Build relative path
-            // First, convert separators if needed (normalized always uses forward slashes)
-            let output_normalized = if use_forward {
-                normalized.to_string()
-            } else {
-                normalized.replace('/', "\\")
-            };
-
-            let base = if self.dot_relative
-                && !output_normalized.starts_with("../")
-                && !output_normalized.starts_with("..\\")
-            {
+            // Build relative path (normalized already uses forward slashes)
+            let base = if self.dot_relative && !normalized.starts_with("../") {
                 result_buffer.clear();
-                result_buffer.push_str(dot_prefix);
-                result_buffer.push_str(&output_normalized);
+                result_buffer.push_str("./");
+                result_buffer.push_str(normalized);
                 result_buffer.clone()
             } else {
-                output_normalized
+                normalized.to_string()
             };
 
-            if should_mark_as_dir && !base.ends_with('/') && !base.ends_with('\\') {
+            if should_mark_as_dir && !base.ends_with('/') {
                 let mut result = base;
-                result.push(sep);
+                result.push('/');
                 result
             } else {
                 base
@@ -1960,38 +1948,25 @@ impl Glob {
 
     /// Check if backslashes should be normalized to forward slashes.
     ///
-    /// On Windows, when `posix: false` (the default), paths should use native backslashes
-    /// to match glob's behavior. On all other platforms, or when `posix: true`, we normalize
-    /// to forward slashes.
+    /// Always returns true - globlin always outputs forward slashes for consistent
+    /// cross-platform behavior. This differs slightly from glob v13 which uses
+    /// backslashes on Windows by default, but provides better UX for most use cases.
     #[inline]
     fn should_normalize_backslashes(&self) -> bool {
-        // On Windows with posix: false, keep backslashes
-        // Otherwise, normalize to forward slashes
-        self.posix || !cfg!(target_os = "windows")
+        // Always normalize to forward slashes for consistent cross-platform output
+        true
     }
 
-    /// Normalize path separators based on platform and posix option.
+    /// Normalize path separators to forward slashes.
     ///
-    /// When use_forward_slashes is true: converts backslashes to forward slashes
-    /// When use_forward_slashes is false: converts forward slashes to backslashes
-    ///
+    /// Always converts backslashes to forward slashes for consistent output.
     /// Returns the original string if no conversion is needed.
     #[inline]
     fn normalize_separators<'a>(&self, path: &'a str) -> Cow<'a, str> {
-        let use_forward = self.should_normalize_backslashes();
-        if use_forward {
-            if !path.contains('\\') {
-                Cow::Borrowed(path)
-            } else {
-                Cow::Owned(path.replace('\\', "/"))
-            }
+        if !path.contains('\\') {
+            Cow::Borrowed(path)
         } else {
-            // On Windows with posix: false, convert forward slashes to backslashes
-            if !path.contains('/') {
-                Cow::Borrowed(path)
-            } else {
-                Cow::Owned(path.replace('/', "\\"))
-            }
+            Cow::Owned(path.replace('\\', "/"))
         }
     }
 
@@ -2083,23 +2058,13 @@ impl Glob {
                     formatted
                 }
             } else {
-                let sep = if self.should_normalize_backslashes() {
-                    '/'
-                } else {
-                    '\\'
-                };
                 let base = if self.dot_relative {
-                    format!(".{sep}{file_name}")
+                    format!("./{file_name}")
                 } else {
                     file_name.clone()
                 };
-                if self.mark
-                    && is_dir
-                    && !is_symlink
-                    && !base.ends_with('/')
-                    && !base.ends_with('\\')
-                {
-                    format!("{base}{sep}")
+                if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
+                    format!("{base}/")
                 } else {
                     base
                 }
@@ -2186,29 +2151,14 @@ impl Glob {
                             formatted
                         }
                     } else {
-                        let use_forward = self.should_normalize_backslashes();
-                        let sep = if use_forward { '/' } else { '\\' };
-                        // Convert separators for output (static_path uses forward slashes internally)
-                        let output_base = if use_forward {
+                        // Static path already uses forward slashes internally
+                        let base = if self.dot_relative && !base_path.starts_with("../") {
+                            format!("./{base_path}")
+                        } else {
                             base_path.to_string()
-                        } else {
-                            base_path.replace('/', "\\")
                         };
-                        let base = if self.dot_relative
-                            && !output_base.starts_with("../")
-                            && !output_base.starts_with("..\\")
-                        {
-                            format!(".{sep}{output_base}")
-                        } else {
-                            output_base
-                        };
-                        if self.mark
-                            && is_dir
-                            && !is_symlink
-                            && !base.ends_with('/')
-                            && !base.ends_with('\\')
-                        {
-                            format!("{base}{sep}")
+                        if self.mark && is_dir && !is_symlink && !base.ends_with('/') {
+                            format!("{base}/")
                         } else {
                             base
                         }
