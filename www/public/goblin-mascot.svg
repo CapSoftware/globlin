@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" width="200" height="180">
+  <!-- Left Ear - orc/goblin style pointing outward -->
+  <path d="M38 95
+           C20 90, 5 75, 8 60
+           C10 50, 18 48, 28 55
+           C45 68, 50 85, 48 100"
+        fill="#22ff88"/>
+  <path d="M40 90
+           C28 86, 18 76, 20 65
+           C22 58, 28 58, 34 62
+           C44 70, 46 82, 45 92"
+        fill="#1acc6d"/>
+  
+  <!-- Right Ear - orc/goblin style pointing outward -->
+  <path d="M162 95
+           C180 90, 195 75, 192 60
+           C190 50, 182 48, 172 55
+           C155 68, 150 85, 152 100"
+        fill="#22ff88"/>
+  <path d="M160 90
+           C172 86, 182 76, 180 65
+           C178 58, 172 58, 166 62
+           C156 70, 154 82, 155 92"
+        fill="#1acc6d"/>
+  
+  <!-- Main Face -->
+  <ellipse cx="100" cy="110" rx="62" ry="52" fill="#22ff88"/>
+  
+  <!-- Left Eyebrow - angled mischievously -->
+  <path d="M54 82 Q66 78 80 86" 
+        stroke="#15a857" stroke-width="4" fill="none" stroke-linecap="round"/>
+  
+  <!-- Right Eyebrow - angled mischievously -->
+  <path d="M146 82 Q134 78 120 86" 
+        stroke="#15a857" stroke-width="4" fill="none" stroke-linecap="round"/>
+  
+  <!-- Left Eye -->
+  <ellipse cx="72" cy="105" rx="16" ry="18" fill="#1E1E1E"/>
+  <circle cx="66" cy="98" r="5" fill="white"/>
+  
+  <!-- Right Eye -->
+  <ellipse cx="128" cy="105" rx="16" ry="18" fill="#1E1E1E"/>
+  <circle cx="122" cy="98" r="5" fill="white"/>
+  
+  <!-- Left Cheek -->
+  <ellipse cx="50" cy="118" rx="9" ry="6" fill="#F0A5B0"/>
+  
+  <!-- Right Cheek -->
+  <ellipse cx="150" cy="118" rx="9" ry="6" fill="#F0A5B0"/>
+  
+  <!-- Mischievous Smirk -->
+  <path d="M80 135 Q100 150 120 135" 
+        stroke="#1E1E1E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Tiny Fangs -->
+  <path d="M88 135 L86 142 L90 135" fill="white"/>
+  <path d="M112 135 L114 142 L110 135" fill="white"/>
+</svg>

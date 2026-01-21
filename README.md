@@ -1,9 +1,13 @@
-# Globlin
+<p align="center">
+  <img src="www/public/globlin-logo.svg" alt="globlin" height="80" />
+</p>
 
-[![npm version](https://img.shields.io/npm/v/globlin.svg)](https://www.npmjs.com/package/globlin)
-[![CI](https://github.com/capsoftware/globlin/actions/workflows/test.yml/badge.svg)](https://github.com/capsoftware/globlin/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/capsoftware/globlin/graph/badge.svg)](https://codecov.io/gh/capsoftware/globlin)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://www.npmjs.com/package/globlin"><img src="https://img.shields.io/npm/v/globlin.svg" alt="npm version" /></a>
+  <a href="https://github.com/capsoftware/globlin/actions/workflows/test.yml"><img src="https://github.com/capsoftware/globlin/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
+  <a href="https://codecov.io/gh/capsoftware/globlin"><img src="https://codecov.io/gh/capsoftware/globlin/graph/badge.svg" alt="codecov" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+</p>
 
 **A high-performance glob pattern matcher for Node.js, built in Rust.**
 

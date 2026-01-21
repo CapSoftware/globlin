@@ -153,9 +153,9 @@ export default function Home() {
         <nav className="mx-auto max-w-6xl flex items-center justify-between">
           <a
             href="/"
-            className="text-xl font-bold tracking-tight text-[var(--color-text)] hover:text-[var(--color-accent)] transition-colors"
+            className="hover:opacity-80 transition-opacity"
           >
-            globlin
+            <img src="/globlin-logo.svg" alt="globlin" className="h-10" />
           </a>
           <div className="flex items-center gap-8 text-sm">
             <a
