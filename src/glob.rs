@@ -1298,6 +1298,15 @@ impl Glob {
             return (self.cwd.clone(), None);
         }
 
+        // When nocase is true on a case-sensitive filesystem (Linux), we can't use
+        // literal prefix optimization because the prefix case might not match the
+        // actual filesystem case. For example, pattern "SRC/**" won't find directory
+        // "src" on Linux even with nocase:true.
+        // On case-insensitive filesystems (macOS, Windows), this is not an issue.
+        if self.nocase && !self.is_case_insensitive_platform() {
+            return (self.cwd.clone(), None);
+        }
+
         // Check if any pattern is absolute (has a root like C:/, /, or //server/share/)
         // If we have absolute patterns, we need to handle them specially
         let has_absolute_pattern = self.patterns.iter().any(|p| p.is_absolute());
@@ -1457,6 +1466,12 @@ impl Glob {
     /// 2. There are multiple distinct first-level prefixes (e.g., `src` and `test`)
     /// 3. All prefixes point to existing directories
     fn should_use_multi_base_walking(&self) -> bool {
+        // When nocase is true on a case-sensitive filesystem (Linux), we can't use
+        // multi-base walking because the prefix case might not match the filesystem.
+        if self.nocase && !self.is_case_insensitive_platform() {
+            return false;
+        }
+
         // Quick check: if any pattern has no prefix, we can't use multi-base
         if self.patterns.iter().any(|p| p.literal_prefix().is_none()) {
             return false;
@@ -1809,6 +1824,17 @@ impl Glob {
         }
         // All patterns must have max_depth of 0 (no path separators, no **)
         self.patterns.iter().all(|p| p.max_depth() == Some(0))
+    }
+
+    /// Check if the current platform has a case-insensitive filesystem by default.
+    ///
+    /// This is used to determine if we can use prefix-based walking optimizations
+    /// with nocase:true. On macOS and Windows, the filesystem is typically case-insensitive,
+    /// so "SRC" and "src" refer to the same directory. On Linux, they're different.
+    #[inline]
+    fn is_case_insensitive_platform(&self) -> bool {
+        // macOS (darwin) and Windows (win32) have case-insensitive filesystems by default
+        cfg!(target_os = "macos") || cfg!(target_os = "windows")
     }
 
     /// Resolve shallow patterns using direct readdir.
@@ -4130,6 +4156,7 @@ mod tests {
 
     // Absolute pattern tests (Task 4.1.1)
 
+    #[cfg(unix)]
     #[test]
     fn test_absolute_pattern_unix() {
         // Test absolute Unix path pattern
@@ -4198,6 +4225,7 @@ mod tests {
             .any(|r| r.contains("foo.txt") || r.contains("bar.txt")));
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_absolute_pattern_with_literal_prefix() {
         // Test that absolute patterns with literal prefixes work correctly
@@ -4434,8 +4462,14 @@ mod tests {
         assert!(!results.is_empty());
         let result = &results[0];
         assert!(result.contains("foo.txt"));
-        // Absolute path should start with / (Unix) or drive letter (Windows)
-        assert!(result.starts_with('/') || result.chars().nth(1) == Some(':'));
+        // Absolute path should start with:
+        // - Unix: /
+        // - Windows: drive letter (C:) or UNC (\\) or extended-length (\\?\)
+        assert!(
+            result.starts_with('/')
+                || result.chars().nth(1) == Some(':')
+                || result.starts_with("\\\\")
+        );
     }
 
     #[test]

@@ -791,9 +791,16 @@ impl Pattern {
         for (i, part) in self.parts.iter().enumerate() {
             match part {
                 PatternPart::Literal(s) => {
-                    // Skip root markers like "/" for Unix absolute paths
-                    // Skip "." as it's just the current directory marker
-                    if s == "/" || s == "." {
+                    // Skip root markers:
+                    // - "/" for Unix absolute paths
+                    // - "." as current directory marker
+                    // - Windows drive roots like "C:/" (already included in path via root())
+                    // - UNC roots like "//server/share/"
+                    if s == "/"
+                        || s == "."
+                        || (s.len() >= 3 && (s.ends_with(":/") || s.ends_with(":\\")))
+                        || s.starts_with("//")
+                    {
                         continue;
                     }
                     // Check if there's a part after this one
