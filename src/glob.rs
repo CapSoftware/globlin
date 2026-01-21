@@ -981,15 +981,21 @@ impl Glob {
             if matches {
                 // For withFileTypes, we return the relative path (no dotRelative/mark modifications)
                 // The JavaScript wrapper handles path formatting via PathScurry
-                let normalized_string = normalized.into_owned();
-                if seen.insert(normalized_string.clone()) {
+                // Convert separators for output: use backslashes on Windows without posix
+                let output_path = if self.should_normalize_backslashes() {
+                    normalized.into_owned()
+                } else {
+                    normalized.replace('/', "\\")
+                };
+                if seen.insert(output_path.clone()) {
                     // When includeChildMatches is false, track this path to exclude its children
+                    // (use the normalized path with forward slashes for internal tracking)
                     if !self.include_child_matches {
-                        matched_parents.insert(normalized_string.clone());
+                        matched_parents.insert(output_path.replace('\\', "/"));
                     }
 
                     results.push(PathData {
-                        path: normalized_string,
+                        path: output_path,
                         is_directory: is_dir,
                         is_file: entry.is_file(),
                         is_symlink: entry.is_symlink(),
@@ -1140,6 +1146,13 @@ impl Glob {
 
     /// Build a normalized path from walk entry, minimizing allocations.
     /// Returns Cow::Borrowed when no transformation is needed, Cow::Owned otherwise.
+    ///
+    /// IMPORTANT: This function ALWAYS normalizes to forward slashes because it's used
+    /// for internal pattern matching. Pattern matching (`matches()`, `could_match_in_dir()`)
+    /// always expects forward slashes regardless of platform.
+    ///
+    /// Output formatting (backslashes on Windows without posix) is handled separately
+    /// in `build_result_path`.
     #[inline]
     fn normalize_path<'a>(
         &self,
@@ -1147,53 +1160,36 @@ impl Glob {
         prefix_to_strip: &Option<String>,
         is_walk_root: bool,
     ) -> Cow<'a, str> {
-        let use_forward_slashes = self.should_normalize_backslashes();
         let has_backslash = rel_str_from_walk_root.contains('\\');
-        let has_forward_slash = rel_str_from_walk_root.contains('/');
 
-        // Determine what conversions are needed
-        let needs_to_forward = use_forward_slashes && has_backslash;
-        let needs_to_backslash = !use_forward_slashes && has_forward_slash;
-        let needs_conversion = needs_to_forward || needs_to_backslash;
-
-        // Fast path: no prefix and no conversion needed
-        if prefix_to_strip.is_none() && !needs_conversion {
+        // Fast path: no prefix and no backslashes to convert
+        if prefix_to_strip.is_none() && !has_backslash {
             return Cow::Borrowed(rel_str_from_walk_root);
         }
 
-        // Determine the separator to use when building paths
-        let sep = if use_forward_slashes { "/" } else { "\\" };
-
-        // Helper to convert path separators
-        let convert_path = |path: &str| -> String {
-            if needs_to_forward {
+        // Helper to convert backslashes to forward slashes
+        let convert_to_forward = |path: &str| -> String {
+            if path.contains('\\') {
                 path.replace('\\', "/")
-            } else if needs_to_backslash {
-                path.replace('/', "\\")
             } else {
                 path.to_string()
             }
         };
 
-        // Need to construct the path
+        // Need to construct the path with forward slashes
         match prefix_to_strip {
             Some(prefix) => {
+                let prefix_converted = convert_to_forward(prefix);
                 if is_walk_root {
-                    Cow::Owned(convert_path(prefix))
-                } else if needs_conversion {
-                    Cow::Owned(format!(
-                        "{}{}{}",
-                        convert_path(prefix),
-                        sep,
-                        convert_path(rel_str_from_walk_root)
-                    ))
+                    Cow::Owned(prefix_converted)
                 } else {
-                    Cow::Owned(format!("{prefix}{sep}{rel_str_from_walk_root}"))
+                    let rel_converted = convert_to_forward(rel_str_from_walk_root);
+                    Cow::Owned(format!("{prefix_converted}/{rel_converted}"))
                 }
             }
             None => {
-                // Needs separator conversion
-                Cow::Owned(convert_path(rel_str_from_walk_root))
+                // Just convert backslashes to forward slashes
+                Cow::Owned(convert_to_forward(rel_str_from_walk_root))
             }
         }
     }
@@ -1296,6 +1292,9 @@ impl Glob {
 
     /// Build the final result path from the normalized path.
     /// Uses the provided buffer to minimize allocations.
+    ///
+    /// The `normalized` path always uses forward slashes (for internal pattern matching).
+    /// This function converts to backslashes for output on Windows when `posix: false`.
     #[inline]
     fn build_result_path(
         &self,
@@ -1307,16 +1306,9 @@ impl Glob {
     ) -> String {
         // When mark:true, add trailing slash to directories but NOT to symlinks
         let should_mark_as_dir = is_dir && !is_symlink && self.mark;
-        let sep = if self.should_normalize_backslashes() {
-            '/'
-        } else {
-            '\\'
-        };
-        let dot_prefix = if self.should_normalize_backslashes() {
-            "./"
-        } else {
-            ".\\"
-        };
+        let use_forward = self.should_normalize_backslashes();
+        let sep = if use_forward { '/' } else { '\\' };
+        let dot_prefix = if use_forward { "./" } else { ".\\" };
 
         if self.absolute {
             // Build absolute path
@@ -1333,24 +1325,31 @@ impl Glob {
             }
         } else {
             // Build relative path
+            // First, convert separators if needed (normalized always uses forward slashes)
+            let output_normalized = if use_forward {
+                normalized.to_string()
+            } else {
+                normalized.replace('/', "\\")
+            };
+
             let base = if self.dot_relative
-                && !normalized.starts_with("../")
-                && !normalized.starts_with("..\\")
+                && !output_normalized.starts_with("../")
+                && !output_normalized.starts_with("..\\")
             {
                 result_buffer.clear();
                 result_buffer.push_str(dot_prefix);
-                result_buffer.push_str(normalized);
-                result_buffer.as_str()
+                result_buffer.push_str(&output_normalized);
+                result_buffer.clone()
             } else {
-                normalized
+                output_normalized
             };
 
             if should_mark_as_dir && !base.ends_with('/') && !base.ends_with('\\') {
-                let mut result = base.to_string();
+                let mut result = base;
                 result.push(sep);
                 result
             } else {
-                base.to_string()
+                base
             }
         }
     }
@@ -2187,18 +2186,21 @@ impl Glob {
                             formatted
                         }
                     } else {
-                        let sep = if self.should_normalize_backslashes() {
-                            '/'
+                        let use_forward = self.should_normalize_backslashes();
+                        let sep = if use_forward { '/' } else { '\\' };
+                        // Convert separators for output (static_path uses forward slashes internally)
+                        let output_base = if use_forward {
+                            base_path.to_string()
                         } else {
-                            '\\'
+                            base_path.replace('/', "\\")
                         };
                         let base = if self.dot_relative
-                            && !base_path.starts_with("../")
-                            && !base_path.starts_with("..\\")
+                            && !output_base.starts_with("../")
+                            && !output_base.starts_with("..\\")
                         {
-                            format!(".{sep}{base_path}")
+                            format!(".{sep}{output_base}")
                         } else {
-                            base_path.to_string()
+                            output_base
                         };
                         if self.mark
                             && is_dir
@@ -2623,14 +2625,21 @@ impl Glob {
             };
 
             if matches {
-                let normalized_string = normalized.into_owned();
-                if seen.insert(normalized_string.clone()) {
+                // Convert separators for output: use backslashes on Windows without posix
+                let output_path = if self.should_normalize_backslashes() {
+                    normalized.into_owned()
+                } else {
+                    normalized.replace('/', "\\")
+                };
+                if seen.insert(output_path.clone()) {
+                    // When includeChildMatches is false, track this path to exclude its children
+                    // (use the normalized path with forward slashes for internal tracking)
                     if !self.include_child_matches {
-                        matched_parents.insert(normalized_string.clone());
+                        matched_parents.insert(output_path.replace('\\', "/"));
                     }
 
                     callback(PathData {
-                        path: normalized_string,
+                        path: output_path,
                         is_directory: is_dir,
                         is_file: entry.is_file(),
                         is_symlink: entry.is_symlink(),
