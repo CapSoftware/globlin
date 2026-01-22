@@ -43,6 +43,7 @@ jobs:
             build: |-
               rustup update stable
               rustup target add aarch64-unknown-linux-musl
+              apk add --no-cache xz
               wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
               tar -xf zig-linux-x86_64-0.13.0.tar.xz
               export PATH="$PWD/zig-linux-x86_64-0.13.0:$PATH"
