@@ -160,16 +160,20 @@ jobs:
           npm config set provenance true
           if [[ "${{ github.ref }}" == *"-beta"* ]]; then
             echo "Publishing beta release..."
+            npx napi prepublish -t npm --tag beta
             npm publish --access public --tag beta
           elif [[ "${{ github.ref }}" == *"-alpha"* ]]; then
             echo "Publishing alpha release..."
+            npx napi prepublish -t npm --tag alpha
             npm publish --access public --tag alpha
           else
             echo "Publishing stable release..."
+            npx napi prepublish -t npm
             npm publish --access public
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

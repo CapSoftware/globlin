@@ -83,7 +83,7 @@
     "build:ts": "tsc -p tsconfig.build.json",
     "build:native": "napi build --platform --release",
     "clean": "rm -rf js/*.js js/*.mjs js/*.d.ts js/*.map",
-    "prepublishOnly": "npm run clean && npm run build && napi prepublish -t npm",
+    "prepublishOnly": "npm run clean && npm run build",
     "lint": "npm run lint:ts && npm run lint:rust",
     "lint:ts": "eslint 'js/**/*.ts' 'tests/**/*.ts' 'benches/**/*.ts'",
     "lint:rust": "cargo clippy -- -D warnings",
