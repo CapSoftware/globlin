@@ -3,7 +3,6 @@
 //! This benchmark evaluates:
 //! 1. walkdir - Simple, solid, single-threaded
 //! 2. jwalk - Parallel walking with rayon
-//! 3. ignore - Respects .gitignore patterns
 //!
 //! Run with: cargo bench --bench walker_comparison
 //!
@@ -208,108 +207,6 @@ fn bench_jwalk(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark ignore library (gitignore-aware walking)
-fn bench_ignore(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ignore");
-
-    for (size, sample_size) in [("small", 100), ("medium", 30), ("large", 10)] {
-        let fixture = PathBuf::from(format!("benches/fixtures/{size}"));
-
-        if !fixture.exists() {
-            continue;
-        }
-
-        let file_count = count_files(&fixture);
-        group.throughput(Throughput::Elements(file_count));
-        group.sample_size(sample_size);
-
-        // Walk all entries (standard mode, respects gitignore)
-        group.bench_with_input(
-            BenchmarkId::new("walk_standard", size),
-            &fixture,
-            |b, fixture| {
-                b.iter(|| {
-                    let walker = ignore::WalkBuilder::new(black_box(fixture)).build();
-                    let results: Vec<_> = walker
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path().to_path_buf())
-                        .collect();
-                    black_box(results)
-                })
-            },
-        );
-
-        // Walk with gitignore disabled (raw mode)
-        group.bench_with_input(
-            BenchmarkId::new("walk_no_gitignore", size),
-            &fixture,
-            |b, fixture| {
-                b.iter(|| {
-                    let walker = ignore::WalkBuilder::new(black_box(fixture))
-                        .git_ignore(false)
-                        .git_global(false)
-                        .git_exclude(false)
-                        .build();
-                    let results: Vec<_> = walker
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path().to_path_buf())
-                        .collect();
-                    black_box(results)
-                })
-            },
-        );
-
-        // Walk with standard mode disabled (no hidden filtering)
-        group.bench_with_input(
-            BenchmarkId::new("walk_with_hidden", size),
-            &fixture,
-            |b, fixture| {
-                b.iter(|| {
-                    let walker = ignore::WalkBuilder::new(black_box(fixture))
-                        .hidden(false)
-                        .build();
-                    let results: Vec<_> = walker
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path().to_path_buf())
-                        .collect();
-                    black_box(results)
-                })
-            },
-        );
-
-        // Parallel walk (ignore supports parallelism)
-        group.bench_with_input(
-            BenchmarkId::new("walk_parallel", size),
-            &fixture,
-            |b, fixture| {
-                b.iter(|| {
-                    let walker = ignore::WalkBuilder::new(black_box(fixture))
-                        .threads(num_cpus::get())
-                        .build_parallel();
-                    let results = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-                    let results_clone = results.clone();
-                    walker.run(|| {
-                        let results = results_clone.clone();
-                        Box::new(move |entry| {
-                            if let Ok(e) = entry {
-                                results.lock().unwrap().push(e.path().to_path_buf());
-                            }
-                            ignore::WalkState::Continue
-                        })
-                    });
-                    let final_results = std::sync::Arc::try_unwrap(results)
-                        .unwrap()
-                        .into_inner()
-                        .unwrap();
-                    black_box(final_results)
-                })
-            },
-        );
-    }
-
-    group.finish();
-}
-
 /// Direct comparison benchmark across all libraries
 fn bench_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("walker_comparison");
@@ -371,60 +268,6 @@ fn bench_comparison(c: &mut Criterion) {
                 .map(|e| e.path())
                 .collect();
             black_box(results)
-        })
-    });
-
-    // ignore (no gitignore to match others)
-    group.bench_function("ignore_large", |b| {
-        b.iter(|| {
-            let walker = ignore::WalkBuilder::new(black_box(&fixture))
-                .git_ignore(false)
-                .git_global(false)
-                .git_exclude(false)
-                .hidden(false)
-                .build();
-            let results: Vec<_> = walker
-                .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.file_type().map(|ft| ft.is_file()).unwrap_or(false)
-                        && e.path().extension().map(|ext| ext == "js").unwrap_or(false)
-                })
-                .map(|e| e.path().to_path_buf())
-                .collect();
-            black_box(results)
-        })
-    });
-
-    // ignore parallel
-    group.bench_function("ignore_parallel_large", |b| {
-        b.iter(|| {
-            let walker = ignore::WalkBuilder::new(black_box(&fixture))
-                .git_ignore(false)
-                .git_global(false)
-                .git_exclude(false)
-                .hidden(false)
-                .threads(num_cpus::get())
-                .build_parallel();
-            let results = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-            let results_clone = results.clone();
-            walker.run(|| {
-                let results = results_clone.clone();
-                Box::new(move |entry| {
-                    if let Ok(e) = entry {
-                        if e.file_type().map(|ft| ft.is_file()).unwrap_or(false)
-                            && e.path().extension().map(|ext| ext == "js").unwrap_or(false)
-                        {
-                            results.lock().unwrap().push(e.path().to_path_buf());
-                        }
-                    }
-                    ignore::WalkState::Continue
-                })
-            });
-            let final_results = std::sync::Arc::try_unwrap(results)
-                .unwrap()
-                .into_inner()
-                .unwrap();
-            black_box(final_results)
         })
     });
 
@@ -570,7 +413,6 @@ criterion_group!(
     benches,
     bench_walkdir,
     bench_jwalk,
-    bench_ignore,
     bench_comparison,
     bench_api_ergonomics,
 );
