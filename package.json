@@ -51,6 +51,9 @@
   ],
   "napi": {
     "name": "globlin",
+    "package": {
+      "name": "@capsoftware/globlin"
+    },
     "triples": {
       "defaults": true,
       "additional": [
@@ -164,15 +167,15 @@
     "path-scurry": "^2.0.0"
   },
   "optionalDependencies": {
-    "@globlin/darwin-arm64": "1.0.0-beta.1",
-    "@globlin/darwin-x64": "1.0.0-beta.1",
-    "@globlin/linux-arm64-gnu": "1.0.0-beta.1",
-    "@globlin/linux-arm64-musl": "1.0.0-beta.1",
-    "@globlin/linux-x64-gnu": "1.0.0-beta.1",
-    "@globlin/linux-x64-musl": "1.0.0-beta.1",
-    "@globlin/win32-arm64-msvc": "1.0.0-beta.1",
-    "@globlin/win32-ia32-msvc": "1.0.0-beta.1",
-    "@globlin/win32-x64-msvc": "1.0.0-beta.1"
+    "@capsoftware/globlin-darwin-arm64": "1.0.0-beta.1",
+    "@capsoftware/globlin-darwin-x64": "1.0.0-beta.1",
+    "@capsoftware/globlin-linux-arm64-gnu": "1.0.0-beta.1",
+    "@capsoftware/globlin-linux-arm64-musl": "1.0.0-beta.1",
+    "@capsoftware/globlin-linux-x64-gnu": "1.0.0-beta.1",
+    "@capsoftware/globlin-linux-x64-musl": "1.0.0-beta.1",
+    "@capsoftware/globlin-win32-arm64-msvc": "1.0.0-beta.1",
+    "@capsoftware/globlin-win32-ia32-msvc": "1.0.0-beta.1",
+    "@capsoftware/globlin-win32-x64-msvc": "1.0.0-beta.1"
   },
   "tsd": {
     "directory": "tests",

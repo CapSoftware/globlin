@@ -1,5 +1,5 @@
 {
-  "name": "@globlin/win32-x64-msvc",
+  "name": "@capsoftware/globlin-win32-x64-msvc",
   "version": "1.0.0-beta.1",
   "os": [
     "win32"
