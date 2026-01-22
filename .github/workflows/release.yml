@@ -43,6 +43,8 @@ jobs:
             build: |-
               rustup update stable
               rustup target add aarch64-unknown-linux-musl
+              apk add --no-cache python3 py3-pip
+              pip3 install ziglang --break-system-packages
               npm run build:native -- --target aarch64-unknown-linux-musl --zig
 
           - host: macos-latest
