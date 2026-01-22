@@ -52,7 +52,7 @@ napi-build = "2.1"
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3"
-ignore = "0.4"
+ignore = "=0.4.23"
 num_cpus = "1.16"
 
 [[bench]]
