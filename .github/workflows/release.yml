@@ -158,6 +158,7 @@ jobs:
       - name: Publish
         run: |
           npm config set provenance true
+          npm config set access public
           npx napi prepublish -t npm --skip-gh-release
           if [[ "${{ github.ref }}" == *"-beta"* ]]; then
             echo "Publishing beta release..."
