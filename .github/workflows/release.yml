@@ -43,8 +43,9 @@ jobs:
             build: |-
               rustup update stable
               rustup target add aarch64-unknown-linux-musl
-              apk add --no-cache python3 py3-pip
-              pip3 install ziglang --break-system-packages
+              wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+              tar -xf zig-linux-x86_64-0.13.0.tar.xz
+              export PATH="$PWD/zig-linux-x86_64-0.13.0:$PATH"
               npm run build:native -- --target aarch64-unknown-linux-musl --zig
 
           - host: macos-latest
