@@ -14,11 +14,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/capsoftware/globlin.git"
+    "url": "git+https://github.com/CapSoftware/globlin.git"
   },
-  "homepage": "https://github.com/capsoftware/globlin#readme",
+  "homepage": "https://github.com/CapSoftware/globlin#readme",
   "bugs": {
-    "url": "https://github.com/capsoftware/globlin/issues"
+    "url": "https://github.com/CapSoftware/globlin/issues"
   },
   "author": "Anomaly",
   "license": "MIT",

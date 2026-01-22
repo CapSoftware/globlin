@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Ricardo Schlueter"]
 description = "A high-performance glob pattern matcher - 2-3x faster drop-in replacement for glob"
 license = "MIT"
-repository = "https://github.com/capsoftware/globlin"
+repository = "https://github.com/CapSoftware/globlin"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
