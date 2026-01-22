@@ -43,7 +43,7 @@ jobs:
             build: |-
               rustup update stable
               rustup target add aarch64-unknown-linux-musl
-              npm run build:native -- --target aarch64-unknown-linux-musl
+              npm run build:native -- --target aarch64-unknown-linux-musl --zig
 
           - host: macos-latest
             target: x86_64-apple-darwin
