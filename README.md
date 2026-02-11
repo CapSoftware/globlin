@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="www/public/globlin-logo.svg" alt="globlin" height="80" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="www/public/globlin-logo.svg">
+    <source media="(prefers-color-scheme: light)" srcset="www/public/globlin-logo-light.svg">
+    <img src="www/public/globlin-logo-light.svg" alt="globlin" height="80" />
+  </picture>
 </p>
 
 <p align="center">
