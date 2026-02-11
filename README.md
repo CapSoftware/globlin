@@ -276,5 +276,3 @@ npm run bench:large
 MIT License - see [LICENSE](LICENSE) for details.
 
 ---
-
-**Globlin** is built by [Anomaly](https://anomaly.co), the team behind [Cap](https://cap.so).
