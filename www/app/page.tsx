@@ -189,11 +189,11 @@ export default function Home() {
             <div className="animate-slide-up">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-card)] text-xs text-[var(--color-text-secondary)] mb-8">
                 <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-pulse" />
-                v0.1.0 — Now Available
+                v1.0.0-beta.1 — Now Available
               </div>
 
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05] mb-8">
-                <span className="text-gradient">20-30x faster</span>
+                <span className="text-gradient">~2x faster</span>
                 <br />
                 <span className="text-[var(--color-text)]">glob for Node.js</span>
               </h1>
@@ -207,7 +207,7 @@ export default function Home() {
                   glob
                 </a>
                 . Built in Rust with NAPI-RS bindings. Same API, same results,
-                dramatically faster.
+                consistently faster.
               </p>
 
               <div className="mb-10">
@@ -273,31 +273,31 @@ export default function Home() {
                     Pattern matching speed
                   </h2>
                   <p className="text-sm text-[var(--color-text-muted)] font-mono">
-                    **/*.ts in a large project
+                    **/*.ts across 100k files
                   </p>
                 </div>
 
                 <div className="space-y-5">
                   <BenchmarkBar
                     name="globlin"
-                    version="v0.1.0"
-                    time={12}
-                    maxTime={320}
+                    version="v1.0.0-beta.1"
+                    time={77}
+                    maxTime={179}
                     isHighlight
                     delay={400}
                   />
                   <BenchmarkBar
                     name="fast-glob"
-                    version="v3.3.0"
-                    time={89}
-                    maxTime={320}
+                    version="v3.3.3"
+                    time={82}
+                    maxTime={179}
                     delay={600}
                   />
                   <BenchmarkBar
                     name="glob"
-                    version="v10.3.0"
-                    time={320}
-                    maxTime={320}
+                    version="v10.5.0"
+                    time={179}
+                    maxTime={179}
                     delay={800}
                   />
                 </div>
