@@ -95,7 +95,7 @@ function PerfBar({
 
 function InstallBox() {
   const [copied, setCopied] = useState(false);
-  const command = "npm install globlin";
+  const command = "bun install globlin";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(command);
