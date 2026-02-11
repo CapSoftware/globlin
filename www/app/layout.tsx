@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "globlin – A faster glob for Node.js",
   description:
-    "20-30x faster drop-in replacement for glob. Built in Rust with NAPI-RS.",
+    "2-3x faster drop-in replacement for glob v13. Built in Rust with NAPI-RS bindings. Same API, same results, consistently faster.",
   keywords: ["glob", "node.js", "rust", "fast", "pattern matching", "file system"],
 };
 
