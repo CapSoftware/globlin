@@ -37,7 +37,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.android-arm64.node')
           } else {
-            nativeBinding = require('globlin-android-arm64')
+            nativeBinding = require('@capsoftware/globlin-android-arm64')
           }
         } catch (e) {
           loadError = e
@@ -49,7 +49,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.android-arm-eabi.node')
           } else {
-            nativeBinding = require('globlin-android-arm-eabi')
+            nativeBinding = require('@capsoftware/globlin-android-arm-eabi')
           }
         } catch (e) {
           loadError = e
@@ -69,7 +69,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.win32-x64-msvc.node')
           } else {
-            nativeBinding = require('globlin-win32-x64-msvc')
+            nativeBinding = require('@capsoftware/globlin-win32-x64-msvc')
           }
         } catch (e) {
           loadError = e
@@ -83,7 +83,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.win32-ia32-msvc.node')
           } else {
-            nativeBinding = require('globlin-win32-ia32-msvc')
+            nativeBinding = require('@capsoftware/globlin-win32-ia32-msvc')
           }
         } catch (e) {
           loadError = e
@@ -97,7 +97,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.win32-arm64-msvc.node')
           } else {
-            nativeBinding = require('globlin-win32-arm64-msvc')
+            nativeBinding = require('@capsoftware/globlin-win32-arm64-msvc')
           }
         } catch (e) {
           loadError = e
@@ -113,7 +113,7 @@ switch (platform) {
       if (localFileExisted) {
         nativeBinding = require('./globlin.darwin-universal.node')
       } else {
-        nativeBinding = require('globlin-darwin-universal')
+        nativeBinding = require('@capsoftware/globlin-darwin-universal')
       }
       break
     } catch {}
@@ -124,7 +124,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.darwin-x64.node')
           } else {
-            nativeBinding = require('globlin-darwin-x64')
+            nativeBinding = require('@capsoftware/globlin-darwin-x64')
           }
         } catch (e) {
           loadError = e
@@ -138,7 +138,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.darwin-arm64.node')
           } else {
-            nativeBinding = require('globlin-darwin-arm64')
+            nativeBinding = require('@capsoftware/globlin-darwin-arm64')
           }
         } catch (e) {
           loadError = e
@@ -157,7 +157,7 @@ switch (platform) {
       if (localFileExisted) {
         nativeBinding = require('./globlin.freebsd-x64.node')
       } else {
-        nativeBinding = require('globlin-freebsd-x64')
+        nativeBinding = require('@capsoftware/globlin-freebsd-x64')
       }
     } catch (e) {
       loadError = e
@@ -174,7 +174,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-x64-musl.node')
             } else {
-              nativeBinding = require('globlin-linux-x64-musl')
+              nativeBinding = require('@capsoftware/globlin-linux-x64-musl')
             }
           } catch (e) {
             loadError = e
@@ -187,7 +187,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-x64-gnu.node')
             } else {
-              nativeBinding = require('globlin-linux-x64-gnu')
+              nativeBinding = require('@capsoftware/globlin-linux-x64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -203,7 +203,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-arm64-musl.node')
             } else {
-              nativeBinding = require('globlin-linux-arm64-musl')
+              nativeBinding = require('@capsoftware/globlin-linux-arm64-musl')
             }
           } catch (e) {
             loadError = e
@@ -216,7 +216,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-arm64-gnu.node')
             } else {
-              nativeBinding = require('globlin-linux-arm64-gnu')
+              nativeBinding = require('@capsoftware/globlin-linux-arm64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -232,7 +232,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-arm-musleabihf.node')
             } else {
-              nativeBinding = require('globlin-linux-arm-musleabihf')
+              nativeBinding = require('@capsoftware/globlin-linux-arm-musleabihf')
             }
           } catch (e) {
             loadError = e
@@ -245,7 +245,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-arm-gnueabihf.node')
             } else {
-              nativeBinding = require('globlin-linux-arm-gnueabihf')
+              nativeBinding = require('@capsoftware/globlin-linux-arm-gnueabihf')
             }
           } catch (e) {
             loadError = e
@@ -261,7 +261,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-riscv64-musl.node')
             } else {
-              nativeBinding = require('globlin-linux-riscv64-musl')
+              nativeBinding = require('@capsoftware/globlin-linux-riscv64-musl')
             }
           } catch (e) {
             loadError = e
@@ -274,7 +274,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./globlin.linux-riscv64-gnu.node')
             } else {
-              nativeBinding = require('globlin-linux-riscv64-gnu')
+              nativeBinding = require('@capsoftware/globlin-linux-riscv64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -289,7 +289,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./globlin.linux-s390x-gnu.node')
           } else {
-            nativeBinding = require('globlin-linux-s390x-gnu')
+            nativeBinding = require('@capsoftware/globlin-linux-s390x-gnu')
           }
         } catch (e) {
           loadError = e
