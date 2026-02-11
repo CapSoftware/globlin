@@ -39,6 +39,7 @@ Thumbs.db
 *.md
 !README.md
 !CHANGELOG.md
+!CONTRIBUTING.md
 !docs/api/**/*.md
 !docs/guides/**/*.md
 !npm/**/README.md
